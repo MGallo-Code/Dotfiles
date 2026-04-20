@@ -147,6 +147,11 @@ if ($Dirty.Count -gt 0) {
         Write-Info "$name changes:"
         Write-Host $changes
 
+        # Pull remote changes before committing to avoid non-fast-forward
+        git stash -q 2>$null
+        git pull --ff-only 2>$null
+        git stash pop -q 2>$null
+
         if ($hasClaude) {
             $prompt = @"
 You are a commit message generator. Given these changes in the '$name' repo:

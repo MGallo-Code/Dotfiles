@@ -155,6 +155,11 @@ if [ ${#DIRTY[@]} -gt 0 ]; then
         info "$name changes:"
         echo -e "$CHANGES"
 
+        # Pull remote changes before committing to avoid non-fast-forward
+        git stash -q 2>/dev/null
+        git pull --ff-only 2>/dev/null
+        git stash pop -q 2>/dev/null
+
         if $HAS_CLAUDE; then
             # Ask Claude for a commit message (or a review flag)
             PROMPT="You are a commit message generator. Given these changes in the '$name' repo:

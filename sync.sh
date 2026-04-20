@@ -123,55 +123,77 @@ echo -e "\n${GREEN}==>${NC} Summary"
 if [ ${#DIRTY[@]} -gt 0 ]; then
     echo ""
     warn "Dirty repos: ${DIRTY[*]}"
-    echo ""
 
-    if command -v claude &>/dev/null; then
-        echo "Launch Claude to commit and push changes? (y/n)"
-        read -r LAUNCH_CLAUDE
-        if [[ "$LAUNCH_CLAUDE" == "y" ]]; then
-            # Build summary of dirty repos
-            SUMMARY="The following repos have uncommitted changes that need to be committed and pushed:\n"
-            for name in "${DIRTY[@]}"; do
-                for entry in "${REPOS[@]}"; do
-                    target="$(expand "${entry##*|}")"
-                    if [[ "$(basename "$target")" == "$name" ]]; then
-                        cd "$target"
-                        DIFF=$(git diff --stat 2>/dev/null)
-                        UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null)
-                        SUMMARY+="\n$name ($target):\n  Changes: $DIFF"
-                        [ -n "$UNTRACKED" ] && SUMMARY+="\n  New files: $UNTRACKED"
-                        break
-                    fi
-                done
-                # Check dotfiles too
-                if [[ "$name" == "$(basename "$DOTFILES_DIR")" ]]; then
-                    cd "$DOTFILES_DIR"
-                    DIFF=$(git diff --stat 2>/dev/null)
-                    SUMMARY+="\n$name ($DOTFILES_DIR):\n  Changes: $DIFF"
-                fi
-            done
+    HAS_CLAUDE=false
+    command -v claude &>/dev/null && HAS_CLAUDE=true
 
-            echo -e "$SUMMARY"
-            echo ""
-
-            # Hand off to Claude in the first dirty repo
-            for name in "${DIRTY[@]}"; do
-                for entry in "${REPOS[@]}"; do
-                    target="$(expand "${entry##*|}")"
-                    if [[ "$(basename "$target")" == "$name" ]]; then
-                        cd "$target"
-                        claude -p "These repos have uncommitted changes: ${DIRTY[*]}. For this repo ($name), review the changes with git diff and git status, commit with a clear message, and push. Then tell me which other repos still need attention."
-                        break 2
-                    fi
-                done
-            done
-        fi
-    else
-        echo "Claude Code not available. Commit and push manually:"
-        for name in "${DIRTY[@]}"; do
-            echo "  - $name"
+    for name in "${DIRTY[@]}"; do
+        # Find the repo path
+        repo_path=""
+        for entry in "${REPOS[@]}"; do
+            target="$(expand "${entry##*|}")"
+            if [[ "$(basename "$target")" == "$name" ]]; then
+                repo_path="$target"
+                break
+            fi
         done
-    fi
+        if [[ "$name" == "$(basename "$DOTFILES_DIR")" ]]; then
+            repo_path="$DOTFILES_DIR"
+        fi
+        [ -z "$repo_path" ] && continue
+
+        cd "$repo_path"
+
+        # Build a changes summary for this repo
+        CHANGES=""
+        DIFF_STAT=$(git diff --stat 2>/dev/null)
+        UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null)
+        [ -n "$DIFF_STAT" ] && CHANGES+="Modified:\n$DIFF_STAT\n"
+        [ -n "$UNTRACKED" ] && CHANGES+="New files:\n$UNTRACKED\n"
+
+        echo ""
+        info "$name changes:"
+        echo -e "$CHANGES"
+
+        if $HAS_CLAUDE; then
+            # Ask Claude for a commit message (or a review flag)
+            PROMPT="You are a commit message generator. Given these changes in the '$name' repo:
+
+$CHANGES
+
+Respond with ONLY one of:
+1. A single-line commit message (no quotes, no prefix) if the changes are safe to commit
+2. REVIEW: <reason> if the changes need human review (e.g. secrets, large deletions, config that looks wrong)
+
+Nothing else. No explanation."
+
+            info "$name: asking Claude for commit message..."
+            MSG=$(claude -p "$PROMPT" 2>/dev/null)
+
+            if [ -z "$MSG" ]; then
+                warn "$name: Claude returned empty response - skipping"
+                continue
+            fi
+
+            if [[ "$MSG" == REVIEW:* ]]; then
+                warn "$name: ${MSG}"
+                continue
+            fi
+
+            # Commit and push
+            ok "$name: committing with message: $MSG"
+            git add -A
+            git commit -m "$MSG"
+            git push 2>/dev/null
+            if [ $? -eq 0 ]; then
+                ok "$name: pushed"
+            else
+                err "$name: push failed"
+            fi
+        else
+            warn "$name: Claude Code not available - commit manually"
+        fi
+    done
 fi
 
 echo ""

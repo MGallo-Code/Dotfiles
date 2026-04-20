@@ -123,38 +123,76 @@ if ($Missing.Count -gt 0)  { Write-Warn "Missing: $($Missing -join ', ')" }
 if ($Dirty.Count -gt 0) {
     Write-Host ""
     Write-Warn "Dirty repos: $($Dirty -join ', ')"
-    Write-Host ""
 
-    $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
-    if ($claudeCmd) {
-        $answer = Read-Host "Launch Claude to commit and push changes? (y/n)"
-        if ($answer -eq "y") {
-            $summary = "The following repos have uncommitted changes: $($Dirty -join ', ')."
-            foreach ($name in $Dirty) {
-                $repo = $Repos | Where-Object { (Split-Path $_.Target -Leaf) -eq $name }
-                if ($repo) {
-                    Push-Location $repo.Target
-                    $diff = git diff --stat 2>$null
-                    $summary += " $name ($($repo.Target)): $diff"
-                    Pop-Location
-                }
+    $hasClaude = [bool](Get-Command claude -ErrorAction SilentlyContinue)
+
+    foreach ($name in $Dirty) {
+        # Find repo path
+        $repoPath = $null
+        $repo = $Repos | Where-Object { (Split-Path $_.Target -Leaf) -eq $name }
+        if ($repo) { $repoPath = $repo.Target }
+        if ($name -eq (Split-Path $DotfilesDir -Leaf)) { $repoPath = $DotfilesDir }
+        if (-not $repoPath) { continue }
+
+        Push-Location $repoPath
+
+        # Build changes summary
+        $diffStat = git diff --stat 2>$null
+        $untracked = git ls-files --others --exclude-standard 2>$null
+        $changes = ""
+        if ($diffStat) { $changes += "Modified:`n$($diffStat -join "`n")`n" }
+        if ($untracked) { $changes += "New files:`n$($untracked -join "`n")`n" }
+
+        Write-Host ""
+        Write-Info "$name changes:"
+        Write-Host $changes
+
+        if ($hasClaude) {
+            $prompt = @"
+You are a commit message generator. Given these changes in the '$name' repo:
+
+$changes
+
+Respond with ONLY one of:
+1. A single-line commit message (no quotes, no prefix) if the changes are safe to commit
+2. REVIEW: <reason> if the changes need human review (e.g. secrets, large deletions, config that looks wrong)
+
+Nothing else. No explanation.
+"@
+
+            Write-Info "$name`: asking Claude for commit message..."
+            $msg = & claude -p $prompt 2>$null
+
+            if (-not $msg) {
+                Write-Warn "$name`: Claude returned empty response - skipping"
+                Pop-Location
+                continue
             }
 
-            # Hand off to Claude in first dirty repo
-            foreach ($name in $Dirty) {
-                $repo = $Repos | Where-Object { (Split-Path $_.Target -Leaf) -eq $name }
-                if ($repo) {
-                    Push-Location $repo.Target
-                    & claude -p "These repos have uncommitted changes: $($Dirty -join ', '). For this repo ($name), review the changes with git diff and git status, commit with a clear message, and push. Then tell me which other repos still need attention."
-                    Pop-Location
-                    break
-                }
+            $msg = ($msg -join " ").Trim()
+
+            if ($msg.StartsWith("REVIEW:")) {
+                Write-Warn "$name`: $msg"
+                Pop-Location
+                continue
+            }
+
+            Write-Ok "$name`: committing with message: $msg"
+            git add -A
+            git commit -m $msg
+            git push 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Ok "$name`: pushed"
+            }
+            else {
+                Write-Err "$name`: push failed"
             }
         }
-    }
-    else {
-        Write-Host "Claude Code not available. Commit and push manually:"
-        foreach ($name in $Dirty) { Write-Host "  - $name" }
+        else {
+            Write-Warn "$name`: Claude Code not available - commit manually"
+        }
+
+        Pop-Location
     }
 }
 

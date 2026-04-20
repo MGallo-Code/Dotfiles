@@ -14,7 +14,28 @@ function Write-Warn { param($msg) Write-Host "[skip] $msg" -ForegroundColor Yell
 function Write-Err  { param($msg) Write-Host "[error] $msg" -ForegroundColor Red }
 function Write-Step { param($msg) Write-Host "`n==> $msg" -ForegroundColor Green }
 
+# Helper: find ssh.exe (OpenSSH or Git's bundled copy)
+function Find-Ssh {
+    $cmd = Get-Command ssh -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    if (Test-Path "C:\Windows\System32\OpenSSH\ssh.exe") { return "C:\Windows\System32\OpenSSH\ssh.exe" }
+    if (Test-Path "C:\Program Files\Git\usr\bin\ssh.exe") { return "C:\Program Files\Git\usr\bin\ssh.exe" }
+    return $null
+}
+
 . "$DotfilesDir\manifest.ps1"
+
+# ── Execution Policy ─────────────────────────────────────────────────
+Write-Step "Execution policy"
+
+$currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
+if ($currentPolicy -eq "RemoteSigned" -or $currentPolicy -eq "Unrestricted") {
+    Write-Ok "Execution policy: $currentPolicy"
+}
+else {
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+    Write-Ok "Set execution policy to RemoteSigned"
+}
 
 # ── Git Config ────────────────────────────────────────────────────────
 Write-Step "Git config"
@@ -46,6 +67,10 @@ if (-not $sshKeygen) {
     Write-Host "Installing OpenSSH Client..."
     try {
         Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0
+        # Refresh PATH so ssh/ssh-keygen are available this session
+        $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        $env:Path = "$machinePath;$userPath"
         Write-Ok "OpenSSH Client installed"
     }
     catch {
@@ -74,31 +99,53 @@ else {
     Read-Host
 }
 
-# SSH config
+# SSH config - create if missing, or ensure github alias exists
 $SshConfig = "$HOME\.ssh\config"
 if (-not (Test-Path $SshConfig)) {
     Copy-Item "$DotfilesDir\ssh\config.template" $SshConfig
     Write-Ok "SSH config created from template (edit IPs in $SshConfig)"
 }
 else {
-    Write-Ok "SSH config already exists"
+    # Check if github alias already exists
+    $configContent = Get-Content $SshConfig -Raw
+    if ($configContent -match "(?m)^Host github\b") {
+        Write-Ok "SSH config has github alias"
+    }
+    else {
+        $githubBlock = @"
+
+# Dotfiles setup
+Host github
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519
+"@
+        Add-Content -Path $SshConfig -Value $githubBlock
+        Write-Ok "Added github alias to existing SSH config"
+    }
 }
 
 # Test GitHub SSH access
 Write-Step "Testing GitHub SSH access"
-$sshTest = ssh -T git@github 2>&1 | Out-String
-if ($sshTest -match "successfully authenticated") {
-    Write-Ok "GitHub SSH access works"
-
-    # Switch dotfiles remote from HTTPS to SSH if needed
-    $currentRemote = git -C $DotfilesDir remote get-url origin 2>$null
-    if ($currentRemote -and $currentRemote.StartsWith("https://")) {
-        git -C $DotfilesDir remote set-url origin "git@github:MGallo-Code/Dotfiles.git"
-        Write-Ok "Switched dotfiles remote to SSH"
-    }
+$sshExe = Find-Ssh
+if (-not $sshExe) {
+    Write-Warn "No ssh client found - skipping SSH test"
 }
 else {
-    Write-Warn "GitHub SSH test inconclusive - clone steps may fail"
+    $sshTest = & $sshExe -T git@github 2>&1 | Out-String
+    if ($sshTest -match "successfully authenticated") {
+        Write-Ok "GitHub SSH access works"
+
+        # Switch dotfiles remote from HTTPS to SSH if needed
+        $currentRemote = git -C $DotfilesDir remote get-url origin 2>$null
+        if ($currentRemote -and $currentRemote.StartsWith("https://")) {
+            git -C $DotfilesDir remote set-url origin "git@github:MGallo-Code/Dotfiles.git"
+            Write-Ok "Switched dotfiles remote to SSH"
+        }
+    }
+    else {
+        Write-Warn "GitHub SSH test inconclusive - clone steps may fail"
+    }
 }
 
 # ── Winget Packages ──────────────────────────────────────────────────
@@ -122,7 +169,12 @@ if ($Mode -ne "minimal") {
                 Write-Host "Installing $($pkg.Id)..."
                 winget install --id $pkg.Id --accept-package-agreements --accept-source-agreements 2>$null
             }
-            Write-Ok "Packages installed (restart terminal for PATH updates)"
+
+            # Refresh PATH after installs
+            $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+            $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+            $env:Path = "$machinePath;$userPath"
+            Write-Ok "Packages installed"
         }
         else {
             Write-Warn "Skipped package installation"
@@ -279,14 +331,46 @@ if ($claudeCmd) {
 else {
     $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
     if ($npmCmd) {
-        $answer = Read-Host "Install Claude Code via npm? (y/n)"
-        if ($answer -eq "y") {
-            npm install -g @anthropic-ai/claude-code
-            Write-Ok "Claude Code installed. Run 'claude' to authenticate."
-        }
+        Write-Host "Installing Claude Code..."
+        npm install -g @anthropic-ai/claude-code
+        Write-Ok "Claude Code installed. Run 'claude' to authenticate."
     }
     else {
         Write-Warn "Claude Code not found. Install Node.js first, then: npm install -g @anthropic-ai/claude-code"
+    }
+}
+
+# ── Practice Environment ─────────────────────────────────────────────
+if ($Mode -eq "full") {
+    Write-Step "Practice environment"
+
+    $exerciseDir = "$HOME\Documents\EA\exercises"
+    $venvDir = "$exerciseDir\.venv"
+    $workspaceDir = "$exerciseDir\workspace"
+
+    if (Test-Path $exerciseDir) {
+        New-Item -ItemType Directory -Path $workspaceDir -Force | Out-Null
+
+        $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
+        if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+
+        if ($pythonCmd) {
+            if (-not (Test-Path "$venvDir\Scripts\Activate.ps1")) {
+                Write-Host "Setting up practice venv..."
+                & $pythonCmd.Source -m venv $venvDir
+                & "$venvDir\Scripts\pip.exe" install pytest
+                Write-Ok "Practice environment ready"
+            }
+            else {
+                Write-Ok "Practice venv already exists"
+            }
+        }
+        else {
+            Write-Warn "Python not found - install via winget, then run setup again for practice env"
+        }
+    }
+    else {
+        Write-Warn "EA not cloned yet - practice environment skipped"
     }
 }
 

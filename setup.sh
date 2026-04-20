@@ -71,13 +71,26 @@ else
     read -r
 fi
 
-# SSH config
+# SSH config - create if missing, or ensure github alias exists
 if [ ! -f ~/.ssh/config ]; then
     cp "$DOTFILES_DIR/ssh/config.template" ~/.ssh/config
     chmod 600 ~/.ssh/config
     ok "SSH config created from template (edit IPs in ~/.ssh/config)"
 else
-    ok "SSH config already exists"
+    if grep -q "^Host github$" ~/.ssh/config 2>/dev/null; then
+        ok "SSH config has github alias"
+    else
+        cat >> ~/.ssh/config << 'EOF'
+
+# Dotfiles setup
+Host github
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519
+EOF
+        chmod 600 ~/.ssh/config
+        ok "Added github alias to existing SSH config"
+    fi
 fi
 
 # Test GitHub SSH access
@@ -232,7 +245,41 @@ if command -v claude &>/dev/null; then
     ok "Claude Code is installed"
     echo "    Run 'claude' to authenticate if needed"
 else
-    warn "Claude Code not found - install via: brew install claude"
+    if command -v brew &>/dev/null; then
+        echo "Installing Claude Code..."
+        brew install claude
+        ok "Claude Code installed. Run 'claude' to authenticate."
+    else
+        warn "Claude Code not found - install via: brew install claude"
+    fi
+fi
+
+# ── Practice Environment ─────────────────────────────────────────────
+if [[ "$MODE" == "--full" ]]; then
+    step "Practice environment"
+
+    EXERCISE_DIR="$(expand "~/Documents/EA/exercises")"
+    VENV_DIR="$EXERCISE_DIR/.venv"
+    WORKSPACE_DIR="$EXERCISE_DIR/workspace"
+
+    if [ -d "$EXERCISE_DIR" ]; then
+        mkdir -p "$WORKSPACE_DIR"
+
+        if [ -d "$VENV_DIR" ]; then
+            ok "Practice venv already exists"
+        else
+            if command -v python3 &>/dev/null; then
+                echo "Setting up practice venv..."
+                python3 -m venv "$VENV_DIR"
+                "$VENV_DIR/bin/pip" install pytest
+                ok "Practice environment ready"
+            else
+                warn "Python3 not found - install via brew, then run setup again for practice env"
+            fi
+        fi
+    else
+        warn "EA not cloned yet - practice environment skipped"
+    fi
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

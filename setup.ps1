@@ -16,6 +16,27 @@ function Write-Step { param($msg) Write-Host "`n==> $msg" -ForegroundColor Green
 
 . "$DotfilesDir\manifest.ps1"
 
+# ── Git Config ────────────────────────────────────────────────────────
+Write-Step "Git config"
+
+$currentName = git config --global user.name 2>$null
+$currentEmail = git config --global user.email 2>$null
+
+if ($currentName -and $currentEmail) {
+    Write-Ok "Git user: $currentName <$currentEmail>"
+}
+else {
+    if (-not $currentName) {
+        $gitName = Read-Host "Enter your Git name (e.g. Michael Gallo)"
+        git config --global user.name $gitName
+    }
+    if (-not $currentEmail) {
+        $gitEmail = Read-Host "Enter your Git email"
+        git config --global user.email $gitEmail
+    }
+    Write-Ok "Git config set"
+}
+
 # ── SSH Key ──────────────────────────────────────────────────────────
 Write-Step "SSH key setup"
 
@@ -68,6 +89,13 @@ Write-Step "Testing GitHub SSH access"
 $sshTest = ssh -T git@github 2>&1 | Out-String
 if ($sshTest -match "successfully authenticated") {
     Write-Ok "GitHub SSH access works"
+
+    # Switch dotfiles remote from HTTPS to SSH if needed
+    $currentRemote = git -C $DotfilesDir remote get-url origin 2>$null
+    if ($currentRemote -and $currentRemote.StartsWith("https://")) {
+        git -C $DotfilesDir remote set-url origin "git@github:MGallo-Code/Dotfiles.git"
+        Write-Ok "Switched dotfiles remote to SSH"
+    }
 }
 else {
     Write-Warn "GitHub SSH test inconclusive - clone steps may fail"

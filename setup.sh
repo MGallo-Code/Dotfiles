@@ -29,6 +29,28 @@ source "$DOTFILES_DIR/manifest.sh"
 # Expand ~ in a path
 expand() { echo "${1/#\~/$HOME}"; }
 
+# ── Git Config ────────────────────────────────────────────────────────
+step "Git config"
+
+CURRENT_NAME=$(git config --global user.name 2>/dev/null || echo "")
+CURRENT_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
+
+if [ -n "$CURRENT_NAME" ] && [ -n "$CURRENT_EMAIL" ]; then
+    ok "Git user: $CURRENT_NAME <$CURRENT_EMAIL>"
+else
+    if [ -z "$CURRENT_NAME" ]; then
+        echo "Enter your Git name (e.g. Michael Gallo):"
+        read -r GIT_NAME
+        git config --global user.name "$GIT_NAME"
+    fi
+    if [ -z "$CURRENT_EMAIL" ]; then
+        echo "Enter your Git email:"
+        read -r GIT_EMAIL
+        git config --global user.email "$GIT_EMAIL"
+    fi
+    ok "Git config set"
+fi
+
 # ── SSH Key ──────────────────────────────────────────────────────────
 step "SSH key setup"
 
@@ -62,6 +84,13 @@ fi
 step "Testing GitHub SSH access"
 if ssh -T git@github 2>&1 | grep -q "successfully authenticated"; then
     ok "GitHub SSH access works"
+
+    # Switch dotfiles remote from HTTPS to SSH if needed
+    CURRENT_REMOTE=$(git -C "$DOTFILES_DIR" remote get-url origin 2>/dev/null || echo "")
+    if [[ "$CURRENT_REMOTE" == https://* ]]; then
+        git -C "$DOTFILES_DIR" remote set-url origin git@github:MGallo-Code/Dotfiles.git
+        ok "Switched dotfiles remote to SSH"
+    fi
 else
     warn "GitHub SSH test inconclusive - clone steps may fail"
 fi

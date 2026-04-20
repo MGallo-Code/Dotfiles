@@ -1,0 +1,15 @@
+# GitHub via SSH key
+Host github
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519
+
+# Windows PC via Tailscale
+Host pc
+    HostName TAILSCALE_IP_HERE
+    User WINDOWS_USER_HERE
+
+# Windows PC via LAN (fallback)
+Host pc-lan
+    HostName LAN_IP_HERE
+    User WINDOWS_USER_HERE

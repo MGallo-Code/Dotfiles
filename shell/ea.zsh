@@ -10,6 +10,11 @@ wiki() {
     cd ~/Documents/Wiki && claude
 }
 
+# Navigate to IT Worker and open Claude
+it() {
+    cd ~/Documents/IT-Worker && claude
+}
+
 # Drop into practice workspace with venv active
 practice() {
     mkdir -p ~/Documents/EA/exercises/workspace

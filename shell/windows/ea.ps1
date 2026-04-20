@@ -10,6 +10,11 @@ function wiki {
     & claude
 }
 
+function it {
+    Set-Location "$HOME\Documents\IT-Worker"
+    & claude
+}
+
 function practice {
     $WorkspaceDir = "$HOME\Documents\EA\exercises\workspace"
     $VenvDir = "$HOME\Documents\EA\exercises\.venv"

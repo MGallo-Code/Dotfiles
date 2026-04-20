@@ -37,6 +37,27 @@ else {
     Write-Ok "Set execution policy to RemoteSigned"
 }
 
+# ── OpenSSH Default Shell ────────────────────────────────────────────
+Write-Step "SSH server default shell"
+
+$sshShellPath = "HKLM:\SOFTWARE\OpenSSH"
+$currentShell = (Get-ItemProperty -Path $sshShellPath -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell
+$psPath = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+
+if ($currentShell -eq $psPath) {
+    Write-Ok "SSH default shell is PowerShell"
+}
+else {
+    try {
+        New-ItemProperty -Path $sshShellPath -Name DefaultShell -Value $psPath -PropertyType String -Force | Out-Null
+        Restart-Service sshd -ErrorAction SilentlyContinue
+        Write-Ok "Set SSH default shell to PowerShell"
+    }
+    catch {
+        Write-Warn "Could not set SSH default shell (needs admin). Run as Administrator or set manually."
+    }
+}
+
 # ── Git Config ────────────────────────────────────────────────────────
 Write-Step "Git config"
 

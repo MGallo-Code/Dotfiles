@@ -182,12 +182,7 @@ if [[ "$MODE" == "--full" ]]; then
         cd "$NEXUS_PATH"
         npm install --silent 2>/dev/null
         npm run build 2>/dev/null
-        if [ -f "$NEXUS_PATH/migrate.js" ] && [ ! -f "$NEXUS_PATH/nexus.db" ]; then
-            node migrate.js 2>/dev/null
-            ok "Nexus: installed, built, and migrated"
-        else
-            ok "Nexus: installed and built"
-        fi
+        ok "Nexus: installed and built"
         cd - >/dev/null
     else
         warn "Nexus: package.json not found at $NEXUS_PATH"
@@ -204,8 +199,10 @@ if [[ "$MODE" == "--full" ]]; then
 
         if [ -L "$target_path" ] && [ "$(readlink "$target_path")" = "$source_path" ]; then
             ok "$target_path already linked correctly"
-        elif [ -e "$target_path" ]; then
-            warn "$target_path exists but is not the expected symlink - skipping"
+        elif [ -e "$target_path" ] || [ -L "$target_path" ]; then
+            rm -rf "$target_path"
+            ln -s "$source_path" "$target_path"
+            ok "Replaced $target_path with symlink -> $source_path"
         else
             mkdir -p "$(dirname "$target_path")"
             ln -s "$source_path" "$target_path"

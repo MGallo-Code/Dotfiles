@@ -112,6 +112,16 @@ for entry in "${SYMLINKS[@]}"; do
     fi
 done
 
+# ── Rebuild Nexus if EA was updated ──────────────────────────────────
+NEXUS_PATH="$(expand "~/Documents/EA/nexus")"
+if [ -f "$NEXUS_PATH/package.json" ]; then
+    cd "$NEXUS_PATH"
+    npm install --silent 2>/dev/null
+    npm run build 2>/dev/null
+    ok "Nexus: rebuilt"
+    cd - >/dev/null
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────
 echo -e "\n${GREEN}==>${NC} Summary"
 [ ${#UPDATED[@]} -gt 0 ]  && ok "Updated: ${UPDATED[*]}"

@@ -174,6 +174,26 @@ if [[ "$MODE" != "--minimal" ]]; then
     done
 fi
 
+# ── Nexus MCP Server ────────────────────────────────────────────────
+if [[ "$MODE" == "--full" ]]; then
+    step "Setting up Nexus MCP server"
+    NEXUS_PATH="$(expand "~/Documents/EA/nexus")"
+    if [ -f "$NEXUS_PATH/package.json" ]; then
+        cd "$NEXUS_PATH"
+        npm install --silent 2>/dev/null
+        npm run build 2>/dev/null
+        if [ -f "$NEXUS_PATH/migrate.js" ] && [ ! -f "$NEXUS_PATH/nexus.db" ]; then
+            node migrate.js 2>/dev/null
+            ok "Nexus: installed, built, and migrated"
+        else
+            ok "Nexus: installed and built"
+        fi
+        cd - >/dev/null
+    else
+        warn "Nexus: package.json not found at $NEXUS_PATH"
+    fi
+fi
+
 # ── Symlinks ─────────────────────────────────────────────────────────
 if [[ "$MODE" == "--full" ]]; then
     step "Creating symlinks"

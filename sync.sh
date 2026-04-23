@@ -86,6 +86,13 @@ sync_repo() {
     fi
 }
 
+# ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
+NEXUS_DB="$(expand "~/Documents/EA/nexus/nexus.db")"
+if [ -f "$NEXUS_DB" ] && command -v sqlite3 &>/dev/null; then
+    sqlite3 "$NEXUS_DB" "PRAGMA wal_checkpoint(TRUNCATE);" >/dev/null 2>&1
+    ok "Nexus DB: WAL checkpointed"
+fi
+
 # ── Sync dotfiles repo itself ────────────────────────────────────────
 echo -e "\n${GREEN}==>${NC} Syncing dotfiles"
 sync_repo "$DOTFILES_DIR"

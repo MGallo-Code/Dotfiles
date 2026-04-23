@@ -184,6 +184,20 @@ if [[ "$MODE" == "--full" ]]; then
         npm run build 2>/dev/null
         ok "Nexus: installed and built"
         cd - >/dev/null
+
+        # Generate .mcp.json for EA and IT-Worker with machine-specific paths
+        NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
+        EA_PATH="$(expand "~/Documents/EA")"
+        ITW_PATH="$(expand "~/Documents/IT-Worker")"
+        MCP_JSON="{\"mcpServers\":{\"nexus\":{\"command\":\"node\",\"args\":[\"$NEXUS_SERVER\"]}}}"
+
+        echo "$MCP_JSON" > "$EA_PATH/.mcp.json"
+        ok "EA .mcp.json generated"
+
+        if [ -d "$ITW_PATH" ]; then
+            echo "$MCP_JSON" > "$ITW_PATH/.mcp.json"
+            ok "IT-Worker .mcp.json generated"
+        fi
     else
         warn "Nexus: package.json not found at $NEXUS_PATH"
     fi

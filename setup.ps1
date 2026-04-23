@@ -246,6 +246,34 @@ if ($Mode -ne "minimal") {
     }
 }
 
+# ── Nexus MCP Server ────────────────────────────────────────────────
+if ($Mode -eq "full") {
+    Write-Step "Setting up Nexus MCP server"
+    $NexusPath = "$HOME\Documents\EA\nexus"
+    if (Test-Path "$NexusPath\package.json") {
+        Push-Location $NexusPath
+        npm install --silent 2>$null
+        npm run build 2>$null
+        Pop-Location
+        Write-Ok "Nexus: installed and built"
+
+        # Generate .mcp.json for EA and IT-Worker with machine-specific paths
+        $NexusServer = "$NexusPath\dist\server.js" -replace '\\', '/'
+        $McpJson = @{mcpServers=@{nexus=@{command="node";args=@($NexusServer)}}} | ConvertTo-Json -Depth 3
+        Set-Content -Path "$HOME\Documents\EA\.mcp.json" -Value $McpJson
+        Write-Ok "EA .mcp.json generated"
+
+        $ItwPath = "$HOME\Documents\IT-Worker"
+        if (Test-Path $ItwPath) {
+            Set-Content -Path "$ItwPath\.mcp.json" -Value $McpJson
+            Write-Ok "IT-Worker .mcp.json generated"
+        }
+    }
+    else {
+        Write-Warn "Nexus: package.json not found at $NexusPath"
+    }
+}
+
 # ── Symlinks ─────────────────────────────────────────────────────────
 if ($Mode -eq "full") {
     Write-Step "Creating symlinks"

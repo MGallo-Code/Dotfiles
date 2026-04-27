@@ -84,6 +84,13 @@ function Sync-Repo {
     Pop-Location
 }
 
+# ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
+$NexusDb = "$HOME\Documents\EA\nexus\nexus.db"
+if ((Test-Path $NexusDb) -and (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
+    & sqlite3 $NexusDb "PRAGMA wal_checkpoint(TRUNCATE);" 2>$null | Out-Null
+    Write-Ok "Nexus DB: WAL checkpointed"
+}
+
 # ── Sync dotfiles repo itself ────────────────────────────────────────
 Write-Host "`n==> Syncing dotfiles" -ForegroundColor Green
 Sync-Repo $DotfilesDir
@@ -123,6 +130,16 @@ foreach ($link in $Symlinks) {
             Write-Err "$name`: failed to create symlink (enable Developer Mode or run as Admin)"
         }
     }
+}
+
+# ── Rebuild Nexus if EA was updated ──────────────────────────────────
+$NexusPath = "$HOME\Documents\EA\nexus"
+if (Test-Path "$NexusPath\package.json") {
+    Push-Location $NexusPath
+    npm install --silent 2>$null | Out-Null
+    npm run build 2>$null | Out-Null
+    Write-Ok "Nexus: rebuilt"
+    Pop-Location
 }
 
 # ── Summary ──────────────────────────────────────────────────────────

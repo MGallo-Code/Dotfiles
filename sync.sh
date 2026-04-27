@@ -104,7 +104,7 @@ for entry in "${REPOS[@]}"; do
     sync_repo "$target"
 done
 
-# ── Verify symlinks ─────────────────────────────────────────────────
+# ── Verify symlinks (auto-create if missing) ────────────────────────
 echo -e "\n${GREEN}==>${NC} Checking symlinks"
 for entry in "${SYMLINKS[@]}"; do
     source_path="$(expand "${entry%%|*}")"
@@ -112,10 +112,16 @@ for entry in "${SYMLINKS[@]}"; do
 
     if [ -L "$target_path" ] && [ "$(readlink "$target_path")" = "$source_path" ]; then
         ok "$(basename "$target_path"): linked correctly"
-    elif [ -e "$target_path" ]; then
-        warn "$(basename "$target_path"): exists but wrong symlink"
+    elif [ -e "$target_path" ] || [ -L "$target_path" ]; then
+        # Real file or wrong-target symlink - don't auto-overwrite (could lose local edits)
+        warn "$(basename "$target_path"): exists but not the expected symlink - resolve manually (rm and re-run, or run setup.sh)"
+    elif [ ! -e "$source_path" ]; then
+        warn "$(basename "$target_path"): source missing at $source_path"
     else
-        warn "$(basename "$target_path"): missing"
+        # Target absent, source present - safe to auto-create
+        mkdir -p "$(dirname "$target_path")"
+        ln -s "$source_path" "$target_path"
+        ok "$(basename "$target_path"): created symlink -> $source_path"
     fi
 done
 

@@ -94,7 +94,7 @@ foreach ($repo in $Repos) {
     Sync-Repo $repo.Target
 }
 
-# ── Verify symlinks ─────────────────────────────────────────────────
+# ── Verify symlinks (auto-create if missing) ────────────────────────
 Write-Host "`n==> Checking symlinks" -ForegroundColor Green
 foreach ($link in $Symlinks) {
     $target = $link.Target
@@ -105,10 +105,23 @@ foreach ($link in $Symlinks) {
         Write-Ok "$name`: linked correctly"
     }
     elseif (Test-Path $target) {
-        Write-Warn "$name`: exists but wrong symlink"
+        # Real file or wrong-target symlink - don't auto-overwrite (could lose local edits)
+        Write-Warn "$name`: exists but not the expected symlink - resolve manually (remove and re-run, or run setup.ps1)"
+    }
+    elseif (-not (Test-Path $source)) {
+        Write-Warn "$name`: source missing at $source"
     }
     else {
-        Write-Warn "$name`: missing"
+        # Target absent, source present - safe to auto-create
+        $parent = Split-Path $target -Parent
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        try {
+            New-Item -ItemType SymbolicLink -Path $target -Target $source -ErrorAction Stop | Out-Null
+            Write-Ok "$name`: created symlink -> $source"
+        }
+        catch {
+            Write-Err "$name`: failed to create symlink (enable Developer Mode or run as Admin)"
+        }
     }
 }
 

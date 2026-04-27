@@ -19,6 +19,7 @@ EA_REPOS=(
 # Symlinks to create: "source|target"
 SYMLINKS=(
   "~/Documents/EA/claude-config/global-rules|~/.claude/rules"
+  "~/Documents/EA/claude-config/settings.json|~/.claude/settings.json"
 )
 
 # Directories to ensure exist

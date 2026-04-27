@@ -15,6 +15,7 @@ $EARepos = @(
 
 $Symlinks = @(
     @{ Source = "$HOME\Documents\EA\claude-config\global-rules"; Target = "$HOME\.claude\rules" }
+    @{ Source = "$HOME\Documents\EA\claude-config\settings.json"; Target = "$HOME\.claude\settings.json" }
 )
 
 $Directories = @(

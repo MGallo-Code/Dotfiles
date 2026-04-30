@@ -51,7 +51,7 @@ _ollama_claude() {
 }
 
 # Default local model - best benchmarks, working tool calling
-qwen() { _ollama_claude "qwen3.5:27b" "$@"; }
+qwen() { _ollama_claude "qwen3.6:27b" "$@"; }
 
 # Pure code generation - 92.7% HumanEval
 qwen-coder() { _ollama_claude "qwen2.5-coder:32b" "$@"; }

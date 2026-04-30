@@ -68,6 +68,5 @@ function _ollama_claude {
 }
 
 function qwen { _ollama_claude "qwen3.6:27b" @args }
-function qwen-coder { _ollama_claude "qwen2.5-coder:32b" @args }
 function gemma { _ollama_claude "gemma4:26b" @args }
 function gemma31b { _ollama_claude "gemma4:31b" @args }

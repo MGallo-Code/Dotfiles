@@ -50,11 +50,8 @@ _ollama_claude() {
     claude --model "$1" "${@:2}"
 }
 
-# Default local model - best benchmarks, working tool calling
+# Default local model - 77.2% SWE-bench Verified, working tool calling
 qwen() { _ollama_claude "qwen3.6:27b" "$@"; }
-
-# Pure code generation - 92.7% HumanEval
-qwen-coder() { _ollama_claude "qwen2.5-coder:32b" "$@"; }
 
 # Default local model - 117 tok/s, fast for daily use
 gemma() { _ollama_claude "gemma4:26b" "$@"; }

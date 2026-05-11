@@ -174,6 +174,13 @@ if [[ "$MODE" != "--minimal" ]]; then
     done
 fi
 
+# ── Nvim-adjacent configs ───────────────────────────────────────────
+NVIM_SETUP="$(expand "~/.config/nvim/setup.sh")"
+if [ -x "$NVIM_SETUP" ]; then
+    step "Nvim-adjacent configs"
+    "$NVIM_SETUP"
+fi
+
 # ── Nexus MCP Server ────────────────────────────────────────────────
 if [[ "$MODE" == "--full" ]]; then
     step "Setting up Nexus MCP server"

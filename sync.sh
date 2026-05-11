@@ -125,6 +125,13 @@ for entry in "${SYMLINKS[@]}"; do
     fi
 done
 
+# ── Nvim-adjacent configs (delegated) ────────────────────────────────
+NVIM_SETUP="$(expand "~/.config/nvim/setup.sh")"
+if [ -x "$NVIM_SETUP" ]; then
+    echo -e "\n${GREEN}==>${NC} Nvim-adjacent configs"
+    "$NVIM_SETUP"
+fi
+
 # ── Rebuild Nexus if EA was updated ──────────────────────────────────
 NEXUS_PATH="$(expand "~/Documents/EA/nexus")"
 if [ -f "$NEXUS_PATH/package.json" ]; then

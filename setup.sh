@@ -192,18 +192,43 @@ if [[ "$MODE" == "--full" ]]; then
         ok "Nexus: installed and built"
         cd - >/dev/null
 
-        # Generate .mcp.json for EA and IT-Worker with machine-specific paths
+        # Generate .mcp.json for EA and IT-Worker with machine-specific paths.
+        # Includes both nexus (TypeScript) and docgen (Python) MCP servers.
+        # MCP spawns commands via execvp, so ~ and $VARS in args are NOT expanded —
+        # we bake absolute paths in at setup time per machine.
         NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
         EA_PATH="$(expand "~/Documents/EA")"
         ITW_PATH="$(expand "~/Documents/IT-Worker")"
-        MCP_JSON="{\"mcpServers\":{\"nexus\":{\"command\":\"node\",\"args\":[\"$NEXUS_SERVER\"]}}}"
+        DOCGEN_PATH="$EA_PATH/docgen"
+        DOCGEN_SRC="$DOCGEN_PATH/src"
+        DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
+
+        MCP_JSON=$(cat <<EOF
+{
+  "mcpServers": {
+    "nexus": {
+      "command": "node",
+      "args": ["$NEXUS_SERVER"]
+    },
+    "docgen": {
+      "command": "uv",
+      "args": ["run", "--project", "$DOCGEN_PATH", "--no-sync", "python", "-m", "docgen.server"],
+      "env": {
+        "PYTHONPATH": "$DOCGEN_SRC",
+        "PLAYWRIGHT_BROWSERS_PATH": "$DOCGEN_BROWSERS"
+      }
+    }
+  }
+}
+EOF
+)
 
         echo "$MCP_JSON" > "$EA_PATH/.mcp.json"
-        ok "EA .mcp.json generated"
+        ok "EA .mcp.json generated (nexus + docgen)"
 
         if [ -d "$ITW_PATH" ]; then
             echo "$MCP_JSON" > "$ITW_PATH/.mcp.json"
-            ok "IT-Worker .mcp.json generated"
+            ok "IT-Worker .mcp.json generated (nexus + docgen)"
         fi
     else
         warn "Nexus: package.json not found at $NEXUS_PATH"

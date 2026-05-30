@@ -2,4 +2,9 @@ brew "neovim"
 brew "go"
 brew "python3"
 brew "tailscale"
-brew "claude"
+cask "claude-code"
+
+# Email stack
+brew "himalaya"  # multi-account CLI for read/draft/send/move/delete
+brew "isync"     # provides mbsync — pulls IMAP → local Maildir
+brew "notmuch"   # tag-based search index over Maildir

@@ -181,28 +181,47 @@ if [ -x "$NVIM_SETUP" ]; then
     "$NVIM_SETUP"
 fi
 
-# ── Nexus MCP Server ────────────────────────────────────────────────
+# ── MCP servers (nexus + courier + docgen) ──────────────────────────
+# nexus (TS) + docgen (Python; PDF/docx) are written into the project .mcp.json
+# of the PRIVATE EA + IT-Worker repos AND wired globally for Claude/Codex so they
+# reach every project. courier (email) is wired GLOBALLY ONLY and is never written
+# into any repo - email must not flow through checked-in/shared config (e.g. the
+# SBIC repos Charles can see). MCP spawns via execvp, so ~ and $VARS in args are
+# NOT expanded; we bake absolute paths in per machine.
 if [[ "$MODE" == "--full" ]]; then
-    step "Setting up Nexus MCP server"
-    NEXUS_PATH="$(expand "~/Documents/EA/nexus")"
+    step "Setting up MCP servers (nexus, courier, docgen)"
+    EA_PATH="$(expand "~/Documents/EA")"
+    ITW_PATH="$(expand "~/Documents/IT-Worker")"
+    NEXUS_PATH="$EA_PATH/nexus"
+    COURIER_PATH="$EA_PATH/courier"
+    DOCGEN_PATH="$EA_PATH/docgen"
+    NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
+    COURIER_SRC="$COURIER_PATH/src"
+    DOCGEN_SRC="$DOCGEN_PATH/src"
+    DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
+
+    # Build nexus (TypeScript)
     if [ -f "$NEXUS_PATH/package.json" ]; then
         cd "$NEXUS_PATH"
         npm install --silent 2>/dev/null
         npm run build 2>/dev/null
         ok "Nexus: installed and built"
         cd - >/dev/null
+    else
+        warn "Nexus: package.json not found at $NEXUS_PATH"
+    fi
 
-        # Generate .mcp.json for EA and IT-Worker with machine-specific paths.
-        # Includes both nexus (TypeScript) and docgen (Python) MCP servers.
-        # MCP spawns commands via execvp, so ~ and $VARS in args are NOT expanded —
-        # we bake absolute paths in at setup time per machine.
-        NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
-        EA_PATH="$(expand "~/Documents/EA")"
-        ITW_PATH="$(expand "~/Documents/IT-Worker")"
-        DOCGEN_PATH="$EA_PATH/docgen"
-        DOCGEN_SRC="$DOCGEN_PATH/src"
-        DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
+    # Sync Python deps for courier + docgen (uv)
+    if command -v uv >/dev/null 2>&1; then
+        [ -d "$COURIER_PATH" ] && (cd "$COURIER_PATH" && uv sync --quiet 2>/dev/null) && ok "Courier: deps synced"
+        [ -d "$DOCGEN_PATH" ]  && (cd "$DOCGEN_PATH"  && uv sync --quiet 2>/dev/null) && ok "Docgen: deps synced"
+    else
+        warn "uv not found - skipping courier/docgen dep sync"
+    fi
 
+    # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos (nexus + docgen;
+    # NOT courier - see header note).
+    if [ -f "$NEXUS_SERVER" ]; then
         MCP_JSON=$(cat <<EOF
 {
   "mcpServers": {
@@ -222,17 +241,37 @@ if [[ "$MODE" == "--full" ]]; then
 }
 EOF
 )
-
         echo "$MCP_JSON" > "$EA_PATH/.mcp.json"
         ok "EA .mcp.json generated (nexus + docgen)"
-
         if [ -d "$ITW_PATH" ]; then
             echo "$MCP_JSON" > "$ITW_PATH/.mcp.json"
             ok "IT-Worker .mcp.json generated (nexus + docgen)"
         fi
-    else
-        warn "Nexus: package.json not found at $NEXUS_PATH"
     fi
+
+    # Global wiring: all three servers in EVERY project, for both Claude (user
+    # scope) and Codex. Idempotent (remove-then-add); no-ops if the CLI is absent.
+    # This is how courier/nexus/docgen reach SBIC/lab/etc WITHOUT being written
+    # into those repos.
+    register_global_mcp() {
+        local cli="$1"
+        command -v "$cli" >/dev/null 2>&1 || { warn "$cli not found - skipping its global MCP wiring"; return; }
+        local sflag=""
+        [ "$cli" = "claude" ] && sflag="--scope=user"
+        local name
+        for name in nexus courier docgen; do
+            "$cli" mcp remove $sflag "$name" >/dev/null 2>&1
+        done
+        "$cli" mcp add $sflag nexus -- node "$NEXUS_SERVER" >/dev/null
+        "$cli" mcp add $sflag courier --env "PYTHONPATH=$COURIER_SRC" \
+            -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+        "$cli" mcp add $sflag docgen --env "PYTHONPATH=$DOCGEN_SRC" \
+            --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
+            -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
+        ok "$cli: global MCP wired (nexus + courier + docgen)"
+    }
+    register_global_mcp claude
+    register_global_mcp codex
 fi
 
 # ── Symlinks ─────────────────────────────────────────────────────────

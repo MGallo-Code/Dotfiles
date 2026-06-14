@@ -48,11 +48,21 @@ sync_repo() {
     local DIRTY_STATUS=$(git status --porcelain)
 
     if [ -n "$DIRTY_STATUS" ]; then
-        # Has uncommitted changes
-        DIRTY+=("$name")
-        info "$name: has uncommitted changes"
-        git status --short
-        return
+        # The live nexus DB is intentionally tracked but churns every sync (the
+        # WAL checkpoint rewrites it). When it is the SOLE change, auto-commit it
+        # and fall through to the normal push path - anything else needs review.
+        if [ "$(printf '%s\n' "$DIRTY_STATUS" | wc -l | tr -d ' ')" = "1" ] \
+           && printf '%s' "$DIRTY_STATUS" | grep -q 'nexus/nexus\.db$'; then
+            git add nexus/nexus.db
+            git commit -q -m "Update nexus.db"
+            ok "$name: auto-committed nexus.db (live DB churn)"
+            LOCAL=$(git rev-parse @)
+        else
+            DIRTY+=("$name")
+            info "$name: has uncommitted changes"
+            git status --short
+            return
+        fi
     fi
 
     if [ "$REMOTE" = "none" ]; then

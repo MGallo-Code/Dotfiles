@@ -294,6 +294,9 @@ if [[ "$MODE" == "--full" ]]; then
             ok "Linked $target_path -> $source_path"
         fi
     done
+
+    # Generate Codex + Gemini single-file rule bundles from global-rules/*
+    regen_combined_agent_rules
 fi
 
 # ── Shell Commands ───────────────────────────────────────────────────

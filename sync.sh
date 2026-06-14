@@ -297,6 +297,9 @@ for entry in "${SYMLINKS[@]}"; do
     fi
 done
 
+# Regenerate Codex + Gemini single-file rule bundles from global-rules/*
+regen_combined_agent_rules
+
 # ── Nvim-adjacent configs (delegated) ────────────────────────────────
 NVIM_SETUP="$(expand "~/.config/nvim/setup.sh")"
 if [ -x "$NVIM_SETUP" ]; then

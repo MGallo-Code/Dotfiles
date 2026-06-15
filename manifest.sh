@@ -22,6 +22,7 @@ EA_REPOS=(
 # Claude loads a whole DIRECTORY of rules, so a dir symlink covers every rule file.
 SYMLINKS=(
   "~/Documents/EA/claude-config/global-rules|~/.claude/rules"
+  "~/Documents/EA/claude-config/global-hooks|~/.claude/hooks"
 )
 
 # Combined global rules for single-file agent tools.

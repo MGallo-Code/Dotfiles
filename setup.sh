@@ -324,6 +324,29 @@ if [[ "$MODE" == "--full" ]]; then
     else
         warn "notify hook: no jq or no settings.json - wire manually (see global-hooks/README.md)"
     fi
+
+    # Wire the stacked-push guard hook into settings.json. Same rationale as the
+    # notify hook above: the SCRIPT rides the global-hooks symlink, the PreToolUse
+    # REGISTRATION is machine-local in settings.json, so merge it idempotently.
+    # Uses permissionDecision:"ask" (confirm-guard), never auto-approves a push.
+    guard_cmd="$HOME/.claude/hooks/warn-stacked-git-push.sh"
+    if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then
+        if jq -e '.hooks.PreToolUse' "$settings" >/dev/null 2>&1; then
+            ok "stacked-push guard already wired in settings.json"
+        else
+            tmp="$(mktemp)"
+            if jq --arg cmd "$guard_cmd" \
+                '.hooks.PreToolUse = [{matcher:"Bash", hooks:[{type:"command", command:$cmd}]}]' \
+                "$settings" > "$tmp" && [ -s "$tmp" ]; then
+                cp "$settings" "$settings.bak"
+                mv "$tmp" "$settings"
+                ok "Wired stacked-push guard into settings.json"
+            else
+                rm -f "$tmp"
+                warn "stacked-push guard: jq merge failed, settings.json left untouched"
+            fi
+        fi
+    fi
 fi
 
 # ── Shell Commands ───────────────────────────────────────────────────

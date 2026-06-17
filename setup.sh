@@ -54,8 +54,14 @@ fi
 # ── SSH Key ──────────────────────────────────────────────────────────
 step "SSH key setup"
 
-if [ -f ~/.ssh/id_ed25519 ]; then
-    ok "SSH key already exists"
+# Generate a key only if GitHub SSH doesn't already work. The old guard checked
+# the default path (~/.ssh/id_ed25519) and so regenerated on a machine that uses
+# a differently-named key (e.g. ~/.ssh/id_ed25519_github), creating a stray
+# unused key and pausing setup. Test the actual goal — can we auth to GitHub.
+if ssh -T -o BatchMode=yes -o ConnectTimeout=5 git@github 2>&1 | grep -q 'successfully authenticated'; then
+    ok "GitHub SSH already works (skipping key generation)"
+elif [ -f ~/.ssh/id_ed25519 ]; then
+    ok "SSH key already exists (add its public key to GitHub if you haven't)"
 else
     echo "Generating SSH key..."
     mkdir -p ~/.ssh

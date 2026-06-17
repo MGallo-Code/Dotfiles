@@ -310,6 +310,30 @@ done
 # Regenerate Codex + Gemini single-file rule bundles from global-rules/*
 regen_combined_agent_rules
 
+# Wire the stacked-push guard's settings.json REGISTRATION. The SCRIPT rides the
+# global-hooks symlink (handled above); the PreToolUse registration is per-machine
+# (settings.json is machine-local, not symlinked), so merge it here idempotently so
+# a routine `sync` keeps it wired on every machine. Uses permissionDecision:"ask"
+# (confirm-guard) — it never auto-approves a push.
+settings="$HOME/.claude/settings.json"
+if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then
+    if jq -e '.hooks.PreToolUse' "$settings" >/dev/null 2>&1; then
+        ok "stacked-push guard already wired in settings.json"
+    else
+        tmp="$(mktemp)"
+        if jq --arg cmd "$HOME/.claude/hooks/warn-stacked-git-push.sh" \
+            '.hooks.PreToolUse = [{matcher:"Bash", hooks:[{type:"command", command:$cmd}]}]' \
+            "$settings" > "$tmp" && [ -s "$tmp" ]; then
+            cp "$settings" "$settings.bak"
+            mv "$tmp" "$settings"
+            ok "wired stacked-push guard into settings.json"
+        else
+            rm -f "$tmp"
+            warn "stacked-push guard: jq merge failed, settings.json left untouched"
+        fi
+    fi
+fi
+
 # ── Nvim-adjacent configs (delegated) ────────────────────────────────
 NVIM_SETUP="$(expand "~/.config/nvim/setup.sh")"
 if [ -x "$NVIM_SETUP" ]; then

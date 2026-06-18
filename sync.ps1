@@ -29,6 +29,31 @@ function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     Set-Content -Path $codexConfig -Value $content -NoNewline
     Write-Ok "Codex: defaults set (xhigh reasoning + auto-review approvals)"
 
+    # Stacked-push guard for Codex (PreToolUse), parity mirror of the bash block:
+    # same script + protocol as the Claude PreToolUse guard, invoked via bash.
+    # Registration is machine-local in config.toml; trust once via Codex /hooks.
+    # Idempotent via a marker comment.
+    $codexGuardMarker = "# dotfiles: flat-PR stacked-push guard"
+    $codexGuard = "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`""
+    $codexExisting = if (Test-Path $codexConfig) { Get-Content $codexConfig -Raw } else { "" }
+    if ($codexExisting -notlike "*$codexGuardMarker*") {
+        $codexGuardBlock = @"
+
+$codexGuardMarker
+[[hooks.PreToolUse]]
+matcher = "^Bash`$"
+
+  [[hooks.PreToolUse.hooks]]
+  type = "command"
+  command = '$codexGuard'
+  timeout = 30
+"@
+        Add-Content -Path $codexConfig -Value $codexGuardBlock
+        Write-Ok "Codex: wired stacked-push guard (run /hooks once to trust it)"
+    } else {
+        Write-Ok "Codex stacked-push guard already wired"
+    }
+
     $geminiDir = Join-Path $HOME ".gemini"
     $geminiSettings = Join-Path $geminiDir "settings.json"
     New-Item -ItemType Directory -Path $geminiDir -Force | Out-Null

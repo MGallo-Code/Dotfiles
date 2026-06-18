@@ -1,0 +1,47 @@
+name: CI
+
+# coding-mastermind enforcers for dotfiles. All three jobs are authoritative
+# backstops to the pre-commit hook (which is skippable with --no-verify).
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    # INV-1: no live credentials in the tracked tree.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-no-secrets (full tree)
+        run: python scripts/ci/check-no-secrets.py
+
+  agents-identical:
+    # The cross-tool constitution must not drift: AGENTS.md == CLAUDE.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: AGENTS.md == CLAUDE.md
+        run: |
+          if ! cmp -s AGENTS.md CLAUDE.md; then
+            echo "AGENTS.md and CLAUDE.md differ - run 'cp CLAUDE.md AGENTS.md'"; exit 1
+          fi
+          echo "AGENTS.md == CLAUDE.md OK"
+
+  parity:
+    # INV-2: the bash and powershell sides stay at feature parity.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-parity
+        run: python scripts/ci/check-parity.py

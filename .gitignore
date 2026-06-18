@@ -1,0 +1,28 @@
+# --- Secrets / credentials (INV-1): never track live key material ---
+# Private keys
+id_rsa
+id_ed25519
+*.pem
+*.key
+*.ppk
+# Real SSH config (only the template is tracked)
+ssh/config
+# Env / token files
+.env
+*.env
+.env.*
+*.token
+*.token.json
+token.json
+credentials.json
+client_secret*.json
+
+# --- OS / editor junk ---
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# --- Override the global gitignore: track the per-repo agent constitution here ---
+# (~/.gitignore_global ignores CLAUDE.md everywhere; this repo commits it, kept
+#  byte-identical to AGENTS.md by the pre-commit cmp check.)
+!CLAUDE.md

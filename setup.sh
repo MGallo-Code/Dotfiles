@@ -420,6 +420,24 @@ if [[ "$MODE" == "--full" ]]; then
             fi
         fi
     fi
+
+    # Wire repo-local git hooks (coding-mastermind pre-commit gate) for managed repos
+    # that ship a tracked .githooks/ dir. core.hooksPath is per-clone LOCAL config, so
+    # it does NOT travel with the repo and must be set here. Idempotent. Mirror of
+    # Wire-RepoHooks in setup.ps1 (parity-checked).
+    wire_repo_hooks() {
+        local entry path
+        for entry in "$DOTFILES_DIR" "${REPOS[@]}"; do
+            path="$(expand "${entry##*|}")"
+            [ -d "$path/.githooks" ] || continue
+            if [ "$(git -C "$path" config --get core.hooksPath 2>/dev/null)" = ".githooks" ]; then
+                ok "git hooks already wired in $path"
+            else
+                git -C "$path" config core.hooksPath .githooks && ok "Wired core.hooksPath in $path"
+            fi
+        done
+    }
+    wire_repo_hooks
 fi
 
 # ── Shell Commands ───────────────────────────────────────────────────

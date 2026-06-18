@@ -1,0 +1,26 @@
+#!/bin/sh
+# coding-mastermind pre-commit hook (dotfiles) - INV-1 secrets, AGENTS==CLAUDE, INV-2 parity.
+# Portable POSIX sh: runs on macOS and on Windows via git-bash.
+# CI re-runs the same checks as the authoritative backstop. See INVARIANTS.md.
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+PY="$(command -v python3 || command -v python || true)"
+if [ -z "$PY" ]; then
+  echo "pre-commit: python not found - failing closed (install python or use --no-verify deliberately)" >&2
+  exit 2
+fi
+
+# INV-1: no live credentials in the tracked tree.
+"$PY" "$ROOT/scripts/ci/check-no-secrets.py" --staged
+
+# AGENTS.md must stay byte-identical to CLAUDE.md (a copy, not a symlink, for Windows).
+if ! cmp -s "$ROOT/AGENTS.md" "$ROOT/CLAUDE.md"; then
+  echo "pre-commit: AGENTS.md and CLAUDE.md differ - run 'cp CLAUDE.md AGENTS.md' and re-stage" >&2
+  exit 1
+fi
+
+# INV-2: cross-platform parity (check-parity.py is added by the parity task).
+if [ -f "$ROOT/scripts/ci/check-parity.py" ]; then
+  "$PY" "$ROOT/scripts/ci/check-parity.py"
+fi

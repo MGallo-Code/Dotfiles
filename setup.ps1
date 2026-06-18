@@ -104,8 +104,46 @@ matcher = "^Bash`$"
         $settings["general"] = $general
     }
     $general["defaultApprovalMode"] = "auto_edit"
+    if (-not $settings.Contains("security") -or $null -eq $settings["security"]) {
+        $settings["security"] = [ordered]@{}
+    }
+    $security = $settings["security"]
+    if (-not ($security -is [System.Collections.IDictionary])) {
+        $newSecurity = [ordered]@{}
+        foreach ($prop in $security.PSObject.Properties) {
+            $newSecurity[$prop.Name] = $prop.Value
+        }
+        $security = $newSecurity
+        $settings["security"] = $security
+    }
+    if (-not $security.Contains("auth") -or $null -eq $security["auth"]) {
+        $security["auth"] = [ordered]@{}
+    }
+    $auth = $security["auth"]
+    if (-not ($auth -is [System.Collections.IDictionary])) {
+        $newAuth = [ordered]@{}
+        foreach ($prop in $auth.PSObject.Properties) {
+            $newAuth[$prop.Name] = $prop.Value
+        }
+        $auth = $newAuth
+        $security["auth"] = $auth
+    }
+    $auth["selectedType"] = "gemini-api-key"
+    if (-not $settings.Contains("model") -or $null -eq $settings["model"]) {
+        $settings["model"] = [ordered]@{}
+    }
+    $model = $settings["model"]
+    if (-not ($model -is [System.Collections.IDictionary])) {
+        $newModel = [ordered]@{}
+        foreach ($prop in $model.PSObject.Properties) {
+            $newModel[$prop.Name] = $prop.Value
+        }
+        $model = $newModel
+        $settings["model"] = $model
+    }
+    $model["name"] = "gemini-3.1-flash-lite"
     $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $geminiSettings
-    Write-Ok "Gemini: default approval mode set to auto_edit"
+    Write-Ok "Gemini: defaults set (auto_edit + gemini-3.1-flash-lite API-key auth)"
 }
 
 # ── Execution Policy ─────────────────────────────────────────────────

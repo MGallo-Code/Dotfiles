@@ -94,9 +94,23 @@ if not isinstance(general, dict):
     general = {}
     data["general"] = general
 general["defaultApprovalMode"] = "auto_edit"
+security = data.setdefault("security", {})
+if not isinstance(security, dict):
+    security = {}
+    data["security"] = security
+auth = security.setdefault("auth", {})
+if not isinstance(auth, dict):
+    auth = {}
+    security["auth"] = auth
+auth["selectedType"] = "gemini-api-key"
+model = data.setdefault("model", {})
+if not isinstance(model, dict):
+    model = {}
+    data["model"] = model
+model["name"] = "gemini-3.1-flash-lite"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYJSON
-        ok "Gemini: default approval mode set to auto_edit"
+        ok "Gemini: defaults set (auto_edit + gemini-3.1-flash-lite API-key auth)"
     else
         warn "Gemini defaults: python3 not found - skipping settings.json update"
     fi

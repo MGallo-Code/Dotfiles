@@ -82,8 +82,46 @@ matcher = "^Bash`$"
         $settings["general"] = $general
     }
     $general["defaultApprovalMode"] = "auto_edit"
+    if (-not $settings.Contains("security") -or $null -eq $settings["security"]) {
+        $settings["security"] = [ordered]@{}
+    }
+    $security = $settings["security"]
+    if (-not ($security -is [System.Collections.IDictionary])) {
+        $newSecurity = [ordered]@{}
+        foreach ($prop in $security.PSObject.Properties) {
+            $newSecurity[$prop.Name] = $prop.Value
+        }
+        $security = $newSecurity
+        $settings["security"] = $security
+    }
+    if (-not $security.Contains("auth") -or $null -eq $security["auth"]) {
+        $security["auth"] = [ordered]@{}
+    }
+    $auth = $security["auth"]
+    if (-not ($auth -is [System.Collections.IDictionary])) {
+        $newAuth = [ordered]@{}
+        foreach ($prop in $auth.PSObject.Properties) {
+            $newAuth[$prop.Name] = $prop.Value
+        }
+        $auth = $newAuth
+        $security["auth"] = $auth
+    }
+    $auth["selectedType"] = "gemini-api-key"
+    if (-not $settings.Contains("model") -or $null -eq $settings["model"]) {
+        $settings["model"] = [ordered]@{}
+    }
+    $model = $settings["model"]
+    if (-not ($model -is [System.Collections.IDictionary])) {
+        $newModel = [ordered]@{}
+        foreach ($prop in $model.PSObject.Properties) {
+            $newModel[$prop.Name] = $prop.Value
+        }
+        $model = $newModel
+        $settings["model"] = $model
+    }
+    $model["name"] = "gemini-3.1-flash-lite"
     $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $geminiSettings
-    Write-Ok "Gemini: default approval mode set to auto_edit"
+    Write-Ok "Gemini: defaults set (auto_edit + gemini-3.1-flash-lite API-key auth)"
 }
 
 function Write-Ok   { param($msg) Write-Host "[ok] $msg" -ForegroundColor Green }
@@ -196,6 +234,10 @@ function Link-SkillDirs {
         foreach ($skill in (Get-ChildItem -Path $SrcRoot -Directory)) {
             if ($skill.Name.StartsWith(".")) { continue }   # skip .system etc.
             $link = Join-Path $tgtRoot ($Prefix + $skill.Name)
+            if (($tgtRoot -ieq (Join-Path $HOME ".gemini\skills")) -and $Prefix) {
+                Copy-GeminiProjectSkill $skill.FullName $link ($Prefix + $skill.Name)
+                continue
+            }
             if (Test-Path $link) {
                 $item = Get-Item $link -Force
                 if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -213,6 +255,46 @@ function Link-SkillDirs {
             }
         }
     }
+}
+
+function Copy-GeminiProjectSkill {
+    param([string]$Source, [string]$Target, [string]$NamespacedName)
+
+    $marker = Join-Path $Target ".dotfiles-skill-source"
+    if (Test-Path $Target) {
+        $item = Get-Item $Target -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+            ((Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $Source))) {
+            Remove-Item $Target -Recurse -Force
+        }
+        else {
+            Write-Warn "skills: $Target exists as a real path - left untouched"
+            return
+        }
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path $Target -Parent) -Force | Out-Null
+    Copy-Item -Path $Source -Destination $Target -Recurse -Force
+    Set-Content -Path $marker -Value $Source -NoNewline
+
+    $skillFile = Join-Path $Target "SKILL.md"
+    if (Test-Path $skillFile) {
+        $lines = [System.Collections.Generic.List[string]]::new()
+        foreach ($line in Get-Content $skillFile) {
+            $lines.Add($line)
+        }
+        if ($lines.Count -gt 0 -and $lines[0].Trim() -eq "---") {
+            for ($i = 1; $i -lt $lines.Count; $i++) {
+                if ($lines[$i].Trim() -eq "---") { break }
+                if ($lines[$i].StartsWith("name:")) {
+                    $lines[$i] = "name: $NamespacedName"
+                    Set-Content -Path $skillFile -Value $lines
+                    break
+                }
+            }
+        }
+    }
+    Write-Ok "skills: materialized $NamespacedName -> $(Split-Path $Target -Parent | Split-Path -Leaf)"
 }
 
 # vendor + custom-global skills -> all 3 agents (un-namespaced); project (repo-scoped)

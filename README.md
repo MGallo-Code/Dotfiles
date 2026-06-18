@@ -30,6 +30,22 @@ Pull updates across all managed repos, push local commits, and hand dirty repos 
 sync
 ```
 
+## Gemini Cross-Check
+
+Configure Gemini CLI for cross-agent refutation checks:
+
+```bash
+# macOS
+bash scripts/setup-gemini-cross-check.sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts/setup-gemini-cross-check.ps1
+```
+
+The scripts pin `gemini-3.1-flash-lite` and store the API key in machine-local secret storage. See `docs/gemini-cross-check-setup.md`.
+
 ## What It Manages
 
 | Repo | Location |

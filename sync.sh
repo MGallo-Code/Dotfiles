@@ -85,9 +85,23 @@ if not isinstance(general, dict):
     general = {}
     data["general"] = general
 general["defaultApprovalMode"] = "auto_edit"
+security = data.setdefault("security", {})
+if not isinstance(security, dict):
+    security = {}
+    data["security"] = security
+auth = security.setdefault("auth", {})
+if not isinstance(auth, dict):
+    auth = {}
+    security["auth"] = auth
+auth["selectedType"] = "gemini-api-key"
+model = data.setdefault("model", {})
+if not isinstance(model, dict):
+    model = {}
+    data["model"] = model
+model["name"] = "gemini-3.1-flash-lite"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYJSON
-        ok "Gemini: default approval mode set to auto_edit"
+        ok "Gemini: defaults set (auto_edit + gemini-3.1-flash-lite API-key auth)"
     else
         warn "Gemini defaults: python3 not found - skipping settings.json update"
     fi
@@ -193,6 +207,10 @@ link_skill_dirs() {
             sname="$(basename "$skill")"
             case "$sname" in .*) continue ;; esac   # skip .system etc.
             link="$tgt_root/${prefix}${sname}"
+            if [[ "$tgt_root" == "$HOME/.gemini/skills" && -n "$prefix" ]]; then
+                materialize_gemini_project_skill "${skill%/}" "$link" "${prefix}${sname}"
+                continue
+            fi
             if [ -L "$link" ]; then
                 [ "$(readlink "$link")" = "${skill%/}" ] || ln -sfn "${skill%/}" "$link"
             elif [ -e "$link" ]; then
@@ -202,6 +220,42 @@ link_skill_dirs() {
             fi
         done
     done
+}
+
+materialize_gemini_project_skill() {
+    local src="$1" dst="$2" namespaced="$3" marker="$dst/.dotfiles-skill-source"
+    if [ -L "$dst" ]; then
+        rm -f "$dst"
+    elif [ -e "$dst" ]; then
+        if [ ! -f "$marker" ] || [ "$(cat "$marker" 2>/dev/null)" != "$src" ]; then
+            warn "skills: $dst exists as a real path - left untouched"
+            return
+        fi
+        rm -rf "$dst"
+    fi
+
+    mkdir -p "$(dirname "$dst")"
+    cp -R "$src" "$dst"
+    printf '%s\n' "$src" > "$marker"
+    if [ -f "$dst/SKILL.md" ] && command -v python3 >/dev/null 2>&1; then
+        python3 - "$dst/SKILL.md" "$namespaced" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+name = sys.argv[2]
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+if lines and lines[0].strip() == "---":
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            break
+        if lines[i].startswith("name:"):
+            lines[i] = f"name: {name}\n"
+            path.write_text("".join(lines), encoding="utf-8")
+            break
+PY
+    fi
+    ok "skills: materialized ${namespaced} -> $(basename "$(dirname "$dst")")"
 }
 
 # Wire all skills into the agents: vendor + custom-global -> all 3 (claude/codex/gemini)

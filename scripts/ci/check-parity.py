@@ -152,6 +152,16 @@ FEATURES = [
         "sh": ("sync.sh", r"gen-agent-allowlist"),
         "ps1": ("sync.ps1", r"gen-agent-allowlist"),
     },
+    {
+        "name": "agent defaults configured (Codex xhigh auto-review + Gemini auto_edit)",
+        "sh": ("setup.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
+        "ps1": ("setup.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
+    },
+    {
+        "name": "agent defaults repaired during sync",
+        "sh": ("sync.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
+        "ps1": ("sync.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
+    },
 ]
 
 PARITY_EXEMPT = [

@@ -3,6 +3,64 @@
 $DotfilesDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . "$DotfilesDir\manifest.ps1"
 
+function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
+    $codexDir = Join-Path $HOME ".codex"
+    $codexConfig = Join-Path $codexDir "config.toml"
+    New-Item -ItemType Directory -Path $codexDir -Force | Out-Null
+    $content = ""
+    if (Test-Path $codexConfig) {
+        $content = Get-Content $codexConfig -Raw
+    }
+
+    function Set-CodexTomlKey {
+        param([string]$Content, [string]$Key, [string]$Value)
+        $pattern = '(?m)^' + [regex]::Escape($Key) + '\s*=\s*"[^"]*"'
+        $line = "$Key = `"$Value`""
+        if ($Content -match $pattern) {
+            return [regex]::Replace($Content, $pattern, $line)
+        }
+        if ($Content -and -not $Content.EndsWith("`n")) { $Content += "`n" }
+        return $Content + $line + "`n"
+    }
+
+    $content = Set-CodexTomlKey $content "model_reasoning_effort" "xhigh"
+    $content = Set-CodexTomlKey $content "approval_policy" "on-request"
+    $content = Set-CodexTomlKey $content "approvals_reviewer" "auto_review"
+    Set-Content -Path $codexConfig -Value $content -NoNewline
+    Write-Ok "Codex: defaults set (xhigh reasoning + auto-review approvals)"
+
+    $geminiDir = Join-Path $HOME ".gemini"
+    $geminiSettings = Join-Path $geminiDir "settings.json"
+    New-Item -ItemType Directory -Path $geminiDir -Force | Out-Null
+    $settings = [ordered]@{}
+    if (Test-Path $geminiSettings) {
+        $raw = Get-Content $geminiSettings -Raw
+        if ($raw) {
+            $obj = $raw | ConvertFrom-Json
+            if ($obj) {
+                foreach ($prop in $obj.PSObject.Properties) {
+                    $settings[$prop.Name] = $prop.Value
+                }
+            }
+        }
+    }
+    if (-not $settings.Contains("general") -or $null -eq $settings["general"]) {
+        $settings["general"] = [ordered]@{}
+    }
+    $general = $settings["general"]
+    if (-not ($general -is [System.Collections.IDictionary])) {
+        $newGeneral = [ordered]@{}
+        foreach ($prop in $general.PSObject.Properties) {
+            $newGeneral[$prop.Name] = $prop.Value
+        }
+        $general = $newGeneral
+        $settings["general"] = $general
+    }
+    $general["defaultApprovalMode"] = "auto_edit"
+    $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $geminiSettings
+    Write-Ok "Gemini: default approval mode set to auto_edit"
+}
+
 function Write-Ok   { param($msg) Write-Host "[ok] $msg" -ForegroundColor Green }
 function Write-Warn { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
 function Write-Err  { param($msg) Write-Host "[error] $msg" -ForegroundColor Red }
@@ -495,6 +553,7 @@ if (Test-Path $NexusServer) {
 else {
     Write-Warn "MCP wiring skipped - Nexus server not built at $NexusServer"
 }
+Set-AgentDefaults
 
 # ── Summary ──────────────────────────────────────────────────────────
 Write-Host "`n==> Summary" -ForegroundColor Green

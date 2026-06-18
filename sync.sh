@@ -20,6 +20,79 @@ info() { echo -e "${CYAN}[info]${NC} $1"; }
 
 expand() { echo "${1/#\~/$HOME}"; }
 
+ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
+    local codex_config="$HOME/.codex/config.toml"
+    mkdir -p "$HOME/.codex"
+    touch "$codex_config"
+
+    set_codex_toml_key() {
+        local key="$1"
+        local value="$2"
+        if grep -q "^${key} =" "$codex_config"; then
+            perl -0pi -e "s/^${key} = \"[^\"]*\"/${key} = \"${value}\"/m" "$codex_config"
+        else
+            printf '%s = "%s"\n' "$key" "$value" >> "$codex_config"
+        fi
+    }
+
+    set_codex_toml_key model_reasoning_effort xhigh
+    set_codex_toml_key approval_policy on-request
+    set_codex_toml_key approvals_reviewer auto_review
+    ok "Codex: defaults set (xhigh reasoning + auto-review approvals)"
+
+    # Stacked-push guard for Codex (PreToolUse), mirroring the Claude hook: the
+    # SAME script + protocol (reads .tool_input.command, emits hookSpecificOutput
+    # .permissionDecision "ask") so a stacked `git push` pauses for confirmation
+    # and never auto-approves. Registration is machine-local in config.toml; the
+    # script is the one the Claude guard already deploys to ~/.claude/hooks. Trust
+    # it once via the Codex `/hooks` TUI. Idempotent via a marker comment.
+    local codex_guard_marker="# dotfiles: flat-PR stacked-push guard"
+    local codex_guard="$HOME/.claude/hooks/warn-stacked-git-push.sh"
+    if ! grep -qF "$codex_guard_marker" "$codex_config"; then
+        cat >> "$codex_config" <<EOF
+
+$codex_guard_marker
+[[hooks.PreToolUse]]
+matcher = "^Bash\$"
+
+  [[hooks.PreToolUse.hooks]]
+  type = "command"
+  command = "$codex_guard"
+  timeout = 30
+EOF
+        ok "Codex: wired stacked-push guard (run /hooks once to trust it)"
+    else
+        ok "Codex stacked-push guard already wired"
+    fi
+
+    local gemini_settings="$HOME/.gemini/settings.json"
+    mkdir -p "$HOME/.gemini"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$gemini_settings" <<'PYJSON'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+except json.JSONDecodeError:
+    data = {}
+if not isinstance(data, dict):
+    data = {}
+general = data.setdefault("general", {})
+if not isinstance(general, dict):
+    general = {}
+    data["general"] = general
+general["defaultApprovalMode"] = "auto_edit"
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PYJSON
+        ok "Gemini: default approval mode set to auto_edit"
+    else
+        warn "Gemini defaults: python3 not found - skipping settings.json update"
+    fi
+}
+
 UPDATED=()
 PUSHED=()
 DIRTY=()
@@ -492,6 +565,7 @@ if [ -f "$NEXUS_SERVER" ]; then
 else
     warn "MCP wiring skipped - Nexus server not built at $NEXUS_SERVER"
 fi
+ensure_agent_defaults
 
 # ── Summary ──────────────────────────────────────────────────────────
 echo -e "\n${GREEN}==>${NC} Summary"

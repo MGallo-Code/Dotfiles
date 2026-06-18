@@ -351,6 +351,113 @@ if [ -f "$NEXUS_PATH/package.json" ]; then
     cd - >/dev/null
 fi
 
+# ── Refresh MCP runtime deps + global wiring ─────────────────────────
+EA_PATH="$(expand "~/Documents/EA")"
+COURIER_PATH="$EA_PATH/courier"
+DOCGEN_PATH="$EA_PATH/docgen"
+CALENDAR_PATH="$EA_PATH/calendar"
+NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
+COURIER_SRC="$COURIER_PATH/src"
+DOCGEN_SRC="$DOCGEN_PATH/src"
+CALENDAR_SRC="$CALENDAR_PATH/src"
+DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
+
+if command -v uv >/dev/null 2>&1; then
+    [ -d "$COURIER_PATH" ] && (cd "$COURIER_PATH" && uv sync --quiet 2>/dev/null) && ok "Courier: deps synced"
+    [ -d "$CALENDAR_PATH" ] && (cd "$CALENDAR_PATH" && uv sync --quiet 2>/dev/null) && ok "Calendar: deps synced"
+    if [ -d "$DOCGEN_PATH" ]; then
+        (cd "$DOCGEN_PATH" && uv sync --quiet 2>/dev/null) && ok "Docgen: deps synced"
+        PLAYWRIGHT_BROWSERS_PATH="$DOCGEN_BROWSERS" \
+            uv run --project "$DOCGEN_PATH" --no-sync playwright install chromium >/dev/null 2>&1 \
+            && ok "Docgen: Chromium installed"
+    fi
+else
+    warn "uv not found - skipping courier/docgen/calendar dep sync"
+fi
+
+if [ -f "$NEXUS_SERVER" ]; then
+    register_global_mcp() {
+        local cli="$1"
+        command -v "$cli" >/dev/null 2>&1 || { warn "$cli not found - skipping its global MCP wiring"; return; }
+        local name
+        case "$cli" in
+            claude)
+                for name in nexus courier docgen calendar; do "$cli" mcp remove --scope=user "$name" >/dev/null 2>&1; done
+                "$cli" mcp add --scope=user nexus -- node "$NEXUS_SERVER" >/dev/null
+                "$cli" mcp add --scope=user courier --env "PYTHONPATH=$COURIER_SRC" \
+                    -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                "$cli" mcp add --scope=user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
+                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
+                    -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
+                "$cli" mcp add --scope=user calendar --env "PYTHONPATH=$CALENDAR_SRC" \
+                    -- uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
+                ;;
+            codex)
+                for name in nexus courier docgen calendar; do "$cli" mcp remove "$name" >/dev/null 2>&1; done
+                "$cli" mcp add nexus -- node "$NEXUS_SERVER" >/dev/null
+                "$cli" mcp add courier --env "PYTHONPATH=$COURIER_SRC" \
+                    -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                "$cli" mcp add docgen --env "PYTHONPATH=$DOCGEN_SRC" \
+                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
+                    -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
+                "$cli" mcp add calendar --env "PYTHONPATH=$CALENDAR_SRC" \
+                    -- uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
+                ;;
+            gemini)
+                for name in nexus courier docgen calendar; do "$cli" mcp remove --scope user "$name" >/dev/null 2>&1; done
+                "$cli" mcp add --scope user nexus node "$NEXUS_SERVER" >/dev/null
+                "$cli" mcp add --scope user courier --env "PYTHONPATH=$COURIER_SRC" \
+                    uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                "$cli" mcp add --scope user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
+                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
+                    uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
+                "$cli" mcp add --scope user calendar --env "PYTHONPATH=$CALENDAR_SRC" \
+                    uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
+                ;;
+            *)
+                warn "$cli: unsupported MCP CLI"
+                return
+                ;;
+        esac
+        ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
+    }
+    register_global_mcp claude
+    register_global_mcp codex
+    register_global_mcp gemini
+
+    check_calendar_health() {
+        command -v uv >/dev/null 2>&1 || return
+        [ -d "$CALENDAR_PATH" ] || return
+        if uv run --project "$CALENDAR_PATH" --no-sync calendar-auth status --check-events --quiet >/dev/null 2>&1; then
+            ok "Calendar: authenticated as michaelgallo.va@gmail.com"
+        else
+            warn "Calendar: not authenticated or health check failed - run calendar-auth login"
+        fi
+    }
+    check_calendar_health
+
+    trust_gemini_managed_repos() {
+        command -v gemini >/dev/null 2>&1 || return
+        command -v jq >/dev/null 2>&1 || { warn "Gemini trust: jq not found - skipping trustedFolders update"; return; }
+        local trust_file="$HOME/.gemini/trustedFolders.json"
+        local tmp target entry
+        mkdir -p "$(dirname "$trust_file")"
+        [ -f "$trust_file" ] || printf '{}\n' > "$trust_file"
+        tmp="$(mktemp)"
+        cp "$trust_file" "$tmp"
+        for entry in "${REPOS[@]}"; do
+            target="$(expand "${entry##*|}")"
+            [ -d "$target" ] || continue
+            jq --arg path "$target" '. + {($path): "TRUST_FOLDER"}' "$tmp" > "$tmp.next" && mv "$tmp.next" "$tmp"
+        done
+        mv "$tmp" "$trust_file"
+        ok "Gemini: trusted managed repo folders"
+    }
+    trust_gemini_managed_repos
+else
+    warn "MCP wiring skipped - Nexus server not built at $NEXUS_SERVER"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────
 echo -e "\n${GREEN}==>${NC} Summary"
 [ ${#UPDATED[@]} -gt 0 ]  && ok "Updated: ${UPDATED[*]}"

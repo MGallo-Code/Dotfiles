@@ -246,32 +246,178 @@ if ($Mode -ne "minimal") {
     }
 }
 
-# ── Nexus MCP Server ────────────────────────────────────────────────
+# ── MCP servers (nexus + courier + docgen + calendar) ─────────────
 if ($Mode -eq "full") {
-    Write-Step "Setting up Nexus MCP server"
-    $NexusPath = "$HOME\Documents\EA\nexus"
+    Write-Step "Setting up MCP servers (nexus, courier, docgen, calendar)"
+    $EaPath = "$HOME\Documents\EA"
+    $ItwPath = "$HOME\Documents\IT-Worker"
+    $NexusPath = "$EaPath\nexus"
+    $CourierPath = "$EaPath\courier"
+    $DocgenPath = "$EaPath\docgen"
+    $CalendarPath = "$EaPath\calendar"
+    $NexusServer = "$NexusPath\dist\server.js"
+    $CourierSrc = "$CourierPath\src"
+    $DocgenSrc = "$DocgenPath\src"
+    $CalendarSrc = "$CalendarPath\src"
+    $DocgenBrowsers = "$DocgenPath\.playwright-browsers"
+
     if (Test-Path "$NexusPath\package.json") {
         Push-Location $NexusPath
         npm install --silent 2>$null
         npm run build 2>$null
         Pop-Location
         Write-Ok "Nexus: installed and built"
-
-        # Generate .mcp.json for EA and IT-Worker with machine-specific paths
-        $NexusServer = "$NexusPath\dist\server.js" -replace '\\', '/'
-        $McpJson = @{mcpServers=@{nexus=@{command="node";args=@($NexusServer)}}} | ConvertTo-Json -Depth 3
-        Set-Content -Path "$HOME\Documents\EA\.mcp.json" -Value $McpJson
-        Write-Ok "EA .mcp.json generated"
-
-        $ItwPath = "$HOME\Documents\IT-Worker"
-        if (Test-Path $ItwPath) {
-            Set-Content -Path "$ItwPath\.mcp.json" -Value $McpJson
-            Write-Ok "IT-Worker .mcp.json generated"
-        }
     }
     else {
         Write-Warn "Nexus: package.json not found at $NexusPath"
     }
+
+    $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
+    if ($uvCmd) {
+        if (Test-Path $CourierPath) {
+            Push-Location $CourierPath
+            uv sync --quiet 2>$null
+            Pop-Location
+            Write-Ok "Courier: deps synced"
+        }
+        if (Test-Path $CalendarPath) {
+            Push-Location $CalendarPath
+            uv sync --quiet 2>$null
+            Pop-Location
+            Write-Ok "Calendar: deps synced"
+        }
+        if (Test-Path $DocgenPath) {
+            Push-Location $DocgenPath
+            uv sync --quiet 2>$null
+            Pop-Location
+            Write-Ok "Docgen: deps synced"
+
+            $oldBrowsers = $env:PLAYWRIGHT_BROWSERS_PATH
+            $env:PLAYWRIGHT_BROWSERS_PATH = $DocgenBrowsers
+            uv run --project $DocgenPath --no-sync playwright install chromium 2>$null | Out-Null
+            $env:PLAYWRIGHT_BROWSERS_PATH = $oldBrowsers
+            Write-Ok "Docgen: Chromium installed"
+        }
+    }
+    else {
+        Write-Warn "uv not found - skipping courier/docgen/calendar dep sync"
+    }
+
+    if (Test-Path $NexusServer) {
+        # Generate private project .mcp.json for EA and IT-Worker with machine-specific paths.
+        # Courier is intentionally global-only so email does not flow through shared repo config.
+        $McpJson = @{
+            mcpServers = @{
+                nexus = @{
+                    command = "node"
+                    args = @($NexusServer)
+                }
+                docgen = @{
+                    command = "uv"
+                    args = @("run", "--project", $DocgenPath, "--no-sync", "python", "-m", "docgen.server")
+                    env = @{
+                        PYTHONPATH = $DocgenSrc
+                        PLAYWRIGHT_BROWSERS_PATH = $DocgenBrowsers
+                    }
+                }
+            }
+        } | ConvertTo-Json -Depth 6
+        Set-Content -Path "$EaPath\.mcp.json" -Value $McpJson
+        Write-Ok "EA .mcp.json generated (nexus + docgen)"
+
+        if (Test-Path $ItwPath) {
+            Set-Content -Path "$ItwPath\.mcp.json" -Value $McpJson
+            Write-Ok "IT-Worker .mcp.json generated (nexus + docgen)"
+        }
+    }
+
+    function Register-GlobalMcp {
+        param([string]$Cli)
+        $cmd = Get-Command $Cli -ErrorAction SilentlyContinue
+        if (-not $cmd) {
+            Write-Warn "$Cli not found - skipping its global MCP wiring"
+            return
+        }
+
+        foreach ($name in @("nexus", "courier", "docgen", "calendar")) {
+            switch ($Cli) {
+                "claude" { & $cmd.Source mcp remove --scope=user $name 2>$null | Out-Null }
+                "codex"  { & $cmd.Source mcp remove $name 2>$null | Out-Null }
+                "gemini" { & $cmd.Source mcp remove --scope user $name 2>$null | Out-Null }
+            }
+        }
+
+        switch ($Cli) {
+            "claude" {
+                & $cmd.Source mcp add --scope=user nexus -- node $NexusServer | Out-Null
+                & $cmd.Source mcp add --scope=user courier --env "PYTHONPATH=$CourierSrc" -- uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+                & $cmd.Source mcp add --scope=user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
+                & $cmd.Source mcp add --scope=user calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
+            }
+            "codex" {
+                & $cmd.Source mcp add nexus -- node $NexusServer | Out-Null
+                & $cmd.Source mcp add courier --env "PYTHONPATH=$CourierSrc" -- uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+                & $cmd.Source mcp add docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
+                & $cmd.Source mcp add calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
+            }
+            "gemini" {
+                & $cmd.Source mcp add --scope user nexus node $NexusServer | Out-Null
+                & $cmd.Source mcp add --scope user courier --env "PYTHONPATH=$CourierSrc" uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+                & $cmd.Source mcp add --scope user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
+                & $cmd.Source mcp add --scope user calendar --env "PYTHONPATH=$CalendarSrc" uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
+            }
+        }
+        Write-Ok "$Cli`: global MCP wired (nexus + courier + docgen + calendar)"
+    }
+
+    if (Test-Path $NexusServer) {
+        Register-GlobalMcp "claude"
+        Register-GlobalMcp "codex"
+        Register-GlobalMcp "gemini"
+    }
+
+    function Test-CalendarHealth {
+        if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { return }
+        if (-not (Test-Path $CalendarPath)) { return }
+        & uv run --project $CalendarPath --no-sync calendar-auth status --check-events --quiet *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "Calendar: authenticated as michaelgallo.va@gmail.com"
+        }
+        else {
+            Write-Warn "Calendar: not authenticated or health check failed - run calendar-auth login"
+        }
+    }
+    Test-CalendarHealth
+
+    function Trust-GeminiManagedRepos {
+        if (-not (Get-Command gemini -ErrorAction SilentlyContinue)) { return }
+        $trustFile = "$HOME\.gemini\trustedFolders.json"
+        $trustDir = Split-Path $trustFile -Parent
+        New-Item -ItemType Directory -Path $trustDir -Force | Out-Null
+
+        $trust = @{}
+        if (Test-Path $trustFile) {
+            $raw = Get-Content $trustFile -Raw
+            if ($raw) {
+                $obj = $raw | ConvertFrom-Json
+                if ($obj) {
+                    foreach ($prop in $obj.PSObject.Properties) {
+                        $trust[$prop.Name] = $prop.Value
+                    }
+                }
+            }
+        }
+
+        foreach ($repo in $Repos) {
+            if (Test-Path $repo.Target) {
+                $trust[$repo.Target] = "TRUST_FOLDER"
+            }
+        }
+
+        $trust | ConvertTo-Json -Depth 4 | Set-Content -Path $trustFile
+        Write-Ok "Gemini: trusted managed repo folders"
+    }
+    Trust-GeminiManagedRepos
 }
 
 # ── Symlinks ─────────────────────────────────────────────────────────

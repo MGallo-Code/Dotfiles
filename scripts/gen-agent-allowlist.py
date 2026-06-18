@@ -109,19 +109,31 @@ def _toml_key(k):
     return '"' + k.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _load_toml():
+    """A TOML parser if one exists, else None. tomllib is 3.11+ stdlib, but some pythons
+    (e.g. an older python3 on the Windows box) lack it - so this is optional, used only for
+    the strict pre-write validation; detection below is regex-based and parser-free."""
+    try:
+        import tomllib
+        return tomllib
+    except ModuleNotFoundError:
+        try:
+            import tomli
+            return tomli
+        except ModuleNotFoundError:
+            return None
+
+
 def update_codex(mcp_tools, mcp_servers):
-    import tomllib
     path = os.path.join(HOME, ".codex/config.toml")
     if not os.path.exists(path):
         return "codex: no ~/.codex/config.toml - skipped", 0
     with open(path, encoding="utf-8") as f:
         original = f.read()
-    data = tomllib.loads(original)
-    present_servers = set(data.get("mcp_servers", {}).keys())
-    already = set()
-    for s, sv in data.get("mcp_servers", {}).items():
-        for t in (sv.get("tools", {}) or {}):
-            already.add((s, t))
+    # Detect present servers + already-approved tools by regex (no TOML parser required).
+    # codex server/tool names here are simple bare keys, so this is reliable.
+    present_servers = set(re.findall(r'(?m)^\[mcp_servers\.([A-Za-z0-9_-]+)\]\s*$', original))
+    already = set(re.findall(r'(?m)^\[mcp_servers\.([A-Za-z0-9_-]+)\.tools\.([A-Za-z0-9_-]+)\]', original))
     # Tools to approve = explicit (server,tool) allows whose server exists in codex.
     want = {(s, t) for (s, t) in mcp_tools if s in present_servers}
     missing = sorted(want - already)
@@ -131,13 +143,16 @@ def update_codex(mcp_tools, mcp_servers):
     for s, t in missing:
         block += f'[mcp_servers.{_toml_key(s)}.tools.{_toml_key(t)}]\napproval_mode = "approve"\n'
     new_content = original + block
-    # Validate in-memory BEFORE touching disk - never leave a half-broken config.toml.
-    # (A raise here propagates to main()'s handler; the original file is untouched.)
-    tomllib.loads(new_content)
+    # Strict pre-write validation IF a TOML parser is available - never leave a half-broken
+    # config.toml. (A raise propagates to main()'s handler; the original file is untouched.)
+    toml = _load_toml()
+    if toml is not None:
+        toml.loads(new_content)
     shutil.copy2(path, path + ".allowlist-bak")
     with open(path, "w", encoding="utf-8") as f:
         f.write(new_content)
-    return f"codex: +{len(missing)} MCP tool approvals " + \
+    note = "" if toml is not None else " (no tomllib: validation skipped)"
+    return f"codex: +{len(missing)} MCP tool approvals{note} " + \
            ", ".join(f"{s}.{t}" for s, t in missing[:6]) + ("..." if len(missing) > 6 else ""), len(missing)
 
 

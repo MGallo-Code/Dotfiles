@@ -124,6 +124,37 @@ matcher = "^Bash`$"
     Write-Ok "Gemini: defaults set (auto_edit + gemini-3.1-flash-lite API-key auth)"
 }
 
+function Ensure-GeminiCrossCheckSetup { # GEMINI_CROSS_CHECK_SETUP
+    if (-not (Get-Command gemini -ErrorAction SilentlyContinue)) {
+        Write-Warn "Gemini cross-check: gemini CLI not found - install Gemini, then rerun sync"
+        return
+    }
+    $script = Join-Path $DotfilesDir "scripts\setup-gemini-cross-check.ps1"
+    if (-not (Test-Path $script)) {
+        Write-Warn "Gemini cross-check: setup script missing at $script"
+        return
+    }
+
+    $secret = Join-Path $HOME ".config\ea\gemini-api-key.dpapi"
+    $shim = Join-Path $HOME ".local\bin\gemini.cmd"
+    $ready = $env:GEMINI_API_KEY -or ((Test-Path $secret) -and (Test-Path $shim))
+    if ($ready) {
+        Write-Ok "Gemini cross-check setup present"
+        return
+    }
+
+    Write-Warn "Gemini cross-check setup incomplete - launching installer"
+    try {
+        & powershell -ExecutionPolicy Bypass -File $script
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "Gemini cross-check setup incomplete; rerun: powershell -ExecutionPolicy Bypass -File $script"
+        }
+    }
+    catch {
+        Write-Warn "Gemini cross-check setup incomplete; rerun: powershell -ExecutionPolicy Bypass -File $script"
+    }
+}
+
 function Write-Ok   { param($msg) Write-Host "[ok] $msg" -ForegroundColor Green }
 function Write-Warn { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
 function Write-Err  { param($msg) Write-Host "[error] $msg" -ForegroundColor Red }
@@ -661,6 +692,7 @@ else {
     Write-Warn "MCP wiring skipped - Nexus server not built at $NexusServer"
 }
 Set-AgentDefaults
+Ensure-GeminiCrossCheckSetup
 
 # ── Summary ──────────────────────────────────────────────────────────
 Write-Host "`n==> Summary" -ForegroundColor Green

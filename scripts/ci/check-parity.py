@@ -162,6 +162,16 @@ FEATURES = [
         "sh": ("sync.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
         "ps1": ("sync.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
     },
+    {
+        "name": "Gemini cross-check setup repaired during setup",
+        "sh": ("setup.sh", r"GEMINI_CROSS_CHECK_SETUP|setup-gemini-cross-check"),
+        "ps1": ("setup.ps1", r"GEMINI_CROSS_CHECK_SETUP|setup-gemini-cross-check"),
+    },
+    {
+        "name": "Gemini cross-check setup repaired during sync",
+        "sh": ("sync.sh", r"GEMINI_CROSS_CHECK_SETUP|setup-gemini-cross-check"),
+        "ps1": ("sync.ps1", r"GEMINI_CROSS_CHECK_SETUP|setup-gemini-cross-check"),
+    },
 ]
 
 PARITY_EXEMPT = [

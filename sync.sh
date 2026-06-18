@@ -107,6 +107,32 @@ PYJSON
     fi
 }
 
+ensure_gemini_cross_check_setup() { # GEMINI_CROSS_CHECK_SETUP
+    local script="$DOTFILES_DIR/scripts/setup-gemini-cross-check.sh"
+    if ! command -v gemini >/dev/null 2>&1; then
+        warn "Gemini cross-check: gemini CLI not found - install Gemini, then rerun sync"
+        return
+    fi
+    if [ ! -x "$script" ]; then
+        warn "Gemini cross-check: setup script missing at $script"
+        return
+    fi
+
+    if [ -n "${GEMINI_API_KEY:-}" ]; then
+        ok "Gemini cross-check setup present"
+        return
+    fi
+    if command -v security >/dev/null 2>&1 \
+        && security find-generic-password -a "${USER:-michael}" -s ea-gemini-api-key -w >/dev/null 2>&1 \
+        && [ -x "$HOME/.local/bin/gemini-flash-lite" ]; then
+        ok "Gemini cross-check setup present"
+        return
+    fi
+
+    warn "Gemini cross-check setup incomplete - launching installer"
+    "$script" || warn "Gemini cross-check setup incomplete; rerun: $script"
+}
+
 UPDATED=()
 PUSHED=()
 DIRTY=()
@@ -620,6 +646,7 @@ else
     warn "MCP wiring skipped - Nexus server not built at $NEXUS_SERVER"
 fi
 ensure_agent_defaults
+ensure_gemini_cross_check_setup
 
 # ── Summary ──────────────────────────────────────────────────────────
 echo -e "\n${GREEN}==>${NC} Summary"

@@ -94,6 +94,64 @@ FEATURES = [
         "sh": ("setup.sh", r"regen_combined_agent_rules"),
         "ps1": ("setup.ps1", r"Regen-CombinedAgentRules"),
     },
+    # --- courier remote per-OS wiring + cross-agent skills/commands/allowlist
+    #     (ADR-0002 + handoff). Each is a paired sh/ps1 behavior. ---
+    {
+        # The role-aware courier wiring is defined ONCE in manifest.{sh,ps1} and CALLED by
+        # both setup and sync. This feature checks the SETUP call site...
+        "name": "courier per-role MCP wiring in setup (host stdio / client http)",
+        "sh": ("setup.sh", r"register_courier_mcp"),
+        "ps1": ("setup.ps1", r"Register-CourierMcp"),
+    },
+    {
+        # ...and THIS one checks the SYNC call site. The ADR-0002 review caught sync owning
+        # a separate copy that hardcoded stdio courier, silently clobbering the client's
+        # http wiring on every run. This is the mechanical guard against that regression.
+        "name": "courier per-role MCP wiring in sync (no stdio regression)",
+        "sh": ("sync.sh", r"register_courier_mcp"),
+        "ps1": ("sync.ps1", r"Register-CourierMcp"),
+    },
+    {
+        "name": "courier host bootstrap script (idempotent repair path)",
+        "sh": ("scripts/courier-host-bootstrap.sh", r"COURIER-HOST-BOOTSTRAP"),
+        "ps1": ("scripts/courier-host-bootstrap.ps1", r"COURIER-HOST-BOOTSTRAP"),
+    },
+    {
+        # The shared courier functions (incl. the ${COURIER_BEARER} env-var indirection)
+        # live in manifest.{sh,ps1}.
+        "name": "courier token never on a command line (env-var ref)",
+        "sh": ("manifest.sh", r"COURIER_BEARER"),
+        "ps1": ("manifest.ps1", r"COURIER_BEARER"),
+    },
+    {
+        # Highest-stakes semantic divergence the ADR-0002 review flagged: the secret
+        # file's permissions. chmod 600 (sh) has no Windows equivalent, so the ps1 side
+        # MUST lock it with an ACL (icacls) instead - different mechanism, same behavior.
+        # Both live in the shared manifest helpers (provision / Initialize-CourierClientToken).
+        "name": "courier token-file permissions (chmod 600 / icacls)",
+        "sh": ("manifest.sh", r"chmod 600"),
+        "ps1": ("manifest.ps1", r"icacls"),
+    },
+    {
+        "name": "custom global-skills linked into all 3 agents",
+        "sh": ("sync.sh", r"GLOBAL_SKILLS_DIR|link_skill_dirs"),
+        "ps1": ("sync.ps1", r"GlobalSkillsDir|Link-SkillDirs"),
+    },
+    {
+        "name": "project skills namespaced into codex/gemini",
+        "sh": ("sync.sh", r"PROJECT_SKILLS"),
+        "ps1": ("sync.ps1", r"ProjectSkills"),
+    },
+    {
+        "name": "cross-agent commands generated (codex prompts + gemini TOML)",
+        "sh": ("sync.sh", r"gen-agent-commands"),
+        "ps1": ("sync.ps1", r"gen-agent-commands"),
+    },
+    {
+        "name": "Claude allowlist mirrored into codex/gemini",
+        "sh": ("sync.sh", r"gen-agent-allowlist"),
+        "ps1": ("sync.ps1", r"gen-agent-allowlist"),
+    },
 ]
 
 PARITY_EXEMPT = [
@@ -102,6 +160,16 @@ PARITY_EXEMPT = [
         "reason": "Claude Code notify hook is macOS-only by design (see "
                   "global-rules/notify-when-done.md: 'Claude Code on macOS only')."
     },
+]
+
+# Values that MUST be byte-identical across the two manifests. ADR-0002 frames the
+# Mac-mini migration as "change MAIL_HOST" - but it lives in BOTH manifest.sh and
+# manifest.ps1, so this enforces they can't silently drift apart. (label, sh_rx, ps1_rx);
+# each regex captures group 1 = the value.
+SHARED_VALUES = [
+    ("MAIL_HOST",         r'MAIL_HOST="([^"]+)"',          r'\$MailHost\s*=\s*"([^"]+)"'),
+    ("TAILNET",           r'\bTAILNET="([^"]+)"',          r'\$Tailnet\s*=\s*"([^"]+)"'),
+    ("COURIER_HTTP_PORT", r'COURIER_HTTP_PORT="([^"]+)"',  r'\$CourierHttpPort\s*=\s*"([^"]+)"'),
 ]
 
 PARITY_PENDING = [
@@ -154,7 +222,19 @@ def main():
                 missing.append(f"{pf} (ps1)")
             failures.append((feat["name"], ", ".join(missing)))
 
-    print(f"check-parity: checked {len(FEATURES)} feature(s), "
+    # Shared-value parity: MAIL_HOST/TAILNET/port must be identical across the manifests.
+    msh, mps = cache.get("manifest.sh") or read(root, "manifest.sh"), \
+               cache.get("manifest.ps1") or read(root, "manifest.ps1")
+    for label, shrx, psrx in SHARED_VALUES:
+        sm = re.search(shrx, msh or "")
+        pm = re.search(psrx, mps or "")
+        sv = sm.group(1) if sm else None
+        pv = pm.group(1) if pm else None
+        if sv != pv:
+            failures.append((f"shared value {label} differs across manifests",
+                             f"manifest.sh={sv!r} vs manifest.ps1={pv!r}"))
+
+    print(f"check-parity: checked {len(FEATURES)} feature(s) + {len(SHARED_VALUES)} shared value(s), "
           f"{len(PARITY_EXEMPT)} exempt, {len(PARITY_PENDING)} pending")
 
     if PARITY_PENDING:

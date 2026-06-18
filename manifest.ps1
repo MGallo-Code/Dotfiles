@@ -49,7 +49,105 @@ $AgentSkillsTargets = @(
     "$HOME\.gemini\skills"
 )
 
+# ── Courier remote (ADR-0002): mail-host identity (mirror of manifest.sh) ──
+# courier (email) runs on exactly ONE machine - the mail host - because all email
+# state (maildir, notmuch index, 14 login-keychain passwords) lives there. Every
+# other machine is a CLIENT reaching courier over Tailscale. "Mail host" is a ROLE
+# keyed on $MailHost: migrating to the always-on Mac mini = change $MailHost + run the
+# host bootstrap there. Windows is NEVER the host (no macOS login keychain), so this
+# box is always a client; $MailHost only supplies the client URL here.
+# (parity-checked: scripts/ci/check-parity.py)
+$MailHost = "michaels-macbook-pro"
+$Tailnet = "tail7a0764.ts.net"
+$CourierHttpPort = "8765"
+$CourierRemoteUrl = "https://$MailHost.$Tailnet/mcp"
+# Mandatory bearer token: ONE current-user-only file per machine, OUTSIDE any repo
+# (never in git). Consumed via the COURIER_BEARER env var - NEVER passed on a command
+# line. On Windows the file gets a restrictive ACL (icacls) since there is no chmod 600.
+$CourierTokenFile = "$HOME\.config\courier\auth-token"
+
+# ── Custom global skills (tracked in EA), linked into all 3 agents ────
+$GlobalSkillsDir = "$HOME\Documents\EA\claude-config\global-skills"
+
+# ── Project (repo-scoped) skills -> codex/gemini, namespaced <label>-<skill> ──
+# Avoids the EA/Wiki `refresh` collision. Claude keeps the project-scoped originals.
+$ProjectSkills = @(
+    @{ Label = "ea";        Dir = "$HOME\Documents\EA\.claude\skills" }
+    @{ Label = "wiki";      Dir = "$HOME\Documents\Wiki\.claude\skills" }
+    @{ Label = "it-worker"; Dir = "$HOME\Documents\IT-Worker\.claude\skills" }
+    @{ Label = "sbic";      Dir = "$HOME\Documents\SBIC\.claude\skills" }
+)
+$ProjectSkillsTargets = @(
+    "$HOME\.codex\skills"
+    "$HOME\.gemini\skills"
+)
+
+# ── Claude slash-commands -> codex prompts + gemini TOML ──────────────
+# Source of truth stays the tracked Claude `.md`. Empty prefix = bare name.
+$CommandSources = @(
+    @{ Prefix = "";     Dir = "$HOME\Documents\EA\claude-config\global-commands" }
+    @{ Prefix = "sbic"; Dir = "$HOME\Documents\SBIC\.claude\commands" }
+)
+
 $Directories = @(
     "$HOME\Documents\Learning"
     "$HOME\Documents\Jobs"
 )
+
+# ── Courier per-ROLE MCP wiring (shared by setup.ps1 AND sync.ps1) ────
+# Dot-sourced by both so the wiring lives in ONE place (the ADR-0002 review caught setup
+# and sync each owning a copy, with the repeatable sync re-wiring courier as broken stdio).
+# Windows is ALWAYS a courier CLIENT (no macOS login keychain) -> always the http path.
+function Initialize-CourierClientToken {
+    $tokenDir = Split-Path $CourierTokenFile -Parent
+    New-Item -ItemType Directory -Path $tokenDir -Force | Out-Null
+    # Lock the DIRECTORY down FIRST (current-user SID, inheritance removed) so a freshly
+    # written token file inherits a restricted ACL - no window where it sits world/group
+    # readable (ADR-0002 review: token-file perms are the highest-stakes parity divergence;
+    # there is no chmod 600 on Windows, so icacls is the mechanism).
+    $sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+    icacls $tokenDir /inheritance:r /grant:r "*${sid}:(OI)(CI)F" | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Warn "courier: icacls on $tokenDir failed (exit $LASTEXITCODE)" }
+
+    $haveToken = (Test-Path $CourierTokenFile) -and ((Get-Content $CourierTokenFile -Raw -ErrorAction SilentlyContinue))
+    if (-not $haveToken) {
+        Write-Warn "courier client needs the bearer token from the mail host ($MailHost)."
+        Write-Warn "On the host run:  cat ~/.config/courier/auth-token   then paste it here."
+        $sec = Read-Host "  Paste courier token (hidden; empty to skip)" -AsSecureString
+        $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+        $tok = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        if ($tok) {
+            [IO.File]::WriteAllText($CourierTokenFile, $tok)   # no trailing newline
+            Write-Ok "courier token saved ($CourierTokenFile)"
+        }
+        else {
+            Write-Warn "no token entered - courier client will 401 until $CourierTokenFile exists."
+        }
+    }
+    else {
+        Write-Ok "courier client token present ($CourierTokenFile)"
+    }
+    if (Test-Path $CourierTokenFile) {
+        # Lock the FILE explicitly too (current-user SID), then persist COURIER_BEARER
+        # (User scope) so every CLI's runtime sees it without the token ever being argv.
+        icacls $CourierTokenFile /inheritance:r /grant:r "*${sid}:F" | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warn "courier: icacls on token file failed (exit $LASTEXITCODE)" }
+        $tokVal = (Get-Content $CourierTokenFile -Raw).Trim()
+        if ($tokVal) {
+            [Environment]::SetEnvironmentVariable("COURIER_BEARER", $tokVal, "User")
+            $env:COURIER_BEARER = $tokVal
+        }
+    }
+}
+
+function Register-CourierMcp {
+    param([string]$Cli, $CmdSource)
+    # Windows is never the mail host -> always the http client path. The backtick before $
+    # passes the LITERAL ${COURIER_BEARER} to the CLI (claude/gemini expand it at runtime).
+    switch ($Cli) {
+        "claude" { & $CmdSource mcp add --scope=user --transport http courier $CourierRemoteUrl --header "Authorization: Bearer `${COURIER_BEARER}" | Out-Null }
+        "gemini" { & $CmdSource mcp add --scope user --transport http -H "Authorization: Bearer `${COURIER_BEARER}" courier $CourierRemoteUrl | Out-Null }
+        "codex"  { & $CmdSource mcp add courier --url $CourierRemoteUrl --bearer-token-env-var COURIER_BEARER | Out-Null }
+    }
+}

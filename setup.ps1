@@ -274,12 +274,9 @@ if ($Mode -eq "full") {
 
     $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
     if ($uvCmd) {
-        if (Test-Path $CourierPath) {
-            Push-Location $CourierPath
-            uv sync --quiet 2>$null
-            Pop-Location
-            Write-Ok "Courier: deps synced"
-        }
+        # Courier runs ONLY on the mail host (macOS, login keychain). Windows is always a
+        # client that reaches it over http, so syncing courier's Python deps here is wasted
+        # work (and a misleading "deps synced") - skip it. (ADR-0002 review.)
         if (Test-Path $CalendarPath) {
             Push-Location $CalendarPath
             uv sync --quiet 2>$null
@@ -331,6 +328,9 @@ if ($Mode -eq "full") {
         }
     }
 
+    # Courier is per-ROLE (ADR-0002). Initialize-CourierClientToken + Register-CourierMcp
+    # are defined in manifest.ps1 (dot-sourced at the top) so setup AND sync share ONE copy.
+    # Windows is always a courier CLIENT (no macOS login keychain) -> the http path.
     function Register-GlobalMcp {
         param([string]$Cli)
         $cmd = Get-Command $Cli -ErrorAction SilentlyContinue
@@ -350,19 +350,19 @@ if ($Mode -eq "full") {
         switch ($Cli) {
             "claude" {
                 & $cmd.Source mcp add --scope=user nexus -- node $NexusServer | Out-Null
-                & $cmd.Source mcp add --scope=user courier --env "PYTHONPATH=$CourierSrc" -- uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+                Register-CourierMcp $Cli $cmd.Source
                 & $cmd.Source mcp add --scope=user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
                 & $cmd.Source mcp add --scope=user calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
             }
             "codex" {
                 & $cmd.Source mcp add nexus -- node $NexusServer | Out-Null
-                & $cmd.Source mcp add courier --env "PYTHONPATH=$CourierSrc" -- uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+                Register-CourierMcp $Cli $cmd.Source
                 & $cmd.Source mcp add docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
                 & $cmd.Source mcp add calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
             }
             "gemini" {
                 & $cmd.Source mcp add --scope user nexus node $NexusServer | Out-Null
-                & $cmd.Source mcp add --scope user courier --env "PYTHONPATH=$CourierSrc" uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+                Register-CourierMcp $Cli $cmd.Source
                 & $cmd.Source mcp add --scope user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
                 & $cmd.Source mcp add --scope user calendar --env "PYTHONPATH=$CalendarSrc" uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
             }
@@ -371,6 +371,7 @@ if ($Mode -eq "full") {
     }
 
     if (Test-Path $NexusServer) {
+        Initialize-CourierClientToken   # Windows is always a courier CLIENT (ADR-0002)
         Register-GlobalMcp "claude"
         Register-GlobalMcp "codex"
         Register-GlobalMcp "gemini"

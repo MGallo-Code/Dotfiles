@@ -267,6 +267,11 @@ EOF
     # Gemini. Idempotent (remove-then-add); no-ops if the CLI is absent.
     # This is how courier/nexus/docgen/calendar reach SBIC/lab/etc WITHOUT being written
     # into those repos.
+    # Courier is per-ROLE, not per-OS (ADR-0002). is_mail_host / register_courier_mcp /
+    # provision_courier_client_token are defined in manifest.sh (sourced at the top) so
+    # setup AND sync share ONE copy of the host-vs-client decision. is_mail_host keys on the
+    # STABLE macOS LocalHostName (not `hostname`, which is "MacBookPro" here); the host
+    # bootstrap below re-asserts it and fails loud rather than silently wiring a client.
     register_global_mcp() {
         local cli="$1"
         command -v "$cli" >/dev/null 2>&1 || { warn "$cli not found - skipping its global MCP wiring"; return; }
@@ -275,8 +280,7 @@ EOF
             claude)
                 for name in nexus courier docgen calendar; do "$cli" mcp remove --scope=user "$name" >/dev/null 2>&1; done
                 "$cli" mcp add --scope=user nexus -- node "$NEXUS_SERVER" >/dev/null
-                "$cli" mcp add --scope=user courier --env "PYTHONPATH=$COURIER_SRC" \
-                    -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                register_courier_mcp "$cli"
                 "$cli" mcp add --scope=user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
                     --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
                     -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
@@ -286,8 +290,7 @@ EOF
             codex)
                 for name in nexus courier docgen calendar; do "$cli" mcp remove "$name" >/dev/null 2>&1; done
                 "$cli" mcp add nexus -- node "$NEXUS_SERVER" >/dev/null
-                "$cli" mcp add courier --env "PYTHONPATH=$COURIER_SRC" \
-                    -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                register_courier_mcp "$cli"
                 "$cli" mcp add docgen --env "PYTHONPATH=$DOCGEN_SRC" \
                     --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
                     -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
@@ -297,8 +300,7 @@ EOF
             gemini)
                 for name in nexus courier docgen calendar; do "$cli" mcp remove --scope user "$name" >/dev/null 2>&1; done
                 "$cli" mcp add --scope user nexus node "$NEXUS_SERVER" >/dev/null
-                "$cli" mcp add --scope user courier --env "PYTHONPATH=$COURIER_SRC" \
-                    uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                register_courier_mcp "$cli"
                 "$cli" mcp add --scope user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
                     --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
                     uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
@@ -312,9 +314,30 @@ EOF
         esac
         ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
     }
+    # CLIENT machines: get the token on disk before wiring the http courier entries.
+    is_mail_host || provision_courier_client_token
     register_global_mcp claude
     register_global_mcp codex
     register_global_mcp gemini
+
+    # MAIL HOST: stand up / refresh the courier HTTP service that clients connect to.
+    # Idempotent + re-runnable on its own (token rotation, plist change, mini migration).
+    if is_mail_host; then
+        if [ -x "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" ]; then
+            step "Courier host bootstrap (this machine is the mail host: $MAIL_HOST)"
+            "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" \
+                || warn "courier host bootstrap reported an issue - see output above"
+        fi
+    else
+        # Fail-LOUD (ADR-0002 review): a macOS box with local mail state but a name that
+        # doesn't match MAIL_HOST is probably the host after a rename - don't silently
+        # treat it as a client.
+        if [ "$(uname -s)" = "Darwin" ] && [ -d "$HOME/Mail" ]; then
+            warn "This Mac has a ~/Mail maildir but LocalHostName != MAIL_HOST ('$MAIL_HOST')."
+            warn "If this is actually the mail host (e.g. renamed), set MAIL_HOST in manifest.sh and re-run."
+            warn "Otherwise ignore - wiring courier as a CLIENT of '$MAIL_HOST'."
+        fi
+    fi
 
     check_calendar_health() {
         command -v uv >/dev/null 2>&1 || return

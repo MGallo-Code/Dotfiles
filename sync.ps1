@@ -100,16 +100,19 @@ function Get-PythonCmd {
     return $null
 }
 
-# Symlink every vendor skills\<name> into each tool's global skills dir.
-# Idempotent; never clobbers existing real skill dirs (calendar/contact/...).
-function Update-AgentSkillsLinks {
-    $srcRoot = Join-Path $AgentSkillsDir "skills"
-    if (-not (Test-Path $srcRoot)) { Write-Warn "agent-skills: no skills dir at $srcRoot - skipping links"; return }
-    foreach ($tgtRoot in $AgentSkillsTargets) {
+# Link each skill subdir of $SrcRoot into every $Targets dir as $Prefix<name>, using a
+# directory JUNCTION. Windows Developer Mode is OFF here, so SymbolicLink would need
+# elevation; junctions don't. Idempotent; never clobbers a real (non-reparse) dir; leaves
+# an existing junction/symlink alone. Mirror of the sh link_skill_dirs (which uses
+# symlinks - different mechanism, same behavior). (parity-checked: scripts/ci/check-parity.py)
+function Link-SkillDirs {
+    param([string]$SrcRoot, [string]$Prefix, [string[]]$Targets)
+    if (-not (Test-Path $SrcRoot)) { Write-Warn "skills: no source dir $SrcRoot - skipping"; return }
+    foreach ($tgtRoot in $Targets) {
         New-Item -ItemType Directory -Path $tgtRoot -Force | Out-Null
-        foreach ($skill in (Get-ChildItem -Path $srcRoot -Directory)) {
+        foreach ($skill in (Get-ChildItem -Path $SrcRoot -Directory)) {
             if ($skill.Name.StartsWith(".")) { continue }   # skip .system etc.
-            $link = Join-Path $tgtRoot $skill.Name
+            $link = Join-Path $tgtRoot ($Prefix + $skill.Name)
             if (Test-Path $link) {
                 $item = Get-Item $link -Force
                 if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -118,14 +121,24 @@ function Update-AgentSkillsLinks {
             }
             else {
                 try {
-                    New-Item -ItemType SymbolicLink -Path $link -Target $skill.FullName -ErrorAction Stop | Out-Null
-                    Write-Ok "skills: linked $($skill.Name) -> $(Split-Path $tgtRoot -Leaf)"
+                    New-Item -ItemType Junction -Path $link -Target $skill.FullName -ErrorAction Stop | Out-Null
+                    Write-Ok "skills: linked $($Prefix + $skill.Name) -> $(Split-Path $tgtRoot -Leaf)"
                 }
                 catch {
-                    Write-Err "skills: failed to link $($skill.Name) (enable Developer Mode or run as Admin)"
+                    Write-Err "skills: failed to junction $($skill.Name) ($($_.Exception.Message))"
                 }
             }
         }
+    }
+}
+
+# vendor + custom-global skills -> all 3 agents (un-namespaced); project (repo-scoped)
+# skills -> codex/gemini only, namespaced <label>- (EA and Wiki both define `refresh`).
+function Update-AgentSkillsLinks {
+    Link-SkillDirs (Join-Path $AgentSkillsDir "skills") "" $AgentSkillsTargets
+    Link-SkillDirs $GlobalSkillsDir "" $AgentSkillsTargets
+    foreach ($ps in $ProjectSkills) {
+        Link-SkillDirs $ps.Dir "$($ps.Label)-" $ProjectSkillsTargets
     }
 }
 
@@ -293,6 +306,21 @@ if ($AgentSkillsDir) {
     Update-AgentSkillsLinks   # ensure links exist even when upstream didn't move
 }
 
+# ── Regenerate cross-agent COMMANDS + mirror Claude ALLOWLIST ─────────
+# Shared python generators (same scripts the sh side calls) - one source of truth, no
+# PowerShell duplication of the markdown/TOML/JSON transforms. (parity-checked.)
+$pyCmd = Get-PythonCmd
+if ($pyCmd) {
+    Write-Host "`n==> Regenerating cross-agent commands + allowlist" -ForegroundColor Green
+    $cmdArgs = @()
+    foreach ($cs in $CommandSources) { $cmdArgs += "$($cs.Prefix):$($cs.Dir)" }
+    & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-commands.py") @cmdArgs
+    & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-allowlist.py")
+}
+else {
+    Write-Warn "python not found - skipping cross-agent command + allowlist generation"
+}
+
 # ── Verify symlinks (auto-create if missing) ────────────────────────
 Write-Host "`n==> Checking symlinks" -ForegroundColor Green
 foreach ($link in $Symlinks) {
@@ -347,12 +375,8 @@ $DocgenBrowsers = "$DocgenPath\.playwright-browsers"
 
 $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
 if ($uvCmd) {
-    if (Test-Path $CourierPath) {
-        Push-Location $CourierPath
-        uv sync --quiet 2>$null
-        Pop-Location
-        Write-Ok "Courier: deps synced"
-    }
+    # Courier runs ONLY on the mail host (macOS); Windows is always a client reaching it
+    # over http, so syncing courier's Python deps here is wasted work - skip it. (ADR-0002.)
     if (Test-Path $CalendarPath) {
         Push-Location $CalendarPath
         uv sync --quiet 2>$null
@@ -395,19 +419,19 @@ function Register-GlobalMcp {
     switch ($Cli) {
         "claude" {
             & $cmd.Source mcp add --scope=user nexus -- node $NexusServer | Out-Null
-            & $cmd.Source mcp add --scope=user courier --env "PYTHONPATH=$CourierSrc" -- uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+            Register-CourierMcp $Cli $cmd.Source
             & $cmd.Source mcp add --scope=user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
                 & $cmd.Source mcp add --scope=user calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
         }
         "codex" {
             & $cmd.Source mcp add nexus -- node $NexusServer | Out-Null
-            & $cmd.Source mcp add courier --env "PYTHONPATH=$CourierSrc" -- uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+            Register-CourierMcp $Cli $cmd.Source
             & $cmd.Source mcp add docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
                 & $cmd.Source mcp add calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
         }
         "gemini" {
             & $cmd.Source mcp add --scope user nexus node $NexusServer | Out-Null
-            & $cmd.Source mcp add --scope user courier --env "PYTHONPATH=$CourierSrc" uv run --project $CourierPath --no-sync python -m courier.server | Out-Null
+            Register-CourierMcp $Cli $cmd.Source
             & $cmd.Source mcp add --scope user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
                 & $cmd.Source mcp add --scope user calendar --env "PYTHONPATH=$CalendarSrc" uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
         }
@@ -416,6 +440,7 @@ function Register-GlobalMcp {
 }
 
 if (Test-Path $NexusServer) {
+    Initialize-CourierClientToken   # Windows is always a courier CLIENT (ADR-0002)
     Register-GlobalMcp "claude"
     Register-GlobalMcp "codex"
     Register-GlobalMcp "gemini"

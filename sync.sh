@@ -104,28 +104,43 @@ sync_repo() {
 #  never override a P0 flag. Reviewed SHA is pinned (TOCTOU-safe). Fail closed.
 # ════════════════════════════════════════════════════════════════════
 
-# Symlink every vendor skills/<name> into each tool's global skills dir.
-# Idempotent; never clobbers existing real skill dirs (calendar/contact/...).
-regen_agent_skills_links() {
-    local src_root; src_root="$(expand "$AGENT_SKILLS_DIR")/skills"
-    [ -d "$src_root" ] || { warn "agent-skills: no skills/ dir at $src_root - skipping links"; return; }
-    local tdir tgt_root skill sname link
-    for tdir in "${AGENT_SKILLS_TARGETS[@]}"; do
-        tgt_root="$(expand "$tdir")"
+# Link each skill subdir of $1 into every target dir ($3..) as $2<name> ($2 = namespace
+# prefix). Idempotent; never clobbers a real (non-symlink) dir. (mac/linux uses symlinks;
+# the ps1 mirror uses Junctions because Windows Dev Mode is off - parity-checked.)
+link_skill_dirs() {
+    local src_root="$1" prefix="$2"; shift 2
+    src_root="$(expand "$src_root")"
+    [ -d "$src_root" ] || { warn "skills: no source dir $src_root - skipping"; return; }
+    local tgt_root skill sname link
+    for tgt_root in "$@"; do
+        tgt_root="$(expand "$tgt_root")"
         mkdir -p "$tgt_root"
         for skill in "$src_root"/*/; do
             [ -d "$skill" ] || continue
             sname="$(basename "$skill")"
             case "$sname" in .*) continue ;; esac   # skip .system etc.
-            link="$tgt_root/$sname"
+            link="$tgt_root/${prefix}${sname}"
             if [ -L "$link" ]; then
                 [ "$(readlink "$link")" = "${skill%/}" ] || ln -sfn "${skill%/}" "$link"
             elif [ -e "$link" ]; then
                 warn "skills: $link exists as a real path - left untouched"
             else
-                ln -s "${skill%/}" "$link" && ok "skills: linked $sname -> $(basename "$tgt_root")"
+                ln -s "${skill%/}" "$link" && ok "skills: linked ${prefix}${sname} -> $(basename "$tgt_root")"
             fi
         done
+    done
+}
+
+# Wire all skills into the agents: vendor + custom-global -> all 3 (claude/codex/gemini)
+# un-namespaced; project (repo-scoped) skills -> codex/gemini only, namespaced <label>-
+# (EA and Wiki both define `refresh`, so the namespace avoids a collision).
+regen_agent_skills_links() {
+    link_skill_dirs "$AGENT_SKILLS_DIR/skills" "" "${AGENT_SKILLS_TARGETS[@]}"
+    link_skill_dirs "$GLOBAL_SKILLS_DIR" "" "${AGENT_SKILLS_TARGETS[@]}"
+    local entry label dir
+    for entry in "${PROJECT_SKILLS[@]}"; do
+        label="${entry%%|*}"; dir="${entry#*|}"
+        link_skill_dirs "$dir" "${label}-" "${PROJECT_SKILLS_TARGETS[@]}"
     done
 }
 
@@ -310,6 +325,20 @@ done
 # Regenerate Codex + Gemini single-file rule bundles from global-rules/*
 regen_combined_agent_rules
 
+# Regenerate cross-agent COMMANDS (codex prompts + gemini TOML) and mirror the Claude
+# permission ALLOWLIST into codex/gemini. Both are shared python generators (one source
+# of truth; both OSes invoke the same script - parity is "both sync scripts call them").
+if command -v python3 >/dev/null 2>&1; then
+    cmd_args=()
+    for entry in "${COMMAND_SOURCES[@]}"; do
+        cmd_args+=("${entry%%|*}:$(expand "${entry#*|}")")
+    done
+    python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" "${cmd_args[@]}" || warn "command generation reported an issue"
+    python3 "$DOTFILES_DIR/scripts/gen-agent-allowlist.py" || warn "allowlist mirror reported an issue"
+else
+    warn "python3 not found - skipping cross-agent command + allowlist generation"
+fi
+
 # Wire the stacked-push guard's settings.json REGISTRATION. The SCRIPT rides the
 # global-hooks symlink (handled above); the PreToolUse registration is per-machine
 # (settings.json is machine-local, not symlinked), so merge it here idempotently so
@@ -384,8 +413,7 @@ if [ -f "$NEXUS_SERVER" ]; then
             claude)
                 for name in nexus courier docgen calendar; do "$cli" mcp remove --scope=user "$name" >/dev/null 2>&1; done
                 "$cli" mcp add --scope=user nexus -- node "$NEXUS_SERVER" >/dev/null
-                "$cli" mcp add --scope=user courier --env "PYTHONPATH=$COURIER_SRC" \
-                    -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                register_courier_mcp "$cli"
                 "$cli" mcp add --scope=user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
                     --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
                     -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
@@ -395,8 +423,7 @@ if [ -f "$NEXUS_SERVER" ]; then
             codex)
                 for name in nexus courier docgen calendar; do "$cli" mcp remove "$name" >/dev/null 2>&1; done
                 "$cli" mcp add nexus -- node "$NEXUS_SERVER" >/dev/null
-                "$cli" mcp add courier --env "PYTHONPATH=$COURIER_SRC" \
-                    -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                register_courier_mcp "$cli"
                 "$cli" mcp add docgen --env "PYTHONPATH=$DOCGEN_SRC" \
                     --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
                     -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
@@ -406,8 +433,7 @@ if [ -f "$NEXUS_SERVER" ]; then
             gemini)
                 for name in nexus courier docgen calendar; do "$cli" mcp remove --scope user "$name" >/dev/null 2>&1; done
                 "$cli" mcp add --scope user nexus node "$NEXUS_SERVER" >/dev/null
-                "$cli" mcp add --scope user courier --env "PYTHONPATH=$COURIER_SRC" \
-                    uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null
+                register_courier_mcp "$cli"
                 "$cli" mcp add --scope user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
                     --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
                     uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
@@ -421,9 +447,18 @@ if [ -f "$NEXUS_SERVER" ]; then
         esac
         ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
     }
+    # CLIENT machines: ensure the token is on disk before wiring the http courier entries.
+    is_mail_host || provision_courier_client_token
     register_global_mcp claude
     register_global_mcp codex
     register_global_mcp gemini
+
+    # MAIL HOST: refresh the courier HTTP service clients connect to (idempotent repair).
+    if is_mail_host && [ -x "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" ]; then
+        echo -e "\n${GREEN}==>${NC} Courier host bootstrap ($MAIL_HOST)"
+        "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" \
+            || warn "courier host bootstrap reported an issue - see output above"
+    fi
 
     check_calendar_health() {
         command -v uv >/dev/null 2>&1 || return

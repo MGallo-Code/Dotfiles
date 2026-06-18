@@ -102,6 +102,62 @@ AGENT_SKILLS_TARGETS=(
   "~/.gemini/skills"
 )
 
+# ── Courier remote (ADR-0002): mail-host identity ────────────────────
+# courier (email) runs on exactly ONE machine - the mail host - because all email
+# state lives there: the ~/Mail maildir, the notmuch index, and 14 account passwords
+# in the macOS *login* keychain (readable only in a logged-in GUI session). Every
+# OTHER machine is a CLIENT that reaches courier over Tailscale. "Mail host" is a ROLE
+# keyed on this ONE variable: migrating to the planned always-on Mac mini is "change
+# MAIL_HOST, run the host bootstrap there" - nothing else moves.
+#
+# MAIL_HOST is the Tailscale MagicDNS *host label* (lowercase, hyphenated). It is NOT
+# `hostname` (which on this Mac is "MacBookPro") - it is derived from macOS
+# LocalHostName ("Michaels-MacBook-Pro" -> lowercased). Host self-detection (setup)
+# normalizes LocalHostName and compares to this, then asserts host capability and
+# FAILS LOUD rather than silently wiring itself as a client (ADR-0002 review finding).
+MAIL_HOST="michaels-macbook-pro"
+TAILNET="tail7a0764.ts.net"
+COURIER_HTTP_PORT="8765"
+# Client URL: TLS terminated by `tailscale serve` on the host, stable MagicDNS name.
+COURIER_REMOTE_URL="https://${MAIL_HOST}.${TAILNET}/mcp"
+# Mandatory bearer token: ONE mode-600 file per machine, OUTSIDE any repo (never in
+# git; secret-scan-gated). Consumed via the COURIER_BEARER env var - NEVER passed on a
+# command line (would leak to the process table) and never inlined into a CLI's stored
+# config. See ADR-0002 "As-built" + the cross-check review.
+COURIER_TOKEN_FILE="~/.config/courier/auth-token"
+
+# ── Custom global skills (tracked in EA) ─────────────────────────────
+# Three skills authored in EA (calendar, contact, dev-update), linked into all 3
+# agents alongside the vendor agent-skills, into the SAME AGENT_SKILLS_TARGETS dirs.
+# Linked by sync's regen_agent_skills_links (idempotent; never clobbers real dirs).
+GLOBAL_SKILLS_DIR="~/Documents/EA/claude-config/global-skills"
+
+# ── Project (repo-scoped) skills -> codex/gemini, namespaced ──────────
+# Claude reads each repo's .claude/skills/* project-scoped already. codex/gemini have
+# no project-skill scope, so we link them GLOBALLY, namespaced "<label>-<skill>" to
+# avoid collisions (EA and Wiki BOTH define `refresh`). "label|skills_dir".
+PROJECT_SKILLS=(
+  "ea|~/Documents/EA/.claude/skills"
+  "wiki|~/Documents/Wiki/.claude/skills"
+  "it-worker|~/Documents/IT-Worker/.claude/skills"
+  "sbic|~/Documents/SBIC/.claude/skills"
+)
+# codex + gemini global skills dirs (AGENT_SKILLS_TARGETS minus Claude - Claude keeps
+# the un-namespaced project-scoped originals).
+PROJECT_SKILLS_TARGETS=(
+  "~/.codex/skills"
+  "~/.gemini/skills"
+)
+
+# ── Claude slash-commands -> codex prompts + gemini TOML ──────────────
+# Source of truth stays the tracked Claude `.md`. sync regenerates a per-tool copy
+# into ~/.codex/prompts/*.md and ~/.gemini/commands/*.toml (different formats).
+# "prefix|commands_dir" - empty prefix = bare name; "sbic" = sbic-<name>.
+COMMAND_SOURCES=(
+  "|~/Documents/EA/claude-config/global-commands"
+  "sbic|~/Documents/SBIC/.claude/commands"
+)
+
 # Directories to ensure exist
 DIRECTORIES=(
   "~/Documents/Learning"
@@ -111,3 +167,60 @@ DIRECTORIES=(
 # Shell command files (relative to dotfiles repo root)
 SHELL_CORE="shell/core.zsh"
 SHELL_EA="shell/ea.zsh"
+
+# ── Courier per-ROLE MCP wiring (shared by setup.sh AND sync.sh) ──────
+# Defined here - sourced by BOTH - so the host-vs-client decision lives in ONE place.
+# (The ADR-0002 review caught setup.sh and sync.sh each owning a separate copy, with the
+# repeatable `sync` silently re-wiring courier as broken local stdio on clients.) These
+# functions use expand/ok/warn (provided by the sourcing script) and COURIER_PATH /
+# COURIER_SRC (set in each script's MCP section); resolved lazily at call time.
+
+# True iff THIS machine is the mail host. Keys on the STABLE macOS LocalHostName
+# normalized to the MagicDNS label, NOT `hostname` (which is "MacBookPro" here). The
+# fail-loud guards live in setup.sh + courier-host-bootstrap.sh.
+is_mail_host() {
+    [ "$(uname -s)" = "Darwin" ] || return 1
+    local lh; lh="$(scutil --get LocalHostName 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+    [ "$lh" = "$MAIL_HOST" ]
+}
+
+# Wire courier for THIS machine's role, for one CLI. HOST = local stdio (reads the login
+# keychain; no token). CLIENT = http to the mail host over Tailscale, bearer supplied via
+# the ${COURIER_BEARER} env var - NEVER on a command line (process-table leak) or inlined
+# into the CLI's stored config (claude/gemini expand it at runtime; codex reads it via
+# --bearer-token-env-var).
+register_courier_mcp() {
+    local cli="$1"
+    if is_mail_host; then
+        case "$cli" in
+            claude) "$cli" mcp add --scope=user courier --env "PYTHONPATH=$COURIER_SRC" -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null ;;
+            codex)  "$cli" mcp add courier --env "PYTHONPATH=$COURIER_SRC" -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null ;;
+            gemini) "$cli" mcp add --scope user courier --env "PYTHONPATH=$COURIER_SRC" uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null ;;
+        esac
+    else
+        case "$cli" in
+            claude) "$cli" mcp add --scope=user --transport http courier "$COURIER_REMOTE_URL" --header "Authorization: Bearer \${COURIER_BEARER}" >/dev/null ;;
+            gemini) "$cli" mcp add --scope user --transport http -H "Authorization: Bearer \${COURIER_BEARER}" courier "$COURIER_REMOTE_URL" >/dev/null ;;
+            codex)  "$cli" mcp add courier --url "$COURIER_REMOTE_URL" --bearer-token-env-var COURIER_BEARER >/dev/null ;;
+        esac
+    fi
+}
+
+# CLIENT-only: ensure the mode-600 token file exists (prompt-paste once - ADR-0002 token
+# decision (a)). EOF-safe under `set -e` (read || true), so a non-TTY/piped setup run does
+# not abort here. The COURIER_BEARER env export itself lives in shell/ea.zsh.
+provision_courier_client_token() {
+    local tf; tf="$(expand "$COURIER_TOKEN_FILE")"
+    mkdir -p "$(dirname "$tf")"; chmod 700 "$(dirname "$tf")" 2>/dev/null || true
+    if [ -s "$tf" ]; then chmod 600 "$tf"; ok "courier client token present ($tf)"; return; fi
+    warn "courier client needs the bearer token from the mail host ($MAIL_HOST)."
+    warn "On the host run:  cat ~/.config/courier/auth-token   then paste it here."
+    printf "  Paste courier token (hidden; empty to skip): "
+    local tok=""; read -rs tok || true; echo
+    if [ -n "$tok" ]; then
+        ( umask 177; printf '%s' "$tok" > "$tf" ); chmod 600 "$tf"
+        ok "courier token saved ($tf, mode 600). Open a new shell to export COURIER_BEARER."
+    else
+        warn "no token entered - courier client will 401 until $tf exists."
+    fi
+}

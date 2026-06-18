@@ -423,12 +423,16 @@ if (Test-Path $NexusServer) {
     function Test-CalendarHealth {
         if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { return }
         if (-not (Test-Path $CalendarPath)) { return }
-        & uv run --project $CalendarPath --no-sync calendar-auth status --check-events --quiet *> $null
-        if ($LASTEXITCODE -eq 0) {
+        $oldPyPath = $env:PYTHONPATH
+        $env:PYTHONPATH = $CalendarSrc
+        & uv run --project $CalendarPath --no-sync python -m ea_calendar.cli status --check-events --quiet *> $null
+        $healthExit = $LASTEXITCODE
+        $env:PYTHONPATH = $oldPyPath
+        if ($healthExit -eq 0) {
             Write-Ok "Calendar: authenticated as michaelgallo.va@gmail.com"
         }
         else {
-            Write-Warn "Calendar: not authenticated or health check failed - run calendar-auth login"
+            Write-Warn "Calendar: not authenticated or health check failed - run: python -m ea_calendar.cli login"
         }
     }
     Test-CalendarHealth

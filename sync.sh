@@ -428,10 +428,10 @@ if [ -f "$NEXUS_SERVER" ]; then
     check_calendar_health() {
         command -v uv >/dev/null 2>&1 || return
         [ -d "$CALENDAR_PATH" ] || return
-        if uv run --project "$CALENDAR_PATH" --no-sync calendar-auth status --check-events --quiet >/dev/null 2>&1; then
+        if PYTHONPATH="$CALENDAR_SRC" uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.cli status --check-events --quiet >/dev/null 2>&1; then
             ok "Calendar: authenticated as michaelgallo.va@gmail.com"
         else
-            warn "Calendar: not authenticated or health check failed - run calendar-auth login"
+            warn "Calendar: not authenticated or health check failed - run: cd ~/Documents/EA/calendar && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login"
         fi
     }
     check_calendar_health

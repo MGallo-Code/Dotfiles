@@ -24,6 +24,8 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-1 | No live credential ever enters the tracked tree: private keys, real `~/.ssh/config` (with LAN/Tailscale IPs), `.env`, tokens. The committed SSH config is always the `*.template`, never the populated copy. | The git index at commit time + a content scanner over staged blobs; a committed `.gitignore`. | `scripts/ci/check-no-secrets.py` (pre-commit + CI) | CI-green | 0 |
 | INV-2 | Every behavior the mac/linux `setup`/`sync`/`manifest` scripts perform is also performed by the Windows scripts (and vice-versa); a machine ends up configured the same way whichever OS ran setup, except genuinely OS-specific steps on the exempt list. | The paired `*.sh`/`*.ps1` files + a declared feature-token registry. | `scripts/ci/check-parity.py` (pre-commit + CI) | CI-green | 3 |
 | INV-3 | The agent-skills sync security gate stays load-bearing and identical across platforms: an untrusted upstream diff auto-merges only when text-only + in-scope + clean (no net/exec/secret/prompt-injection/hidden-unicode) AND the LLM advisory clears it; any deterministic failure forces human review regardless of the LLM verdict (fails closed); bash and powershell enforce the SAME policy. | `gate_skill_diff()` (sync.sh) + `Test-SkillDiffGate` (sync.ps1), both delegating to `skills-scan.py`. | a malicious-corpus regression test across sh + ps1 + py (to build) | advisor-only | 0 |
+| INV-4 | The courier bearer token is never inlined into agent MCP wiring: the only token reference in a courier `mcp add` is the `${COURIER_BEARER}` env var (claude/gemini `--header`/`-H`) or `--bearer-token-env-var COURIER_BEARER` (codex); a literal token never reaches argv or a CLI's stored config. Distinct from INV-1 (the token lives OUTSIDE git, in `~/.config/courier/auth-token`, so the secret-scan never sees it). | The single `Authorization: Bearer` reference inside `register_courier_mcp`/`Register-CourierMcp` (manifest), which only ever names the env var. | `scripts/ci/check-courier-wiring.py` COVERAGE (pre-commit + CI) | local-green (pending merge) | 1 |
+| INV-5 | Courier is wired per-ROLE only through the shared function: the host-vs-client decision AND every courier `mcp add` live once in `manifest.{sh,ps1}` (`register_courier_mcp`/`Register-CourierMcp`); no `setup`/`sync` script wires courier directly. | `register_courier_mcp`/`Register-CourierMcp` in manifest; setup/sync only CALL it. | `scripts/ci/check-courier-wiring.py` COVERAGE (pre-commit + CI) | local-green (pending merge) | 1 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -81,3 +83,39 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   flagged. Fail closed if either passes a malicious sample or the two disagree.
 - **Escape hatch**: none (true invariant) - this gate protects auto-merge of untrusted
   upstream code.
+
+### INV-4 - the courier bearer is never inlined into agent wiring
+- **Surfaces**: `manifest.{sh,ps1}` (where `register_courier_mcp`/`Register-CourierMcp`
+  reference `${COURIER_BEARER}`), and `setup`/`sync` `{.sh,.ps1}` (which must never grow a
+  literal-token wiring of their own).
+- **Why it is not covered by INV-1**: the token legitimately lives OUTSIDE git in
+  `~/.config/courier/auth-token`, so the secret-scan over the tracked tree never sees the
+  risk. The risk here is a SCRIPT that bakes a literal token into argv (visible in the
+  process table) or into a CLI's stored config - "not in git" is not "not leaked locally"
+  (ADR-0002 cross-check review, finding #1).
+- **Detection signal**: any `Authorization: Bearer <X>` line in the script set where `<X>`
+  (after stripping a leading sh `\` or ps1 backtick escape) is not exactly `${COURIER_BEARER}`.
+  Precise: the only `Bearer` lines in these files ARE the courier wiring.
+- **Gate design**: `check-courier-wiring.py` is a COVERAGE scan over the whole script set,
+  so a literal token introduced on ANY surface is caught, not just the one known site.
+- **Recurrence (recur=1)**: caught in review before it ever shipped; promoted to a gate
+  because it is security-critical and cross-cutting (2 OSes x 3 CLIs).
+- **Escape hatch**: append `# courier-wiring-allow` to an audited line.
+- **Sibling**: EA INV-7 enforces the SERVER side (loopback-only bind + mandatory-auth +
+  fail-closed self-test); this is the CLIENT-wiring side.
+
+### INV-5 - courier is wired per-role only through the shared function
+- **Surfaces**: `setup.{sh,ps1}`, `sync.{sh,ps1}` (must only CALL the shared fn);
+  `manifest.{sh,ps1}` (the ONE allowed home for a courier `mcp add`).
+- **Recurrence (recur=1)**: the blocking regression the ADR-0002 review caught - `sync`
+  owned a SEPARATE copy of the MCP wiring that hardcoded courier as local stdio, which on a
+  CLIENT silently clobbered the correct http-over-Tailscale entry with a broken stdio one
+  pointing at a non-existent path. CI was green (parity only checked `setup`), so only the
+  review caught it. The root fix hoisted the role logic into `manifest`; this gate stops the
+  duplicate from coming back.
+- **Detection signal**: a line containing both `mcp add` and `courier` in any setup/sync
+  script (the remove-loop uses `mcp remove`, the shared call is `register_courier_mcp`, so a
+  match means someone bypassed the function).
+- **Gate design**: COVERAGE over the setup/sync set - a new script cannot silently add a
+  direct courier wiring.
+- **Escape hatch**: append `# courier-wiring-allow` to an audited line.

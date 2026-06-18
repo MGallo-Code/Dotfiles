@@ -24,3 +24,8 @@ fi
 if [ -f "$ROOT/scripts/ci/check-parity.py" ]; then
   "$PY" "$ROOT/scripts/ci/check-parity.py"
 fi
+
+# INV-4 + INV-5: courier MCP wiring discipline (no inlined token; per-role via shared fn).
+if [ -f "$ROOT/scripts/ci/check-courier-wiring.py" ]; then
+  "$PY" "$ROOT/scripts/ci/check-courier-wiring.py"
+fi

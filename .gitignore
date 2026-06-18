@@ -22,6 +22,10 @@ client_secret*.json
 **/.DS_Store
 Thumbs.db
 
+# --- Python build artifacts (the scripts/*.py generators) ---
+__pycache__/
+*.pyc
+
 # --- Override the global gitignore: track the per-repo agent constitution here ---
 # (~/.gitignore_global ignores CLAUDE.md everywhere; this repo commits it, kept
 #  byte-identical to AGENTS.md by the pre-commit cmp check.)

@@ -3,8 +3,8 @@ set -uo pipefail
 
 # Sync all managed repos - pull updates, detect local changes, hand off to Claude for commits
 
-DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$DOTFILES_DIR/manifest.sh"
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # BASH_SOURCE (not $0) so the
+source "$DOTFILES_DIR/manifest.sh"                            # path is right when SOURCED too
 
 # Colors
 GREEN='\033[0;32m'
@@ -530,6 +530,11 @@ sync_skills_repo() {
         else DIVERGED+=("$name"); err "$name: origin diverged - manual"; fi
     fi
 }
+
+# Sourceable for tests: when this file is SOURCED (the INV-3 gate corpus test pulls in
+# gate_skill_diff) instead of executed, stop here - do NOT run the sync flow. `sync` invokes us
+# with `bash sync.sh` (executed), so this is a no-op in production. (BASH_SOURCE != $0 = sourced)
+if [ "${BASH_SOURCE[0]}" != "${0}" ]; then return 0 2>/dev/null || exit 0; fi
 
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
 NEXUS_DB="$(expand "~/Documents/EA/nexus/nexus.db")"

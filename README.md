@@ -68,3 +68,23 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 **Also:** Claude Code rules + hooks symlinks (`~/.claude/rules`, `~/.claude/hooks`), per-role courier MCP wiring, shell commands, SSH config, Homebrew packages.
 
 **MCP servers** (EA, configured in `EA/.mcp.json`): nexus, courier, docgen, calendar.
+
+## Updating This System
+
+"This system" = the whole Michael Workspace (dotfiles + the EA sources it distributes + the
+agent-skills kit). When you change the **plumbing** (manifest, sync/setup, the CI checks, or
+the rules/commands/skills sources), start the agent in the **control plane** - this repo:
+
+```bash
+sysupdate     # = cd ~/.dotfiles && claude --add-dir ~/Documents/EA --add-dir ~/Documents/agent-skills
+```
+
+- `manifest.sh` is the single, always-current **map** of every managed root and its role -
+  read it to see the whole system from one file (no separate map to drift).
+- `INVARIANTS.md` + the pre-commit hook + CI are the rules and their mechanical enforcers.
+- Claude Code scopes to its launch dir, so `sysupdate` adds the EA + agent-skills source roots.
+  Codex and Gemini already see the whole workspace (the `michael_workspace` permission profile
+  + Gemini `includeDirectories`), so for those just `cd ~/.dotfiles && codex` (or `gemini`).
+
+For everyday **ops** (email, calendar, nexus, notes) start in `~/Documents/EA` instead, where
+the MCP servers and the Nexus DB live.

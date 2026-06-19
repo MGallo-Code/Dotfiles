@@ -20,13 +20,11 @@ REPOS=(
   "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
 )
 
-# Archived repos: "remote|target_path" (role: archive-repo). NEVER synced - a tombstone so
-# dotfiles knows the root exists and is intentionally inactive. IT-Worker was archived
-# 2026-06-18 (active michaelgit ops moved to ~/Documents/EA/business/michaelgit; see
-# IT-Worker/ARCHIVED.md). Not iterated by any sync loop.
-ARCHIVED_REPOS=(
-  "git@github:MGallo-Code/IT-Worker.git|~/Documents/IT-Worker"
-)
+# Archived repos: "remote|target_path" (role: archive-repo). NEVER synced; a tombstone for a
+# root kept locally but inactive. Currently EMPTY: IT-Worker's local copy was removed
+# 2026-06-19 (archive lives at MGallo-Code/IT-Worker on GitHub; its bulky client artifacts are
+# in ~/Documents/Customer-Work). Re-add an entry if a repo is ever archived-but-kept-local.
+ARCHIVED_REPOS=()
 
 # EA-only repos (skipped with --dev) - subset of active REPOS above
 EA_REPOS=(
@@ -158,13 +156,10 @@ PROJECT_SKILLS=(
   "wiki|~/Documents/Wiki/.claude/skills"
   "sbic|~/Documents/SBIC/.claude/skills"
 )
-# Archived project skills (role: archive-project-skills). IT-Worker's skills were archived
-# 2026-06-18 to .claude/skills.archived-2026-06-18; recorded here but NEVER linked, so
-# codex/gemini get no it-worker-* affordances. The stale dangling links left from before
-# the archive are pruned by sync's stale-skill cleanup + scripts/ci/check-skill-targets.py.
-ARCHIVED_PROJECT_SKILLS=(
-  "it-worker|~/Documents/IT-Worker/.claude/skills.archived-2026-06-18"
-)
+# Archived project skills (role: archive-project-skills). Currently EMPTY: IT-Worker's skills
+# went with its local copy (removed 2026-06-19). sync's stale-skill cleanup +
+# scripts/ci/check-skill-targets.py still guard against any dangling generated skill link.
+ARCHIVED_PROJECT_SKILLS=()
 # codex + gemini global skills dirs (AGENT_SKILLS_TARGETS minus Claude - Claude keeps
 # the un-namespaced project-scoped originals).
 PROJECT_SKILLS_TARGETS=(

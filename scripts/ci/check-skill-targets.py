@@ -31,8 +31,11 @@ def repo_root():
 
 
 def extract_array(text, name):
-    """Return the quoted string items of a bash array  NAME=( "a" "b" ... )."""
-    m = re.search(rf'^{re.escape(name)}=\((.*?)\n\)', text, re.DOTALL | re.MULTILINE)
+    """Return the quoted string items of a bash array  NAME=( "a" "b" ... ).
+    Uses [^)]* so it stops at the FIRST ')': handles an empty single-line array (NAME=())
+    without greedily swallowing the next array's contents, and multi-line arrays alike.
+    (Safe because none of these arrays' values contain a ')'.)"""
+    m = re.search(rf'^{re.escape(name)}=\(([^)]*)\)', text, re.MULTILINE)
     if not m:
         return []
     return re.findall(r'"([^"]+)"', m.group(1))

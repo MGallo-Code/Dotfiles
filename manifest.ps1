@@ -15,11 +15,9 @@ $Repos = @(
     @{ Remote = "git@github:MGallo-Code/Notes.git";       Target = "$HOME\Documents\Notes" }
 )
 
-# Archived repos (role: archive-repo). NEVER synced - a tombstone. IT-Worker archived
-# 2026-06-18 (active ops moved to EA\business\michaelgit). Parity: manifest.sh ARCHIVED_REPOS.
-$ArchivedRepos = @(
-    @{ Remote = "git@github:MGallo-Code/IT-Worker.git";   Target = "$HOME\Documents\IT-Worker" }
-)
+# Archived repos (role: archive-repo). NEVER synced. Currently EMPTY: IT-Worker local copy
+# removed 2026-06-19 (archive on GitHub; artifacts in Customer-Work). Parity: manifest.sh ARCHIVED_REPOS.
+$ArchivedRepos = @()
 
 # EA-only repos (skipped with --dev) - subset of active $Repos. Parity: manifest.sh EA_REPOS.
 $EARepos = @(
@@ -89,11 +87,9 @@ $ProjectSkills = @(
     @{ Label = "wiki";      Dir = "$HOME\Documents\Wiki\.claude\skills" }
     @{ Label = "sbic";      Dir = "$HOME\Documents\SBIC\.claude\skills" }
 )
-# Archived project skills (role: archive-project-skills). IT-Worker skills archived
-# 2026-06-18; recorded but NEVER linked. Parity: manifest.sh ARCHIVED_PROJECT_SKILLS.
-$ArchivedProjectSkills = @(
-    @{ Label = "it-worker"; Dir = "$HOME\Documents\IT-Worker\.claude\skills.archived-2026-06-18" }
-)
+# Archived project skills (role: archive-project-skills). Currently EMPTY: IT-Worker skills
+# removed with its local copy 2026-06-19. Parity: manifest.sh ARCHIVED_PROJECT_SKILLS.
+$ArchivedProjectSkills = @()
 $ProjectSkillsTargets = @(
     "$HOME\.codex\skills"
     "$HOME\.gemini\skills"

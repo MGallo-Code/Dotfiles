@@ -20,7 +20,6 @@ function Invoke-WsLaunch {
 
 function ea   { Invoke-WsLaunch "$HOME\Documents\EA" @args }        # active personal ops + MCP tools
 function wiki { Invoke-WsLaunch "$HOME\Documents\Wiki" @args }      # LLM-curated research
-function it   { Invoke-WsLaunch "$HOME\Documents\IT-Worker" @args } # legacy archive (deprecated write target)
 
 # Update the Michael Workspace SYSTEM: open an agent in the dotfiles control plane (manifest.sh
 # = root/role map). Claude (default) gets the EA + agent-skills source roots added; Codex/Gemini
@@ -41,7 +40,7 @@ $WsAgentCompleter = {
         Where-Object { $_ -like "$wordToComplete*" } |
         ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterName', $_) }
 }
-Register-ArgumentCompleter -CommandName ea, wiki, it, sysupdate -ScriptBlock $WsAgentCompleter
+Register-ArgumentCompleter -CommandName ea, wiki, sysupdate -ScriptBlock $WsAgentCompleter
 
 function practice {
     $WorkspaceDir = "$HOME\Documents\EA\exercises\workspace"

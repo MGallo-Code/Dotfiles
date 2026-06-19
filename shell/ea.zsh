@@ -18,7 +18,6 @@ _ws_launch() {
 
 ea()   { _ws_launch ~/Documents/EA "$@"; }        # active personal ops + MCP tools
 wiki() { _ws_launch ~/Documents/Wiki "$@"; }      # LLM-curated research
-it()   { _ws_launch ~/Documents/IT-Worker "$@"; } # legacy archive (deprecated write target)
 
 # Update the Michael Workspace SYSTEM: open an agent in the dotfiles control plane (manifest.sh
 # is the map of every managed root + its role). For Claude (default) we add the EA + agent-skills
@@ -36,7 +35,7 @@ sysupdate() {
 
 # Tab-complete the agent flags for the workspace launchers.
 _ws_agent_completion() { compadd -- --claude --codex --gemini; }
-compdef _ws_agent_completion ea wiki it sysupdate
+compdef _ws_agent_completion ea wiki sysupdate
 
 # courier remote (ADR-0002): expose the bearer token to MCP clients. claude/gemini
 # reference it as ${COURIER_BEARER} in their courier http header; codex reads it via

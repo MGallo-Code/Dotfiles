@@ -486,7 +486,10 @@ function Test-SkillDiffGate {
     if ($py) {
         $added = (git diff "$Base..$Head") | Where-Object { ($_ -match '^\+') -and ($_ -notmatch '^\+\+\+') }
         $prevEnc = $OutputEncoding
-        $OutputEncoding = [System.Text.Encoding]::UTF8
+        # UTF-8 WITHOUT a BOM: [Encoding]::UTF8 emits a leading BOM (U+FEFF) into the pipe, which
+        # skills-scan.py then flags as hidden-unicode - making the ps1 gate hold EVERY diff (a
+        # divergence from bash that auto-merges clean ones). Caught by check-skill-gate-corpus.sh.
+        $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
         $content = ($added -join "`n") | & $py (Join-Path $DotfilesDir "skills-scan.py")
         $OutputEncoding = $prevEnc
         if ($content) { $reasons += ($content -join " ").Trim() }

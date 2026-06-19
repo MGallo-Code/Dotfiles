@@ -28,17 +28,63 @@ ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
     set_codex_toml_key() {
         local key="$1"
         local value="$2"
-        if grep -q "^${key} =" "$codex_config"; then
-            perl -0pi -e "s/^${key} = \"[^\"]*\"/${key} = \"${value}\"/m" "$codex_config"
-        else
-            printf '%s = "%s"\n' "$key" "$value" >> "$codex_config"
+        CODEX_TOML_KEY="$key" CODEX_TOML_VALUE="$value" perl -0pi -e '
+            my $key = $ENV{"CODEX_TOML_KEY"};
+            my $value = $ENV{"CODEX_TOML_VALUE"};
+            my $line = qq{$key = "$value"};
+            s/^\Q$key\E\s*=\s*"[^"]*"\r?\n?//mg;
+            if (s/(^|\n)(\s*\[)/$1$line\n\n$2/s) {
+                next;
+            }
+            $_ .= "\n" if length($_) && $_ !~ /\n\z/;
+            $_ .= "$line\n";
+        ' "$codex_config"
+    }
+
+    ensure_codex_permission_profile() {
+        local marker_start="# dotfiles: Codex Michael workspace permission profile"
+        local marker_end="# dotfiles: end Codex Michael workspace permission profile"
+        local block
+
+        block=$(cat <<'EOF'
+# dotfiles: Codex Michael workspace permission profile
+[permissions.michael_workspace]
+description = "Michael's local workspace, dotfiles, and agent config"
+
+[permissions.michael_workspace.filesystem]
+":minimal" = "read"
+
+[permissions.michael_workspace.filesystem.":workspace_roots"]
+"." = "write"
+
+[permissions.michael_workspace.workspace_roots]
+"~/Documents" = true
+"~/Downloads" = true
+"~/.dotfiles" = true
+"~/.codex" = true
+"~/.claude" = true
+"~/.gemini" = true
+"~/.config/nvim" = true
+
+[permissions.michael_workspace.network]
+enabled = true
+allow_local_binding = true
+# dotfiles: end Codex Michael workspace permission profile
+EOF
+)
+
+        if grep -qF "$marker_start" "$codex_config"; then
+            perl -0pi -e 's/\n?# dotfiles: Codex Michael workspace permission profile\n.*?# dotfiles: end Codex Michael workspace permission profile\n?/\n/s' "$codex_config"
         fi
+        printf '\n%s\n' "$block" >> "$codex_config"
     }
 
     set_codex_toml_key model_reasoning_effort xhigh
     set_codex_toml_key approval_policy on-request
-    set_codex_toml_key approvals_reviewer auto_review
-    ok "Codex: defaults set (xhigh reasoning + auto-review approvals)"
+    set_codex_toml_key approvals_reviewer user
+    set_codex_toml_key default_permissions michael_workspace
+    ensure_codex_permission_profile
+    ok "Codex: defaults set (xhigh reasoning + Michael workspace permissions)"
 
     # Stacked-push guard for Codex (PreToolUse), mirroring the Claude hook: the
     # SAME script + protocol (reads .tool_input.command, emits hookSpecificOutput
@@ -70,6 +116,7 @@ EOF
     if command -v python3 >/dev/null 2>&1; then
         python3 - "$gemini_settings" <<'PYJSON'
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -85,6 +132,38 @@ if not isinstance(general, dict):
     general = {}
     data["general"] = general
 general["defaultApprovalMode"] = "auto_edit"
+gemini_workspace_roots = [
+    os.path.expanduser("~/Documents"),
+    os.path.expanduser("~/Downloads"),
+    os.path.expanduser("~/.dotfiles"),
+    os.path.expanduser("~/.codex"),
+    os.path.expanduser("~/.claude"),
+    os.path.expanduser("~/.gemini"),
+    os.path.expanduser("~/.config/nvim"),
+]
+context = data.setdefault("context", {})
+if not isinstance(context, dict):
+    context = {}
+    data["context"] = context
+include_dirs = context.setdefault("includeDirectories", [])
+if not isinstance(include_dirs, list):
+    include_dirs = []
+for root in gemini_workspace_roots:
+    if root not in include_dirs:
+        include_dirs.append(root)
+context["includeDirectories"] = include_dirs
+tools = data.setdefault("tools", {})
+if not isinstance(tools, dict):
+    tools = {}
+    data["tools"] = tools
+sandbox_paths = tools.setdefault("sandboxAllowedPaths", [])
+if not isinstance(sandbox_paths, list):
+    sandbox_paths = []
+for root in gemini_workspace_roots:
+    if root not in sandbox_paths:
+        sandbox_paths.append(root)
+tools["sandboxAllowedPaths"] = sandbox_paths
+tools["sandboxNetworkAccess"] = True
 security = data.setdefault("security", {})
 if not isinstance(security, dict):
     security = {}
@@ -101,7 +180,7 @@ if not isinstance(model, dict):
 model["name"] = "gemini-3.1-flash-lite"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYJSON
-        ok "Gemini: defaults set (auto_edit + gemini-3.1-flash-lite API-key auth)"
+        ok "Gemini: defaults set (auto_edit + workspace roots + gemini-3.1-flash-lite API-key auth)"
     else
         warn "Gemini defaults: python3 not found - skipping settings.json update"
     fi
@@ -638,8 +717,12 @@ if [ -f "$NEXUS_SERVER" ]; then
             [ -d "$target" ] || continue
             jq --arg path "$target" '. + {($path): "TRUST_FOLDER"}' "$tmp" > "$tmp.next" && mv "$tmp.next" "$tmp"
         done
+        for target in "$HOME/Documents" "$HOME/Downloads" "$HOME/.dotfiles" "$HOME/.codex" "$HOME/.claude" "$HOME/.gemini" "$HOME/.config/nvim"; do
+            [ -d "$target" ] || continue
+            jq --arg path "$target" '. + {($path): "TRUST_FOLDER"}' "$tmp" > "$tmp.next" && mv "$tmp.next" "$tmp"
+        done
         mv "$tmp" "$trust_file"
-        ok "Gemini: trusted managed repo folders"
+        ok "Gemini: trusted managed repo + workspace folders"
     }
     trust_gemini_managed_repos
 else

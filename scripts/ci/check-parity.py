@@ -153,14 +153,14 @@ FEATURES = [
         "ps1": ("sync.ps1", r"gen-agent-allowlist"),
     },
     {
-        "name": "agent defaults configured (Codex xhigh auto-review + Gemini auto_edit)",
-        "sh": ("setup.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
-        "ps1": ("setup.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
+        "name": "agent defaults configured (Codex xhigh user approvals + Michael workspace permissions + Gemini auto_edit)",
+        "sh": ("setup.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|michael_workspace"),
+        "ps1": ("setup.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|michael_workspace"),
     },
     {
-        "name": "agent defaults repaired during sync",
-        "sh": ("sync.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
-        "ps1": ("sync.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer"),
+        "name": "agent defaults repaired during sync (Codex Michael workspace permissions)",
+        "sh": ("sync.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|michael_workspace"),
+        "ps1": ("sync.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|michael_workspace"),
     },
     {
         "name": "Gemini cross-check setup repaired during setup",

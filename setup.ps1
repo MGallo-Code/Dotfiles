@@ -36,20 +36,64 @@ function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
 
     function Set-CodexTomlKey {
         param([string]$Content, [string]$Key, [string]$Value)
-        $pattern = '(?m)^' + [regex]::Escape($Key) + '\s*=\s*"[^"]*"'
         $line = "$Key = `"$Value`""
-        if ($Content -match $pattern) {
-            return [regex]::Replace($Content, $pattern, $line)
+        $keyPattern = '(?m)^' + [regex]::Escape($Key) + '\s*=\s*"[^"]*"\r?\n?'
+        $Content = [regex]::Replace($Content, $keyPattern, "")
+        $tableMatch = [regex]::Match($Content, '(?m)^\s*\[')
+        if ($tableMatch.Success) {
+            $before = $Content.Substring(0, $tableMatch.Index).TrimEnd()
+            $after = $Content.Substring($tableMatch.Index)
+            if ($before) {
+                return $before + "`n" + $line + "`n`n" + $after
+            }
+            return $line + "`n`n" + $after
         }
         if ($Content -and -not $Content.EndsWith("`n")) { $Content += "`n" }
         return $Content + $line + "`n"
     }
 
+    function Set-CodexManagedBlock {
+        param([string]$Content)
+        $markerStart = "# dotfiles: Codex Michael workspace permission profile"
+        $markerEnd = "# dotfiles: end Codex Michael workspace permission profile"
+        $block = @"
+$markerStart
+[permissions.michael_workspace]
+description = "Michael's local workspace, dotfiles, and agent config"
+
+[permissions.michael_workspace.filesystem]
+":minimal" = "read"
+
+[permissions.michael_workspace.filesystem.":workspace_roots"]
+"." = "write"
+
+[permissions.michael_workspace.workspace_roots]
+"~/Documents" = true
+"~/Downloads" = true
+"~/.dotfiles" = true
+"~/.codex" = true
+"~/.claude" = true
+"~/.gemini" = true
+"~/.config/nvim" = true
+
+[permissions.michael_workspace.network]
+enabled = true
+allow_local_binding = true
+$markerEnd
+"@
+        $pattern = '(?s)\r?\n?# dotfiles: Codex Michael workspace permission profile\r?\n.*?# dotfiles: end Codex Michael workspace permission profile\r?\n?'
+        $Content = [regex]::Replace($Content, $pattern, "`n")
+        if ($Content -and -not $Content.EndsWith("`n")) { $Content += "`n" }
+        return $Content + "`n" + $block + "`n"
+    }
+
     $content = Set-CodexTomlKey $content "model_reasoning_effort" "xhigh"
     $content = Set-CodexTomlKey $content "approval_policy" "on-request"
-    $content = Set-CodexTomlKey $content "approvals_reviewer" "auto_review"
+    $content = Set-CodexTomlKey $content "approvals_reviewer" "user"
+    $content = Set-CodexTomlKey $content "default_permissions" "michael_workspace"
+    $content = Set-CodexManagedBlock $content
     Set-Content -Path $codexConfig -Value $content -NoNewline
-    Write-Ok "Codex: defaults set (xhigh reasoning + auto-review approvals)"
+    Write-Ok "Codex: defaults set (xhigh reasoning + Michael workspace permissions)"
 
     # Stacked-push guard for Codex (PreToolUse), parity mirror of the bash block:
     # same script + protocol as the Claude PreToolUse guard, invoked via bash.
@@ -104,6 +148,56 @@ matcher = "^Bash`$"
         $settings["general"] = $general
     }
     $general["defaultApprovalMode"] = "auto_edit"
+    $geminiWorkspaceRoots = @(
+        "$HOME\Documents",
+        "$HOME\Downloads",
+        "$HOME\.dotfiles",
+        "$HOME\.codex",
+        "$HOME\.claude",
+        "$HOME\.gemini",
+        "$HOME\.config\nvim"
+    )
+    if (-not $settings.Contains("context") -or $null -eq $settings["context"]) {
+        $settings["context"] = [ordered]@{}
+    }
+    $context = $settings["context"]
+    if (-not ($context -is [System.Collections.IDictionary])) {
+        $newContext = [ordered]@{}
+        foreach ($prop in $context.PSObject.Properties) {
+            $newContext[$prop.Name] = $prop.Value
+        }
+        $context = $newContext
+        $settings["context"] = $context
+    }
+    $includeDirs = @()
+    if ($context.Contains("includeDirectories") -and $null -ne $context["includeDirectories"]) {
+        $includeDirs = @($context["includeDirectories"])
+    }
+    foreach ($root in $geminiWorkspaceRoots) {
+        if ($includeDirs -notcontains $root) { $includeDirs += $root }
+    }
+    $context["includeDirectories"] = $includeDirs
+    if (-not $settings.Contains("tools") -or $null -eq $settings["tools"]) {
+        $settings["tools"] = [ordered]@{}
+    }
+    $tools = $settings["tools"]
+    if (-not ($tools -is [System.Collections.IDictionary])) {
+        $newTools = [ordered]@{}
+        foreach ($prop in $tools.PSObject.Properties) {
+            $newTools[$prop.Name] = $prop.Value
+        }
+        $tools = $newTools
+        $settings["tools"] = $tools
+    }
+    $sandboxAllowedPaths = @()
+    if ($tools.Contains("sandboxAllowedPaths") -and $null -ne $tools["sandboxAllowedPaths"]) {
+        $sandboxAllowedPaths = @($tools["sandboxAllowedPaths"])
+    }
+    foreach ($root in $geminiWorkspaceRoots) {
+        if ($sandboxAllowedPaths -notcontains $root) { $sandboxAllowedPaths += $root }
+    }
+    $tools["sandboxAllowedPaths"] = $sandboxAllowedPaths
+    $tools["sandboxNetworkAccess"] = $true
     if (-not $settings.Contains("security") -or $null -eq $settings["security"]) {
         $settings["security"] = [ordered]@{}
     }
@@ -143,7 +237,7 @@ matcher = "^Bash`$"
     }
     $model["name"] = "gemini-3.1-flash-lite"
     $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $geminiSettings
-    Write-Ok "Gemini: defaults set (auto_edit + gemini-3.1-flash-lite API-key auth)"
+    Write-Ok "Gemini: defaults set (auto_edit + workspace roots + gemini-3.1-flash-lite API-key auth)"
 }
 
 function Ensure-GeminiCrossCheckSetup { # GEMINI_CROSS_CHECK_SETUP
@@ -567,12 +661,17 @@ if ($Mode -eq "full") {
 
         foreach ($repo in $Repos) {
             if (Test-Path $repo.Target) {
-                $trust[$repo.Target] = "TRUST_FOLDER"
+                $trust[(Resolve-Path $repo.Target).Path] = "TRUST_FOLDER"
+            }
+        }
+        foreach ($root in @("$HOME\Documents", "$HOME\Downloads", "$HOME\.dotfiles", "$HOME\.codex", "$HOME\.claude", "$HOME\.gemini", "$HOME\.config\nvim")) {
+            if (Test-Path $root) {
+                $trust[(Resolve-Path $root).Path] = "TRUST_FOLDER"
             }
         }
 
         $trust | ConvertTo-Json -Depth 4 | Set-Content -Path $trustFile
-        Write-Ok "Gemini: trusted managed repo folders"
+        Write-Ok "Gemini: trusted managed repo + workspace folders"
     }
     Trust-GeminiManagedRepos
     Set-AgentDefaults

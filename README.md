@@ -48,10 +48,23 @@ The scripts pin `gemini-3.1-flash-lite` and store the API key in machine-local s
 
 ## What It Manages
 
-| Repo | Location |
-|------|----------|
-| EA | ~/Documents/EA |
-| Wiki | ~/Documents/Wiki |
-| NVIM-Setup | ~/.config/nvim (Mac) / ~/AppData/Local/nvim (Win) |
+Every root has one role (see the taxonomy at the top of `manifest.sh`):
 
-Plus: shell commands, SSH config, Claude Code rules symlink, Homebrew packages.
+| Root | Location | Role |
+|------|----------|------|
+| EA | ~/Documents/EA | active-repo (synced; `--full`) |
+| Wiki | ~/Documents/Wiki | active-repo (synced; `--full`) |
+| Notes | ~/Documents/Notes | active-repo (synced; `--full`) |
+| NVIM-Setup | ~/.config/nvim (Mac) / %LOCALAPPDATA%\nvim (Win) | active-repo (synced; `--dev` + `--full`) |
+| agent-skills | ~/Documents/agent-skills | external-managed (forked addyosmani upstream; security-gated sync) |
+| IT-Worker | ~/Documents/IT-Worker | archive-repo (NOT synced; legacy reference, active ops moved to EA/business/michaelgit) |
+
+**Generated for codex + gemini on every sync** (never hand-edit; the targets are read-only):
+- Combined agent rules from `EA/claude-config/global-rules/*.md` -> `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`
+- Global + per-repo project skills, namespaced (`ea-*`, `wiki-*`, `sbic-*`) into `~/.codex/skills`, `~/.gemini/skills`
+- Claude slash-commands -> codex prompts (`~/.codex/prompts/*.md`) + gemini commands (`~/.gemini/commands/*.toml`)
+- Tool allowlist mirrored into codex/gemini
+
+**Also:** Claude Code rules + hooks symlinks (`~/.claude/rules`, `~/.claude/hooks`), per-role courier MCP wiring, shell commands, SSH config, Homebrew packages.
+
+**MCP servers** (EA, configured in `EA/.mcp.json`): nexus, courier, docgen, calendar.

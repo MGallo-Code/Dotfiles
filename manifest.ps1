@@ -1,18 +1,31 @@
 # Dotfiles manifest - Windows (mirrors manifest.sh)
 
+# ── Managed-root ROLES (mirror of manifest.sh) ───────────────────────
+# Every root dotfiles manages has exactly one role: active-repo (synced, $Repos),
+# archive-repo (NOT synced, $ArchivedRepos), external-managed ($AgentSkillsDir),
+# generated-target (written by dotfiles), artifact-dir ($Directories). An archived root
+# must NEVER appear in an active list or it resurrects stale generated affordances.
+# See manifest.sh for the full taxonomy and INVARIANTS.md.
+
+# Active managed repos (role: active-repo). Parity: must match manifest.sh REPOS.
 $Repos = @(
     @{ Remote = "git@github:MGallo-Code/EA.git";         Target = "$HOME\Documents\EA" }
     @{ Remote = "git@github:MGallo-Code/NVIM-Setup.git";  Target = "$env:LOCALAPPDATA\nvim" }
     @{ Remote = "git@github:MGallo-Code/Wiki.git";        Target = "$HOME\Documents\Wiki" }
     @{ Remote = "git@github:MGallo-Code/Notes.git";       Target = "$HOME\Documents\Notes" }
+)
+
+# Archived repos (role: archive-repo). NEVER synced - a tombstone. IT-Worker archived
+# 2026-06-18 (active ops moved to EA\business\michaelgit). Parity: manifest.sh ARCHIVED_REPOS.
+$ArchivedRepos = @(
     @{ Remote = "git@github:MGallo-Code/IT-Worker.git";   Target = "$HOME\Documents\IT-Worker" }
 )
 
+# EA-only repos (skipped with --dev) - subset of active $Repos. Parity: manifest.sh EA_REPOS.
 $EARepos = @(
     "EA"
     "Wiki"
     "Notes"
-    "IT-Worker"
 )
 
 $Symlinks = @(
@@ -74,8 +87,12 @@ $GlobalSkillsDir = "$HOME\Documents\EA\claude-config\global-skills"
 $ProjectSkills = @(
     @{ Label = "ea";        Dir = "$HOME\Documents\EA\.claude\skills" }
     @{ Label = "wiki";      Dir = "$HOME\Documents\Wiki\.claude\skills" }
-    @{ Label = "it-worker"; Dir = "$HOME\Documents\IT-Worker\.claude\skills" }
     @{ Label = "sbic";      Dir = "$HOME\Documents\SBIC\.claude\skills" }
+)
+# Archived project skills (role: archive-project-skills). IT-Worker skills archived
+# 2026-06-18; recorded but NEVER linked. Parity: manifest.sh ARCHIVED_PROJECT_SKILLS.
+$ArchivedProjectSkills = @(
+    @{ Label = "it-worker"; Dir = "$HOME\Documents\IT-Worker\.claude\skills.archived-2026-06-18" }
 )
 $ProjectSkillsTargets = @(
     "$HOME\.codex\skills"

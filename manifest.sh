@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
 # Dotfiles manifest - single source of truth for repos, symlinks, and directories
 
-# Repos to clone: "remote|target_path"
+# ── Managed-root ROLES (what dotfiles knows about each root it touches) ───────
+# Dotfiles is the transport layer; every root it manages has exactly one role:
+#   active-repo      synced by sync (REPOS): pull/push/commit each run
+#   archive-repo     legacy, NOT synced (ARCHIVED_REPOS): kept for reference only
+#   external-managed forked upstream, security-gated sync (AGENT_SKILLS_DIR)
+#   generated-target written by dotfiles, never hand-edited (COMBINED_RULES_TARGETS,
+#                    PROJECT_SKILLS_TARGETS, codex prompts / gemini commands)
+#   artifact-dir     ensured to exist, content owned by the user (DIRECTORIES)
+# An archived root must NEVER appear in an active list, or it resurrects stale generated
+# affordances (e.g. the dangling it-worker-* skill links). See INVARIANTS.md.
+
+# Active repos to clone/sync: "remote|target_path" (role: active-repo)
 REPOS=(
   "git@github:MGallo-Code/EA.git|~/Documents/EA"
   "git@github:MGallo-Code/NVIM-Setup.git|~/.config/nvim"
   "git@github:MGallo-Code/Wiki.git|~/Documents/Wiki"
   "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
+)
+
+# Archived repos: "remote|target_path" (role: archive-repo). NEVER synced - a tombstone so
+# dotfiles knows the root exists and is intentionally inactive. IT-Worker was archived
+# 2026-06-18 (active michaelgit ops moved to ~/Documents/EA/business/michaelgit; see
+# IT-Worker/ARCHIVED.md). Not iterated by any sync loop.
+ARCHIVED_REPOS=(
   "git@github:MGallo-Code/IT-Worker.git|~/Documents/IT-Worker"
 )
 
-# EA-only repos (skipped with --dev)
+# EA-only repos (skipped with --dev) - subset of active REPOS above
 EA_REPOS=(
   "git@github:MGallo-Code/EA.git|~/Documents/EA"
   "git@github:MGallo-Code/Wiki.git|~/Documents/Wiki"
   "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
-  "git@github:MGallo-Code/IT-Worker.git|~/Documents/IT-Worker"
 )
 
 # Symlinks to create: "source|target"
@@ -139,8 +156,14 @@ GLOBAL_SKILLS_DIR="~/Documents/EA/claude-config/global-skills"
 PROJECT_SKILLS=(
   "ea|~/Documents/EA/.claude/skills"
   "wiki|~/Documents/Wiki/.claude/skills"
-  "it-worker|~/Documents/IT-Worker/.claude/skills"
   "sbic|~/Documents/SBIC/.claude/skills"
+)
+# Archived project skills (role: archive-project-skills). IT-Worker's skills were archived
+# 2026-06-18 to .claude/skills.archived-2026-06-18; recorded here but NEVER linked, so
+# codex/gemini get no it-worker-* affordances. The stale dangling links left from before
+# the archive are pruned by sync's stale-skill cleanup + scripts/ci/check-skill-targets.py.
+ARCHIVED_PROJECT_SKILLS=(
+  "it-worker|~/Documents/IT-Worker/.claude/skills.archived-2026-06-18"
 )
 # codex + gemini global skills dirs (AGENT_SKILLS_TARGETS minus Claude - Claude keeps
 # the un-namespaced project-scoped originals).

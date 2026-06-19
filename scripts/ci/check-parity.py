@@ -53,6 +53,19 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"AGENTS\.md|GEMINI\.md"),
     },
     {
+        # Managed-root roles: archived roots are tracked separately and never synced, so
+        # both manifests must carry the ARCHIVED_REPOS tombstone (IT-Worker). If one side
+        # drops it, that root silently looks active again on that OS.
+        "name": "archived repos tracked (role metadata, not an active sync list)",
+        "sh": ("manifest.sh", r"ARCHIVED_REPOS"),
+        "ps1": ("manifest.ps1", r"ArchivedRepos"),
+    },
+    {
+        "name": "archived project skills tracked (not an active skill source)",
+        "sh": ("manifest.sh", r"ARCHIVED_PROJECT_SKILLS"),
+        "ps1": ("manifest.ps1", r"ArchivedProjectSkills"),
+    },
+    {
         "name": "MCP server: nexus",
         "sh": ("setup.sh", r"nexus"),
         "ps1": ("setup.ps1", r"nexus"),

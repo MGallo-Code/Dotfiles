@@ -101,14 +101,18 @@ machine-local:
 
 ## Cross-Check Command
 
-For manual Gemini refutation:
+For manual Gemini refutation. Send a CONCISE SUMMARY by default (the framed claim + the
+minimal diff/code under test) - never the raw workspace or whole files; a raw export needs
+explicit human approval. See the `coding-mastermind-cross-check` skill for the full export
+policy and the structured vendor statuses.
 
 ```bash
-gemini --skip-trust --approval-mode plan -m gemini-3.1-flash-lite -p "Try to REFUTE this: ..."
+gemini --skip-trust --approval-mode plan -m gemini-3.1-flash-lite -p "Try to REFUTE this: <concise claim + minimal diff>"
 ```
 
-If a future agent says Gemini is unavailable, first check that a new shell sees
-the key without printing it:
+Report Gemini's outcome with a STRUCTURED status (CLI-missing / unauthenticated /
+export-approval-needed / policy-blocked / timeout / succeeded), never a vague "unavailable".
+If it looks `unauthenticated`, first check that a new shell sees the key without printing it:
 
 ```bash
 zsh -lc 'test -n "$GEMINI_API_KEY" && echo GEMINI_API_KEY=present || echo GEMINI_API_KEY=missing'

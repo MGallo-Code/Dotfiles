@@ -598,6 +598,12 @@ function Sync-SkillsRepo {
     Pop-Location
 }
 
+# Sourceable for tests: stop here when DOT-SOURCED (InvocationName '.') so the INV-3 gate corpus
+# can pull in Test-SkillDiffGate without running the sync flow. Normal execution
+# (`& sync.ps1` from shell/windows/core.ps1) has InvocationName '&', so main always runs - a
+# no-op in production. (parity with sync.sh's BASH_SOURCE source-guard.)
+if ($MyInvocation.InvocationName -eq '.') { return }
+
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
 $NexusDb = "$HOME\Documents\EA\nexus\nexus.db"
 if ((Test-Path $NexusDb) -and (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {

@@ -48,6 +48,14 @@ FEATURES = [
         "ps1": ("sync.ps1", r"skills-scan"),
     },
     {
+        # Both sync scripts carry a source-guard so the INV-3 gate corpus can pull in the gate
+        # function without running the sync flow. If one side loses its guard, dot-sourcing it in
+        # the test would run main (or the cross-check would silently stop covering that side).
+        "name": "sync scripts test-sourceable (INV-3 corpus source-guard)",
+        "sh": ("sync.sh", r"Sourceable for tests"),
+        "ps1": ("sync.ps1", r"Sourceable for tests"),
+    },
+    {
         "name": "codex/gemini agent-rules wired",
         "sh": ("manifest.sh", r"AGENTS\.md|GEMINI\.md"),
         "ps1": ("manifest.ps1", r"AGENTS\.md|GEMINI\.md"),

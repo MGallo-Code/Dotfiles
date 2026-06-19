@@ -175,6 +175,20 @@ FEATURES = [
         "ps1": ("sync.ps1", r"COMMAND_MIRROR_VERIFY"),
     },
     {
+        # INV-6: sync runs the --machine check after pruning, so a dangling generated skill
+        # link surfaces every sync (not just in the developer's head). Both OSes.
+        "name": "skill-target machine verify run in sync (no dangling generated link)",
+        "sh": ("sync.sh", r"check-skill-targets"),
+        "ps1": ("sync.ps1", r"check-skill-targets"),
+    },
+    {
+        # INV-8: sync runs the worktree advisory, so a top-level stray worktree is flagged
+        # every sync. Advisory (never fails), but it must actually RUN on both OSes.
+        "name": "worktree advisory run in sync (no top-level stray worktree)",
+        "sh": ("sync.sh", r"check-worktrees"),
+        "ps1": ("sync.ps1", r"check-worktrees"),
+    },
+    {
         "name": "Claude allowlist mirrored into codex/gemini",
         "sh": ("sync.sh", r"gen-agent-allowlist"),
         "ps1": ("sync.ps1", r"gen-agent-allowlist"),

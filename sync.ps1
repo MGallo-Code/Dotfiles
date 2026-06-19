@@ -626,9 +626,17 @@ if ($pyCmd) {
     $cmdArgs = @()
     foreach ($cs in $CommandSources) { $cmdArgs += "$($cs.Prefix):$($cs.Dir)" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-commands.py") @cmdArgs
+    if ($LASTEXITCODE -ne 0) { Write-Warn "command generation reported an issue" }
     # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt + gemini command.
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-commands.py") --verify @cmdArgs
+    if ($LASTEXITCODE -ne 0) { Write-Warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex/gemini output" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-allowlist.py")
+    if ($LASTEXITCODE -ne 0) { Write-Warn "allowlist mirror reported an issue" }
+    # Machine-state verification (advisory; INV-6 + INV-8): prove the skill-link prune left no
+    # dangling generated link, and flag any top-level worktree masquerading as a canonical root.
+    & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-skill-targets.py") --machine
+    if ($LASTEXITCODE -ne 0) { Write-Warn "check-skill-targets --machine: a generated skill link is dangling - investigate" }
+    & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-worktrees.py")
 }
 else {
     Write-Warn "python not found - skipping cross-agent command + allowlist generation"

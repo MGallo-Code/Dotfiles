@@ -366,8 +366,8 @@ PY
 # Prune skill links whose source no longer exists (e.g. the it-worker-* links left after
 # IT-Worker's skills were archived 2026-06-18). ONLY removes dangling SYMLINKS - a real
 # directory (a materialized gemini project skill, or a user-authored skill) fails the -L
-# test and is never touched. Idempotent: a second run finds nothing. scripts/ci/
-# check-skill-targets.py --machine asserts no dangling link survives. See INVARIANTS.md.
+# test and is never touched. Idempotent: a second run finds nothing. The sync-time machine
+# check (below) then asserts no dangling generated link survives. See INVARIANTS.md.
 clean_stale_skill_symlinks() {
     local tgt_root link
     for tgt_root in "${AGENT_SKILLS_TARGETS[@]}" "${PROJECT_SKILLS_TARGETS[@]}"; do
@@ -588,6 +588,10 @@ if command -v python3 >/dev/null 2>&1; then
     # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt + gemini command.
     python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" --verify "${cmd_args[@]}" || warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex/gemini output"
     python3 "$DOTFILES_DIR/scripts/gen-agent-allowlist.py" || warn "allowlist mirror reported an issue"
+    # Machine-state verification (advisory; INV-6 + INV-8): prove the skill-link prune left no
+    # dangling generated link, and flag any top-level worktree masquerading as a canonical root.
+    python3 "$DOTFILES_DIR/scripts/ci/check-skill-targets.py" --machine || warn "check-skill-targets --machine: a generated skill link is dangling - investigate"
+    python3 "$DOTFILES_DIR/scripts/ci/check-worktrees.py" || true
 else
     warn "python3 not found - skipping cross-agent command + allowlist generation"
 fi

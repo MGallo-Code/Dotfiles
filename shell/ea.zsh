@@ -1,28 +1,42 @@
 # EA-specific shell commands
 
-# Navigate to EA and open Claude
-ea() {
-    cd ~/Documents/EA && claude
+# ── Workspace launchers ──────────────────────────────────────────────
+# cd into a workspace root and open an agent. An optional FIRST flag picks the CLI:
+#   --claude (default) | --codex | --gemini ; any remaining args pass through.
+#   e.g.  ea            -> Claude in ~/Documents/EA
+#         wiki --codex  -> Codex in ~/Documents/Wiki
+_ws_launch() {
+    local dir="$1"; shift
+    local cli="claude"
+    case "${1:-}" in
+        --claude) cli="claude"; shift ;;
+        --codex)  cli="codex";  shift ;;
+        --gemini) cli="gemini"; shift ;;
+    esac
+    cd "$dir" && "$cli" "$@"
 }
 
-# Navigate to Wiki and open Claude
-wiki() {
-    cd ~/Documents/Wiki && claude
-}
+ea()   { _ws_launch ~/Documents/EA "$@"; }        # active personal ops + MCP tools
+wiki() { _ws_launch ~/Documents/Wiki "$@"; }      # LLM-curated research
+it()   { _ws_launch ~/Documents/IT-Worker "$@"; } # legacy archive (deprecated write target)
 
-# Navigate to IT Worker and open Claude
-it() {
-    cd ~/Documents/IT-Worker && claude
-}
-
-# Update the Michael Workspace SYSTEM: launch Claude in the dotfiles control plane (manifest.sh
-# is the map of every managed root + its role) with the source roots it distributes (EA =
-# rules/commands/skills/MCP) and the skills kit added. Pass-through args go to claude. Codex and
-# Gemini already see the whole workspace via the michael_workspace profile, so for those just
-# `cd ~/.dotfiles && codex` (or gemini).
+# Update the Michael Workspace SYSTEM: open an agent in the dotfiles control plane (manifest.sh
+# is the map of every managed root + its role). For Claude (default) we add the EA + agent-skills
+# source roots it distributes; Codex/Gemini already see the whole workspace via the
+# michael_workspace profile. Same --claude/--codex/--gemini flag.
 sysupdate() {
-    cd ~/.dotfiles && claude --add-dir ~/Documents/EA --add-dir ~/Documents/agent-skills "$@"
+    cd ~/.dotfiles || return
+    case "${1:-}" in
+        --codex)  shift; codex "$@" ;;
+        --gemini) shift; gemini "$@" ;;
+        --claude) shift; claude --add-dir ~/Documents/EA --add-dir ~/Documents/agent-skills "$@" ;;
+        *)               claude --add-dir ~/Documents/EA --add-dir ~/Documents/agent-skills "$@" ;;
+    esac
 }
+
+# Tab-complete the agent flags for the workspace launchers.
+_ws_agent_completion() { compadd -- --claude --codex --gemini; }
+compdef _ws_agent_completion ea wiki it sysupdate
 
 # courier remote (ADR-0002): expose the bearer token to MCP clients. claude/gemini
 # reference it as ${COURIER_BEARER} in their courier http header; codex reads it via

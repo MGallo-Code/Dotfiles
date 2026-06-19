@@ -422,6 +422,26 @@ function Copy-GeminiProjectSkill {
     Write-Ok "skills: materialized $NamespacedName -> $(Split-Path $Target -Parent | Split-Path -Leaf)"
 }
 
+# Prune skill links whose source no longer exists (mirror of sh clean_stale_skill_symlinks).
+# ONLY removes reparse points (junctions/symlinks) whose target is gone - a real directory
+# (materialized gemini project skill, or a user skill) is never touched. Idempotent.
+# (parity-checked: scripts/ci/check-parity.py)
+function Clean-StaleSkillSymlinks {
+    $targets = @($AgentSkillsTargets + $ProjectSkillsTargets) | Select-Object -Unique
+    foreach ($tgtRoot in $targets) {
+        if (-not (Test-Path $tgtRoot)) { continue }
+        foreach ($item in (Get-ChildItem -Path $tgtRoot -Force -ErrorAction SilentlyContinue)) {
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                $target = (Get-Item $item.FullName -Force).Target
+                if (-not $target -or -not (Test-Path $target)) {
+                    Remove-Item $item.FullName -Force
+                    Write-Ok "skills: pruned stale link $($item.Name) (source archived/removed)"
+                }
+            }
+        }
+    }
+}
+
 # vendor + custom-global skills -> all 3 agents (un-namespaced); project (repo-scoped)
 # skills -> codex/gemini only, namespaced <label>- (EA and Wiki both define `refresh`).
 function Update-AgentSkillsLinks {
@@ -430,6 +450,7 @@ function Update-AgentSkillsLinks {
     foreach ($ps in $ProjectSkills) {
         Link-SkillDirs $ps.Dir "$($ps.Label)-" $ProjectSkillsTargets
     }
+    Clean-StaleSkillSymlinks   # prune links whose source was removed/archived (idempotent)
 }
 
 # P0 deterministic gate. Sets $script:SkillGateReason. Returns $true = passes

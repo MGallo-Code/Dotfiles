@@ -29,3 +29,10 @@ fi
 if [ -f "$ROOT/scripts/ci/check-courier-wiring.py" ]; then
   "$PY" "$ROOT/scripts/ci/check-courier-wiring.py"
 fi
+
+# Skill-target hygiene: no archived root leaks into an active list (manifest mode only;
+# the machine-state --machine scan runs during `sync`, not here, so a commit never depends
+# on local skill-link state).
+if [ -f "$ROOT/scripts/ci/check-skill-targets.py" ]; then
+  "$PY" "$ROOT/scripts/ci/check-skill-targets.py"
+fi

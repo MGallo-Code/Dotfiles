@@ -56,3 +56,16 @@ jobs:
           python-version: "3.12"
       - name: check-courier-wiring
         run: python scripts/ci/check-courier-wiring.py
+
+  skill-targets:
+    # Generated skills have a live source; an archived root never leaks into an active list.
+    # CI runs the manifest mode only (the --machine dangling-link scan needs the generated
+    # skill dirs, which exist on a dev machine / during sync, not on a bare runner).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-skill-targets
+        run: python scripts/ci/check-skill-targets.py

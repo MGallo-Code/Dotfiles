@@ -26,6 +26,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-3 | The agent-skills sync security gate stays load-bearing and identical across platforms: an untrusted upstream diff auto-merges only when text-only + in-scope + clean (no net/exec/secret/prompt-injection/hidden-unicode) AND the LLM advisory clears it; any deterministic failure forces human review regardless of the LLM verdict (fails closed); bash and powershell enforce the SAME policy. | `gate_skill_diff()` (sync.sh) + `Test-SkillDiffGate` (sync.ps1), both delegating to `skills-scan.py`. | a malicious-corpus regression test across sh + ps1 + py (to build) | advisor-only | 0 |
 | INV-4 | The courier bearer token is never inlined into agent MCP wiring: the only token reference in a courier `mcp add` is the `${COURIER_BEARER}` env var (claude/gemini `--header`/`-H`) or `--bearer-token-env-var COURIER_BEARER` (codex); a literal token never reaches argv or a CLI's stored config. Distinct from INV-1 (the token lives OUTSIDE git, in `~/.config/courier/auth-token`, so the secret-scan never sees it). | The single `Authorization: Bearer` reference inside `register_courier_mcp`/`Register-CourierMcp` (manifest), which only ever names the env var. | `scripts/ci/check-courier-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
 | INV-5 | Courier is wired per-ROLE only through the shared function: the host-vs-client decision AND every courier `mcp add` live once in `manifest.{sh,ps1}` (`register_courier_mcp`/`Register-CourierMcp`); no `setup`/`sync` script wires courier directly. | `register_courier_mcp`/`Register-CourierMcp` in manifest; setup/sync only CALL it. | `scripts/ci/check-courier-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
+| INV-6 | Generated agent affordances derive only from ACTIVE roots: an archived root (`ARCHIVED_REPOS` / `ARCHIVED_PROJECT_SKILLS`) never appears in an active list, and a generated skill link points to a live source or is absent. User-authored real skill dirs are never touched. | The manifest active/archived split + `clean_stale_skill_symlinks`/`Clean-StaleSkillSymlinks` (prune dangling links on every regen). | `scripts/ci/check-skill-targets.py` (manifest mode: pre-commit + CI; `--machine` scan during `sync`) | local-green (pending merge) | 1 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -119,3 +120,25 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 - **Gate design**: COVERAGE over the setup/sync set - a new script cannot silently add a
   direct courier wiring.
 - **Escape hatch**: append `# courier-wiring-allow` to an audited line.
+
+### INV-6 - generated affordances derive only from active roots
+- **Surfaces**: `manifest.{sh,ps1}` (the active vs `ARCHIVED_*` lists), `sync.{sh,ps1}`
+  (`clean_stale_skill_symlinks`/`Clean-StaleSkillSymlinks` called at the end of every
+  `regen_agent_skills_links`/`Update-AgentSkillsLinks`), and the generated skill dirs
+  `~/.codex/skills` + `~/.gemini/skills`.
+- **Recurrence (recur=1)**: IT-Worker was archived 2026-06-18 (skills moved to
+  `.claude/skills.archived-2026-06-18`) but stayed in `REPOS`/`EA_REPOS`/`PROJECT_SKILLS`,
+  so sync kept regenerating 16 dangling `it-worker-*` links in codex + gemini. Root fix:
+  move it to `ARCHIVED_REPOS`/`ARCHIVED_PROJECT_SKILLS` (Phase 1) and prune dangling links
+  on regen (Phase 2).
+- **Gate design**: `check-skill-targets.py` has two scopes. MANIFEST mode (pre-commit + CI,
+  repo-deterministic) fails if an archived target/label leaks into an active list - the
+  guard against the root cause. `--machine` mode (run during `sync`, where the generated
+  dirs exist) fails if any dotfiles-generated skill link is left dangling - the guard
+  against residue. CI cannot run `--machine` (dirs absent on the runner), so it never
+  false-fails; the dev machine + sync own that scope.
+- **Why pruning is safe**: it only removes a path that is BOTH a symlink AND unresolved
+  (`-L` + `! -e`). A real directory (a materialized gemini project skill carrying
+  `.dotfiles-skill-source`, or a user-authored skill) fails `-L` and is never touched.
+- **Escape hatch**: none needed - a dangling generated link is always dead; a real dir is
+  never a candidate.

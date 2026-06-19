@@ -363,6 +363,24 @@ PY
     ok "skills: materialized ${namespaced} -> $(basename "$(dirname "$dst")")"
 }
 
+# Prune skill links whose source no longer exists (e.g. the it-worker-* links left after
+# IT-Worker's skills were archived 2026-06-18). ONLY removes dangling SYMLINKS - a real
+# directory (a materialized gemini project skill, or a user-authored skill) fails the -L
+# test and is never touched. Idempotent: a second run finds nothing. scripts/ci/
+# check-skill-targets.py --machine asserts no dangling link survives. See INVARIANTS.md.
+clean_stale_skill_symlinks() {
+    local tgt_root link
+    for tgt_root in "${AGENT_SKILLS_TARGETS[@]}" "${PROJECT_SKILLS_TARGETS[@]}"; do
+        tgt_root="$(expand "$tgt_root")"
+        [ -d "$tgt_root" ] || continue
+        for link in "$tgt_root"/*; do
+            if [ -L "$link" ] && [ ! -e "$link" ]; then
+                rm -f "$link" && ok "skills: pruned stale link $(basename "$link") (source archived/removed)"
+            fi
+        done
+    done
+}
+
 # Wire all skills into the agents: vendor + custom-global -> all 3 (claude/codex/gemini)
 # un-namespaced; project (repo-scoped) skills -> codex/gemini only, namespaced <label>-
 # (EA and Wiki both define `refresh`, so the namespace avoids a collision).
@@ -374,6 +392,7 @@ regen_agent_skills_links() {
         label="${entry%%|*}"; dir="${entry#*|}"
         link_skill_dirs "$dir" "${label}-" "${PROJECT_SKILLS_TARGETS[@]}"
     done
+    clean_stale_skill_symlinks   # prune links whose source was removed/archived (idempotent)
 }
 
 # P0 deterministic gate. Sets SKILL_GATE_REASON. Return 0 = passes (in-scope,

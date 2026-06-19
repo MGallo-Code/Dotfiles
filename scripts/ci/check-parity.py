@@ -156,6 +156,13 @@ FEATURES = [
         "ps1": ("sync.ps1", r"ProjectSkills"),
     },
     {
+        # Stale generated skill links (e.g. it-worker-* after the source was archived) get
+        # pruned on every regen, on BOTH platforms, so codex/gemini never carry a dead skill.
+        "name": "stale skill links pruned (dangling source removed, idempotent)",
+        "sh": ("sync.sh", r"clean_stale_skill_symlinks"),
+        "ps1": ("sync.ps1", r"Clean-StaleSkillSymlinks"),
+    },
+    {
         "name": "cross-agent commands generated (codex prompts + gemini TOML)",
         "sh": ("sync.sh", r"gen-agent-commands"),
         "ps1": ("sync.ps1", r"gen-agent-commands"),

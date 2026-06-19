@@ -585,6 +585,8 @@ if command -v python3 >/dev/null 2>&1; then
         cmd_args+=("${entry%%|*}:$(expand "${entry#*|}")")
     done
     python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" "${cmd_args[@]}" || warn "command generation reported an issue"
+    # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt + gemini command.
+    python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" --verify "${cmd_args[@]}" || warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex/gemini output"
     python3 "$DOTFILES_DIR/scripts/gen-agent-allowlist.py" || warn "allowlist mirror reported an issue"
 else
     warn "python3 not found - skipping cross-agent command + allowlist generation"

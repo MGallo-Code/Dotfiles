@@ -94,12 +94,9 @@ def clean_orphans(keep, directory, ext):
             print(f"  commands: removed orphan {fn}")
 
 
-def main(argv):
-    if not argv:
-        print("  ! commands: no sources passed (expected prefix:dir args)")
-        return 0
-    generated = 0
-    keep = set()
+def iter_sources(argv):
+    """Yield (name, dir, filename) for every source .md across the prefix:dir specs.
+    Shared by generate + --verify so the name computation can never drift between them."""
     for spec in argv:
         prefix, _, d = spec.partition(":")
         d = os.path.expanduser(d)
@@ -110,18 +107,88 @@ def main(argv):
                 continue
             base = fn[:-3]
             name = f"{prefix}-{base}" if prefix else base
-            try:
-                with open(os.path.join(d, fn), encoding="utf-8") as f:
-                    desc, body = strip_frontmatter(f.read())
-                emit(name, desc, body)
-            except Exception as e:
-                sys.stderr.write(f"  ! commands: skipping unreadable {fn} ({e})\n")
-                continue
-            keep.add(name)
-            generated += 1
+            yield name, d, fn
+
+
+# How each tool surfaces these generated files, for the discoverability index.
+INDEX = {
+    "codex":  ("Codex TUI",  "~/.codex/prompts",  "*.md",
+               "Type `/` to list custom prompts, or run one by name, e.g. `/handoff`."),
+    "gemini": ("Gemini CLI", "~/.gemini/commands", "*.toml",
+               "Type `/<name>`, e.g. `/handoff`."),
+}
+
+
+def write_index(directory, names, kind):
+    """Write a generated README.md (how to invoke + the command list) into a target dir.
+    Solves the discoverability gap: the commands mirror fine, but the user can't tell HOW
+    to invoke them in codex/gemini. Regenerated each run; protected from clean_orphans."""
+    os.makedirs(directory, exist_ok=True)
+    where, path, glob, how = INDEX[kind]
+    lines = [
+        f"<!-- {MARKER} -->",
+        f"# {where} commands (generated from Claude slash-commands)",
+        "",
+        "Mirrors of Michael's Claude Code slash-commands, REGENERATED on every `sync` from",
+        "the Claude `.md` sources - do not hand-edit (changes are overwritten). Source of",
+        "truth: `EA/claude-config/global-commands` (+ `SBIC/.claude/commands`, namespaced `sbic-`).",
+        "",
+        "## How to invoke",
+        how,
+        f"{where} loads every `{glob}` in `{path}/` as a command.",
+        "",
+        "## Available commands",
+    ]
+    lines += [f"- `/{n}`" for n in sorted(names)] or ["- (none)"]
+    lines.append("")
+    with open(os.path.join(directory, "README.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+def verify(argv):
+    """Assert every source command has a generated codex prompt AND gemini command.
+    The 'missing generated command fails a local check' gate (run during sync)."""
+    missing, n = [], 0
+    for name, _d, _fn in iter_sources(argv):
+        n += 1
+        if not os.path.isfile(os.path.join(CODEX_DIR, f"{name}.md")):
+            missing.append(f"codex prompt {name}.md")
+        if not os.path.isfile(os.path.join(GEMINI_DIR, f"{name}.toml")):
+            missing.append(f"gemini command {name}.toml")
+    if missing:
+        sys.stderr.write("  command-mirror verify FAILED - missing generated outputs:\n")
+        for m in missing:
+            sys.stderr.write(f"    - {m}\n")
+        return 1
+    print(f"  command-mirror verify OK - all {n} source command(s) mirror to codex + gemini")
+    return 0
+
+
+def main(argv):
+    if argv and argv[0] == "--verify":
+        return verify(argv[1:])
+    if not argv:
+        print("  ! commands: no sources passed (expected prefix:dir args)")
+        return 0
+    generated = 0
+    keep = set()
+    for name, d, fn in iter_sources(argv):
+        try:
+            with open(os.path.join(d, fn), encoding="utf-8") as f:
+                desc, body = strip_frontmatter(f.read())
+            emit(name, desc, body)
+        except Exception as e:
+            sys.stderr.write(f"  ! commands: skipping unreadable {fn} ({e})\n")
+            continue
+        keep.add(name)
+        generated += 1
+    # Discoverability index in each dir (regenerated; kept across the orphan-clean below).
+    write_index(CODEX_DIR, keep, "codex")
+    write_index(GEMINI_DIR, keep, "gemini")
+    keep.add("README")   # protect the codex index (.md) from clean_orphans
     clean_orphans(keep, CODEX_DIR, ".md")
     clean_orphans(keep, GEMINI_DIR, ".toml")
-    print(f"  commands: generated {generated} command(s) -> codex prompts + gemini TOML")
+    print(f"  commands: generated {generated} command(s) -> codex prompts + gemini TOML (+ index)")
     return 0
 
 

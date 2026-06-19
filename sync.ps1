@@ -626,6 +626,8 @@ if ($pyCmd) {
     $cmdArgs = @()
     foreach ($cs in $CommandSources) { $cmdArgs += "$($cs.Prefix):$($cs.Dir)" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-commands.py") @cmdArgs
+    # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt + gemini command.
+    & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-commands.py") --verify @cmdArgs
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-allowlist.py")
 }
 else {

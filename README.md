@@ -62,7 +62,7 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 **Generated for codex + gemini on every sync** (never hand-edit; the targets are read-only):
 - Combined agent rules from `EA/claude-config/global-rules/*.md` -> `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`
 - Global + per-repo project skills, namespaced (`ea-*`, `wiki-*`, `sbic-*`) into `~/.codex/skills`, `~/.gemini/skills`
-- Claude slash-commands -> codex prompts (`~/.codex/prompts/*.md`) + gemini commands (`~/.gemini/commands/*.toml`)
+- Claude slash-commands -> codex prompts (`~/.codex/prompts/*.md`) + gemini commands (`~/.gemini/commands/*.toml`). Invoke with `/<name>` (e.g. `/handoff`); each dir gets a generated `README.md` index listing commands + how to invoke them.
 - Tool allowlist mirrored into codex/gemini
 
 **Also:** Claude Code rules + hooks symlinks (`~/.claude/rules`, `~/.claude/hooks`), per-role courier MCP wiring, shell commands, SSH config, Homebrew packages.

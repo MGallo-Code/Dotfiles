@@ -168,6 +168,13 @@ FEATURES = [
         "ps1": ("sync.ps1", r"gen-agent-commands"),
     },
     {
+        # After generating, sync verifies every source command actually produced a codex
+        # prompt + gemini command (a missing mirror fails this local check), on both OSes.
+        "name": "command mirror verified (source cmd -> codex prompt + gemini cmd)",
+        "sh": ("sync.sh", r"COMMAND_MIRROR_VERIFY"),
+        "ps1": ("sync.ps1", r"COMMAND_MIRROR_VERIFY"),
+    },
+    {
         "name": "Claude allowlist mirrored into codex/gemini",
         "sh": ("sync.sh", r"gen-agent-allowlist"),
         "ps1": ("sync.ps1", r"gen-agent-allowlist"),

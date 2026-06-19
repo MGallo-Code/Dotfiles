@@ -36,3 +36,9 @@ fi
 if [ -f "$ROOT/scripts/ci/check-skill-targets.py" ]; then
   "$PY" "$ROOT/scripts/ci/check-skill-targets.py"
 fi
+
+# INV-9: no `local`/`declare` references a variable assigned earlier in the SAME statement
+# (unbound under `set -u` - the class of bug that crashed sync mid-regen 2026-06-18).
+if [ -f "$ROOT/scripts/ci/check-local-selfref.py" ]; then
+  "$PY" "$ROOT/scripts/ci/check-local-selfref.py"
+fi

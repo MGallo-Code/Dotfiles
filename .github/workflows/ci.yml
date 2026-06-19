@@ -69,3 +69,15 @@ jobs:
           python-version: "3.12"
       - name: check-skill-targets
         run: python scripts/ci/check-skill-targets.py
+
+  bash-local-selfref:
+    # INV-9: no `local`/`declare` references a variable assigned earlier in the SAME statement
+    # (unbound under `set -u` - the class of bug that crashed sync mid-regen 2026-06-18).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-local-selfref
+        run: python scripts/ci/check-local-selfref.py

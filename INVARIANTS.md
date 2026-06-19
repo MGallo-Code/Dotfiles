@@ -29,6 +29,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-6 | Generated agent affordances derive only from ACTIVE roots AND match their sources exactly: an archived root (`ARCHIVED_REPOS` / `ARCHIVED_PROJECT_SKILLS`) never appears in an active list; after a regen every active source skill HAS its generated link in each intended target (no missing link), no generated link dangles, and no two sources collide on a name in one target. User-authored real skill dirs are never touched. | The manifest active/archived split + `regen_agent_skills_links` (link + `clean_stale_skill_symlinks` prune on every regen) + the post-regen `--machine` assertion. | `scripts/ci/check-skill-targets.py` (manifest mode: pre-commit + CI; `--machine` completeness/dangling/collision during `sync`, BLOCKING on both OSes) | local-green (pending merge) | 2 |
 | INV-7 | Every Claude command source has a generated Codex prompt AND Gemini command, and each generated dir carries an invocation index, so the same commands are usable (and discoverable) in all three agents. | `gen-agent-commands.py` (one shared generator, called by both sync scripts) emits the mirror + a `README.md` index. | `gen-agent-commands.py --verify` run during `sync` on both OSes (a missing mirror fails the check); parity-gated by the `COMMAND_MIRROR_VERIFY` marker. | local-green (pending merge) | 1 |
 | INV-8 | A temporary git worktree does not masquerade as a canonical workspace root: every linked worktree lives under `~/Documents/Worktrees/` or is explicitly allowlisted; none sits as a bare top-level sibling of the project roots in `~/Documents`. | The canonical home `~/Documents/Worktrees` + the `ALLOWLIST` in the checker; the linked-worktree test is a `.git` FILE vs DIR. | `scripts/ci/check-worktrees.py` (ADVISORY - warns, never fails; run by hand or during `sync`) | advisor-only | 1 |
+| INV-9 | No bash `local`/`declare`/`typeset` statement references a variable assigned EARLIER in the SAME statement: under `set -u` the just-declared local is not yet visible while the rest of the statement's RHS is expanded, so the reference is UNBOUND and the script aborts. The dependent assignment is split onto its own `local` line. | One-assignment-per-dependent-`local` in every `*.sh`; the highest-stakes surface is `sync.sh` (runs under `set -uo pipefail`). | `scripts/ci/check-local-selfref.py` (static scan of tracked `*.sh`: pre-commit + CI) | local-green (pending merge) | 1 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -155,3 +156,24 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   `.dotfiles-skill-source`, or a user-authored skill) fails `-L` and is never touched.
 - **Escape hatch**: none needed - a dangling generated link is always dead; a real dir is
   never a candidate.
+
+### INV-9 - no `local` references a same-statement variable (set -u footgun)
+- **Surfaces**: every tracked `*.sh`; highest-risk is `sync.sh` (runs under `set -uo pipefail`
+  and does the skill-link generation).
+- **Recurrence (recur=1)**: 2026-06-18, `sync.sh` `materialize_gemini_project_skill` declared
+  `local src="$1" dst="$2" namespaced="$3" marker="$dst/.dotfiles-skill-source"`. On this
+  machine's bash the RHS of `marker` is expanded BEFORE the same-statement `dst` local is
+  visible, so under `set -u` `$dst` is UNBOUND - the function aborted at its first line, which
+  aborted `regen_agent_skills_links` and EVERYTHING after it in `sync` (exit 1), and silently
+  stopped gemini project skills from refreshing. `bash -n` (syntax only) and an isolation
+  harness (no `set -u`) both missed it; only running the real `sync` surfaced it. Root fix:
+  split `marker` onto its own `local` line.
+- **Gate design**: `check-local-selfref.py` statically scans every tracked `*.sh`. For each
+  `local`/`declare`/`typeset` statement it collects the assignment targets in order and flags
+  any later value that references an earlier same-statement target. It is quote-aware (a value
+  may contain spaces or `=`), splits on top-level `;`, and does NOT flag an OUTER-scope
+  self-reference like `local PATH="$PATH:/x"` (a name counts as assigned only AFTER its own
+  value is checked). Needs no machine state, so unlike the `--machine` skill check it is a real
+  green-in-CI + pre-commit enforcer.
+- **Escape hatch**: none needed - the dependent assignment always belongs on its own `local`
+  line; there is no legitimate same-statement back-reference under `set -u`.

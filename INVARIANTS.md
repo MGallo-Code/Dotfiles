@@ -26,7 +26,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-3 | The agent-skills sync security gate stays load-bearing and identical across platforms: an untrusted upstream diff auto-merges only when text-only + in-scope + clean (no net/exec/secret/prompt-injection/hidden-unicode) AND the LLM advisory clears it; any deterministic failure forces human review regardless of the LLM verdict (fails closed); bash and powershell enforce the SAME policy. | `gate_skill_diff()` (sync.sh) + `Test-SkillDiffGate` (sync.ps1), both delegating to `skills-scan.py`. | a malicious-corpus regression test across sh + ps1 + py (to build) | advisor-only | 0 |
 | INV-4 | The courier bearer token is never inlined into agent MCP wiring: the only token reference in a courier `mcp add` is the `${COURIER_BEARER}` env var (claude/gemini `--header`/`-H`) or `--bearer-token-env-var COURIER_BEARER` (codex); a literal token never reaches argv or a CLI's stored config. Distinct from INV-1 (the token lives OUTSIDE git, in `~/.config/courier/auth-token`, so the secret-scan never sees it). | The single `Authorization: Bearer` reference inside `register_courier_mcp`/`Register-CourierMcp` (manifest), which only ever names the env var. | `scripts/ci/check-courier-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
 | INV-5 | Courier is wired per-ROLE only through the shared function: the host-vs-client decision AND every courier `mcp add` live once in `manifest.{sh,ps1}` (`register_courier_mcp`/`Register-CourierMcp`); no `setup`/`sync` script wires courier directly. | `register_courier_mcp`/`Register-CourierMcp` in manifest; setup/sync only CALL it. | `scripts/ci/check-courier-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
-| INV-6 | Generated agent affordances derive only from ACTIVE roots: an archived root (`ARCHIVED_REPOS` / `ARCHIVED_PROJECT_SKILLS`) never appears in an active list, and a generated skill link points to a live source or is absent. User-authored real skill dirs are never touched. | The manifest active/archived split + `clean_stale_skill_symlinks`/`Clean-StaleSkillSymlinks` (prune dangling links on every regen). | `scripts/ci/check-skill-targets.py` (manifest mode: pre-commit + CI; `--machine` scan during `sync`) | local-green (pending merge) | 1 |
+| INV-6 | Generated agent affordances derive only from ACTIVE roots AND match their sources exactly: an archived root (`ARCHIVED_REPOS` / `ARCHIVED_PROJECT_SKILLS`) never appears in an active list; after a regen every active source skill HAS its generated link in each intended target (no missing link), no generated link dangles, and no two sources collide on a name in one target. User-authored real skill dirs are never touched. | The manifest active/archived split + `regen_agent_skills_links` (link + `clean_stale_skill_symlinks` prune on every regen) + the post-regen `--machine` assertion. | `scripts/ci/check-skill-targets.py` (manifest mode: pre-commit + CI; `--machine` completeness/dangling/collision during `sync`, BLOCKING on both OSes) | local-green (pending merge) | 2 |
 | INV-7 | Every Claude command source has a generated Codex prompt AND Gemini command, and each generated dir carries an invocation index, so the same commands are usable (and discoverable) in all three agents. | `gen-agent-commands.py` (one shared generator, called by both sync scripts) emits the mirror + a `README.md` index. | `gen-agent-commands.py --verify` run during `sync` on both OSes (a missing mirror fails the check); parity-gated by the `COMMAND_MIRROR_VERIFY` marker. | local-green (pending merge) | 1 |
 | INV-8 | A temporary git worktree does not masquerade as a canonical workspace root: every linked worktree lives under `~/Documents/Worktrees/` or is explicitly allowlisted; none sits as a bare top-level sibling of the project roots in `~/Documents`. | The canonical home `~/Documents/Worktrees` + the `ALLOWLIST` in the checker; the linked-worktree test is a `.git` FILE vs DIR. | `scripts/ci/check-worktrees.py` (ADVISORY - warns, never fails; run by hand or during `sync`) | advisor-only | 1 |
 
@@ -128,17 +128,28 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   (`clean_stale_skill_symlinks`/`Clean-StaleSkillSymlinks` called at the end of every
   `regen_agent_skills_links`/`Update-AgentSkillsLinks`), and the generated skill dirs
   `~/.codex/skills` + `~/.gemini/skills`.
-- **Recurrence (recur=1)**: IT-Worker was archived 2026-06-18 (skills moved to
+- **Recurrence (recur=2)**: (1) IT-Worker was archived 2026-06-18 (skills moved to
   `.claude/skills.archived-2026-06-18`) but stayed in `REPOS`/`EA_REPOS`/`PROJECT_SKILLS`,
   so sync kept regenerating 16 dangling `it-worker-*` links in codex + gemini. Root fix:
   move it to `ARCHIVED_REPOS`/`ARCHIVED_PROJECT_SKILLS` (Phase 1) and prune dangling links
-  on regen (Phase 2).
+  on regen (Phase 2). (2) 2026-06-18: 9 EA project skills authored in
+  `~/Documents/EA/.claude/skills` were never linked into `~/.codex/skills` because no `sync`
+  ran after authoring them, so codex silently exposed 9 fewer skills than gemini. The
+  dangling-only `--machine` check was BLIND to it (the links were ABSENT, not broken). Root
+  fix: a COMPLETENESS assertion (every source skill HAS its link in each target) + a
+  COLLISION assertion, both BLOCKING, run post-regen.
 - **Gate design**: `check-skill-targets.py` has two scopes. MANIFEST mode (pre-commit + CI,
   repo-deterministic) fails if an archived target/label leaks into an active list - the
   guard against the root cause. `--machine` mode (run during `sync`, where the generated
-  dirs exist) fails if any dotfiles-generated skill link is left dangling - the guard
-  against residue. CI cannot run `--machine` (dirs absent on the runner), so it never
-  false-fails; the dev machine + sync own that scope.
+  dirs exist) makes THREE assertions and is BLOCKING (sync exits non-zero on both OSes): no
+  DANGLING link (residue), COMPLETENESS (every active source skill has its link in each
+  intended target - catches the added-but-unlinked drift the dangling scan missed), and no
+  name COLLISION (two sources shadowing one name). It mirrors `regen_agent_skills_links`
+  exactly (vendor+global -> all 3 agents un-namespaced; project skills -> codex/gemini
+  namespaced, NEVER claude, which reads repo `.claude/skills` natively) and runs AFTER regen,
+  so a violation is a real fault, not a mid-sync race. Guarded: an absent target dir (fresh
+  machine) is skipped, never a false-fail. CI cannot run `--machine` (dirs absent on the
+  runner), so it never false-fails CI; the dev machine + sync own that scope.
 - **Why pruning is safe**: it only removes a path that is BOTH a symlink AND unresolved
   (`-L` + `! -e`). A real directory (a materialized gemini project skill carrying
   `.dotfiles-skill-source`, or a user-authored skill) fails `-L` and is never touched.

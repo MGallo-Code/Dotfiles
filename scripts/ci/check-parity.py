@@ -93,6 +93,14 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"global-hooks"),
     },
     {
+        # ~/.claude/agents dir-symlinked so Claude subagent defs (human-voice) are managed +
+        # reproducible, not a stale hand-linked copy. Claude-only (codex/gemini have no subagent
+        # concept) - a SYMLINKS-array concern, never a skills-target one.
+        "name": "~/.claude/agents dir wired (Claude subagent defs)",
+        "sh": ("manifest.sh", r"global-agents"),
+        "ps1": ("manifest.ps1", r"global-agents"),
+    },
+    {
         "name": "repo git-hooks wired (core.hooksPath)",
         "sh": ("setup.sh", r"hooksPath"),
         "ps1": ("setup.ps1", r"hooksPath"),

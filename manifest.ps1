@@ -32,6 +32,9 @@ $Symlinks = @(
     # stacked-push guard) are available on Windows too. Without this, ~/.claude/hooks
     # never exists on Windows. (parity-checked: scripts/ci/check-parity.py)
     @{ Source = "$HOME\Documents\EA\claude-config\global-hooks"; Target = "$HOME\.claude\hooks" }
+    # Mirror of manifest.sh: global-agents -> ~/.claude/agents (Claude subagent defs).
+    # Claude-only; codex/gemini have no subagent concept. (parity-checked: scripts/ci/check-parity.py)
+    @{ Source = "$HOME\Documents\EA\claude-config\global-agents"; Target = "$HOME\.claude\agents" }
 )
 
 # Codex and Gemini each load ONE global instruction file. Mirror of manifest.sh:

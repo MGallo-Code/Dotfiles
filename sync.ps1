@@ -3,6 +3,11 @@
 $DotfilesDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . "$DotfilesDir\manifest.ps1"
 
+# INV-6: set true when the machine-state skill-target check fails, so sync exits non-zero at
+# the end (parity with sync.sh's SKILL_TARGET_FAIL). Initialized here so the end-of-run read
+# is always defined.
+$SkillTargetFail = $false
+
 function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     $codexDir = Join-Path $HOME ".codex"
     $codexConfig = Join-Path $codexDir "config.toml"
@@ -632,10 +637,11 @@ if ($pyCmd) {
     if ($LASTEXITCODE -ne 0) { Write-Warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex/gemini output" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-allowlist.py")
     if ($LASTEXITCODE -ne 0) { Write-Warn "allowlist mirror reported an issue" }
-    # Machine-state verification (advisory; INV-6 + INV-8): prove the skill-link prune left no
-    # dangling generated link, and flag any top-level worktree masquerading as a canonical root.
+    # Machine-state verification (INV-6 BLOCKING + INV-8 advisory; parity with sync.sh). Runs
+    # AFTER regen, so dangling/missing/colliding links mean the tree is genuinely wrong: flag now,
+    # fail the run at the end. Guarded: absent target dirs (fresh machine) are skipped in the check.
     & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-skill-targets.py") --machine
-    if ($LASTEXITCODE -ne 0) { Write-Warn "check-skill-targets --machine: a generated skill link is dangling - investigate" }
+    if ($LASTEXITCODE -ne 0) { Write-Err "check-skill-targets --machine: skill links incomplete/dangling/colliding (above) - run a full sync; if it persists, investigate"; $SkillTargetFail = $true }
     & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-worktrees.py")
 }
 else {
@@ -918,3 +924,10 @@ Nothing else. No explanation.
 }
 
 Write-Host ""
+
+# INV-6: a machine-state skill-target violation (flagged above) fails the whole sync run
+# (parity with sync.sh). Sync still completed its other work first.
+if ($SkillTargetFail) {
+    Write-Err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+}

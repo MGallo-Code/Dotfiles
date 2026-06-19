@@ -588,9 +588,11 @@ if command -v python3 >/dev/null 2>&1; then
     # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt + gemini command.
     python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" --verify "${cmd_args[@]}" || warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex/gemini output"
     python3 "$DOTFILES_DIR/scripts/gen-agent-allowlist.py" || warn "allowlist mirror reported an issue"
-    # Machine-state verification (advisory; INV-6 + INV-8): prove the skill-link prune left no
-    # dangling generated link, and flag any top-level worktree masquerading as a canonical root.
-    python3 "$DOTFILES_DIR/scripts/ci/check-skill-targets.py" --machine || warn "check-skill-targets --machine: a generated skill link is dangling - investigate"
+    # Machine-state verification (INV-6 BLOCKING + INV-8 advisory). check-skill-targets --machine
+    # runs AFTER regen_agent_skills_links (508/552), so dangling/missing/colliding links mean the
+    # tree is genuinely wrong, not mid-sync: flag now, fail the run at the end (not warn-and-forget).
+    # Guarded: absent target dirs (fresh machine) are skipped inside the check, never a false-fail.
+    python3 "$DOTFILES_DIR/scripts/ci/check-skill-targets.py" --machine || { err "check-skill-targets --machine: skill links incomplete/dangling/colliding (above) - run a full sync; if it persists, investigate"; SKILL_TARGET_FAIL=1; }
     python3 "$DOTFILES_DIR/scripts/ci/check-worktrees.py" || true
 else
     warn "python3 not found - skipping cross-agent command + allowlist generation"
@@ -852,3 +854,10 @@ Nothing else. No explanation."
 fi
 
 echo ""
+
+# INV-6: a machine-state skill-target violation (flagged above) fails the whole sync run -
+# the link tree is not in the expected state. Sync still completed its other work first.
+if [ "${SKILL_TARGET_FAIL:-0}" = 1 ]; then
+    err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+fi

@@ -328,7 +328,11 @@ link_skill_dirs() {
 }
 
 materialize_gemini_project_skill() {
-    local src="$1" dst="$2" namespaced="$3" marker="$dst/.dotfiles-skill-source"
+    # marker MUST be a SEPARATE `local`: referencing $dst in the same `local` that declares it
+    # expands to UNBOUND under `set -u` (bash evaluates the RHS before the just-declared local
+    # is visible), which crashed sync mid-regen and aborted everything after it. (fix 2026-06-18)
+    local src="$1" dst="$2" namespaced="$3"
+    local marker="$dst/.dotfiles-skill-source"
     if [ -L "$dst" ]; then
         rm -f "$dst"
     elif [ -e "$dst" ]; then

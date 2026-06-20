@@ -84,7 +84,11 @@ sysupdate     # = cd ~/.dotfiles && claude --add-dir ~/Documents/EA --add-dir ~/
 - `INVARIANTS.md` + the pre-commit hook + CI are the rules and their mechanical enforcers.
 - Claude Code scopes to its launch dir, so `sysupdate` adds the EA + agent-skills source roots.
   Codex and Gemini already see the whole workspace (the `michael_workspace` permission profile
-  + Gemini `includeDirectories`), so for those just `cd ~/.dotfiles && codex` (or `gemini`).
+  + Gemini `includeDirectories`), so for those use `sysupdate --codex` / `sysupdate --gemini`.
+- The workspace launchers (`ea`, `wiki`, `sbic`, `sysupdate`) open Codex/Gemini with
+  auto-approve and **no sandbox** (`codex --dangerously-bypass-approvals-and-sandbox`,
+  `gemini --yolo`), so an agent never stops to ask before editing files or running commands.
+  Claude keeps its own permission model. Use them only in trusted local roots.
 
 For everyday **ops** (email, calendar, nexus, notes) start in `~/Documents/EA` instead, where
 the MCP servers and the Nexus DB live.

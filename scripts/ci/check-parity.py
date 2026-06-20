@@ -229,6 +229,28 @@ FEATURES = [
         "sh": ("sync.sh", r"GEMINI_CROSS_CHECK_SETUP|setup-gemini-cross-check"),
         "ps1": ("sync.ps1", r"GEMINI_CROSS_CHECK_SETUP|setup-gemini-cross-check"),
     },
+    # --- Workspace launchers (shell/ea.zsh <-> shell/windows/ea.ps1). These convenience
+    #     functions (ea/wiki/sbic/sysupdate) are the ONLY interactive codex/gemini launch
+    #     surface and were previously ungated, so a one-OS drift shipped silently. ---
+    {
+        # codex launches must carry the bypass-approvals-and-sandbox flag on BOTH OSes, else
+        # that side silently reverts to prompting/sandboxing the agent.
+        "name": "workspace launchers auto-approve codex (no-sandbox bypass)",
+        "sh": ("shell/ea.zsh", r"--dangerously-bypass-approvals-and-sandbox"),
+        "ps1": ("shell/windows/ea.ps1", r"--dangerously-bypass-approvals-and-sandbox"),
+    },
+    {
+        # gemini launches must carry --yolo (auto-approve all tools) on BOTH OSes.
+        "name": "workspace launchers auto-approve gemini (--yolo)",
+        "sh": ("shell/ea.zsh", r"gemini --yolo"),
+        "ps1": ("shell/windows/ea.ps1", r"gemini --yolo"),
+    },
+    {
+        # The sbic launcher (cd ~/Documents/SBIC + open an agent) exists on both OSes.
+        "name": "sbic workspace launcher present",
+        "sh": ("shell/ea.zsh", r"\bsbic\b"),
+        "ps1": ("shell/windows/ea.ps1", r"\bsbic\b"),
+    },
 ]
 
 PARITY_EXEMPT = [

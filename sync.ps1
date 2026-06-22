@@ -752,7 +752,7 @@ function Register-GlobalMcp {
     foreach ($name in @("nexus", "courier", "docgen", "calendar")) {
         switch ($Cli) {
             "claude" { & $cmd.Source mcp remove --scope=user $name 2>$null | Out-Null }
-            "codex"  { & $cmd.Source mcp remove $name 2>$null | Out-Null }
+            "codex"  { }  # codex entries are text-stripped in the add-switch below (mcp remove can't load a broken config.toml)
             "gemini" { & $cmd.Source mcp remove --scope user $name 2>$null | Out-Null }
         }
     }
@@ -765,6 +765,16 @@ function Register-GlobalMcp {
                 & $cmd.Source mcp add --scope=user calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
         }
         "codex" {
+            # codex keeps MCP servers in config.toml; `codex mcp` can't run when that file
+            # won't parse (a drifted-version entry with an invalid transport), deadlocking
+            # re-wiring. Text-strip the managed blocks first so codex can always load.
+            $cfg = Join-Path $HOME ".codex\config.toml"
+            if (Test-Path $cfg) {
+                $c = Get-Content $cfg -Raw
+                $c = [regex]::Replace($c, '(?m)^\[mcp_servers\.(?:nexus|courier|docgen|calendar)(?:\.[^\]]*)?\][^\r\n]*\r?\n(?:(?!^\[)[^\r\n]*\r?\n?)*', '')
+                $c = [regex]::Replace($c, '(\r?\n){3,}', "`n`n")
+                Set-Content -Path $cfg -Value $c -NoNewline
+            }
             & $cmd.Source mcp add nexus -- node $NexusServer | Out-Null
             Register-CourierMcp $Cli $cmd.Source
             & $cmd.Source mcp add docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null

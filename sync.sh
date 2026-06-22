@@ -693,7 +693,14 @@ if [ -f "$NEXUS_SERVER" ]; then
                     -- uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
                 ;;
             codex)
-                for name in nexus courier docgen calendar; do "$cli" mcp remove "$name" >/dev/null 2>&1; done
+                # codex keeps MCP servers in config.toml; `codex mcp remove` can't run when
+                # that file won't parse (a drifted-version entry with an invalid transport),
+                # which deadlocks re-wiring. Text-strip the managed blocks first so codex can
+                # always load, then re-add them below (self-heal, like the perm-profile fix).
+                perl -0pi -e '
+                    s/^\[mcp_servers\.(?:nexus|courier|docgen|calendar)(?:\.[^\]]*)?\][^\n]*\n(?:(?!^\[)[^\n]*\n?)*//mg;
+                    s/\n{3,}/\n\n/g;
+                ' "$HOME/.codex/config.toml" 2>/dev/null || true
                 "$cli" mcp add nexus -- node "$NEXUS_SERVER" >/dev/null
                 register_courier_mcp "$cli"
                 "$cli" mcp add docgen --env "PYTHONPATH=$DOCGEN_SRC" \

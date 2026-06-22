@@ -30,18 +30,22 @@ else
     echo "    SKIP - $DOTFILES/sync.sh not found (run 'cd ~/.dotfiles && git pull' first)"
 fi
 
-echo "==> [2/3] Pull SBIC (manual; SBIC is never auto-synced)"
+echo "==> [2/3] SBIC: clone if missing, else pull (manual; SBIC is never auto-synced)"
+# ~/Documents/SBIC is the docs umbrella (sbic-docs); platform/ is a separate nested
+# repo (sbic-platform). Clone docs first so its dir exists for the platform clone.
 for d in "$HOME/Documents/SBIC" "$HOME/Documents/SBIC/platform"; do
+    case "$d" in
+        */SBIC)          remote="git@github:sbic-platform-corp/sbic-docs.git" ;;
+        */SBIC/platform) remote="git@github:sbic-platform-corp/sbic-platform.git" ;;
+    esac
     if [ -d "$d/.git" ]; then
-        echo "    $d"
+        echo "    pull $d"
         git -C "$d" pull --ff-only 2>&1 | sed 's/^/        /' \
             || echo "        (ff-only pull skipped/failed - resolve by hand)"
     else
-        echo "    MISSING: $d"
-        case "$d" in
-            */SBIC)          echo "        clone: git clone git@github:sbic-platform-corp/sbic-docs.git $d" ;;
-            */SBIC/platform) echo "        clone: git clone git@github:sbic-platform-corp/sbic-platform.git $d" ;;
-        esac
+        echo "    clone $d <- $remote"
+        git clone "$remote" "$d" 2>&1 | sed 's/^/        /' \
+            || echo "        clone failed (check the git@github: SSH alias + key)"
     fi
 done
 

@@ -84,7 +84,7 @@ EOF
     }
 
     set_codex_toml_key model_reasoning_effort xhigh
-    set_codex_toml_key approval_policy on-request
+    set_codex_toml_key approval_policy never
     set_codex_toml_key approvals_reviewer user
     set_codex_toml_key default_permissions michael_workspace
     ensure_codex_permission_profile

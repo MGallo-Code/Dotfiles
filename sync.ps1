@@ -76,7 +76,7 @@ $markerEnd
     }
 
     $content = Set-CodexTomlKey $content "model_reasoning_effort" "xhigh"
-    $content = Set-CodexTomlKey $content "approval_policy" "on-request"
+    $content = Set-CodexTomlKey $content "approval_policy" "never"
     $content = Set-CodexTomlKey $content "approvals_reviewer" "user"
     $content = Set-CodexTomlKey $content "default_permissions" "michael_workspace"
     $content = Set-CodexManagedBlock $content

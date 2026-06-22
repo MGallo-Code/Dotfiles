@@ -64,8 +64,13 @@ enabled = true
 allow_local_binding = true
 $markerEnd
 "@
-        $pattern = '(?s)\r?\n?# dotfiles: Codex Michael workspace permission profile\r?\n.*?# dotfiles: end Codex Michael workspace permission profile\r?\n?'
-        $Content = [regex]::Replace($Content, $pattern, "`n")
+        # Strip EVERY michael_workspace table group (marked OR unmarked) + our marker
+        # comments, then append exactly one canonical block. An unmarked block (e.g.
+        # one a machine bootstrap seeded) used to slip past the marker-gated removal
+        # and produce a duplicate-key TOML parse error; this self-heals that.
+        $Content = [regex]::Replace($Content, '(?m)^# dotfiles: (?:end )?Codex Michael workspace permission profile[^\r\n]*\r?\n', '')
+        $Content = [regex]::Replace($Content, '(?m)^\[permissions\.michael_workspace(?:\.[^\]]*)?\][^\r\n]*\r?\n(?:(?!^\[)[^\r\n]*\r?\n?)*', '')
+        $Content = [regex]::Replace($Content, '(\r?\n){3,}', "`n`n")
         if ($Content -and -not $Content.EndsWith("`n")) { $Content += "`n" }
         return $Content + "`n" + $block + "`n"
     }

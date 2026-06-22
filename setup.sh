@@ -51,8 +51,6 @@ ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
     }
 
     ensure_codex_permission_profile() {
-        local marker_start="# dotfiles: Codex Michael workspace permission profile"
-        local marker_end="# dotfiles: end Codex Michael workspace permission profile"
         local block
 
         block=$(cat <<'EOF'
@@ -82,9 +80,15 @@ allow_local_binding = true
 EOF
 )
 
-        if grep -qF "$marker_start" "$codex_config"; then
-            perl -0pi -e 's/\n?# dotfiles: Codex Michael workspace permission profile\n.*?# dotfiles: end Codex Michael workspace permission profile\n?/\n/s' "$codex_config"
-        fi
+        # Strip EVERY michael_workspace table group (marked OR unmarked) + our marker
+        # comments, then append exactly one canonical block. An unmarked block (e.g.
+        # one a machine bootstrap seeded) used to slip past the marker-gated removal
+        # and produce a duplicate-key TOML parse error; this self-heals that.
+        perl -0pi -e '
+            s/^# dotfiles: (?:end )?Codex Michael workspace permission profile[^\n]*\n//mg;
+            s/^\[permissions\.michael_workspace(?:\.[^\]]*)?\][^\n]*\n(?:(?!^\[)[^\n]*\n?)*//mg;
+            s/\n{3,}/\n\n/g;
+        ' "$codex_config"
         printf '\n%s\n' "$block" >> "$codex_config"
     }
 

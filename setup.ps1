@@ -153,13 +153,14 @@ matcher = "^Bash`$"
         $settings["general"] = $general
     }
     $general["defaultApprovalMode"] = "auto_edit"
+    # ONLY genuine project SOURCE roots - NOT the bulky parents (~/Documents, ~/Downloads) or the
+    # agent-state dirs (~/.codex/.claude/.gemini, GB of tmp/logs/caches). A ~135GB workspace made
+    # gemini roam junk and confabulate it into reviews. Mirrors the claude sysupdate set (EA +
+    # agent-skills) + control-plane roots. Assigned (not appended) so a re-run prunes stale junk.
     $geminiWorkspaceRoots = @(
-        "$HOME\Documents",
-        "$HOME\Downloads",
+        "$HOME\Documents\EA",
+        "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
-        "$HOME\.codex",
-        "$HOME\.claude",
-        "$HOME\.gemini",
         "$HOME\.config\nvim"
     )
     if (-not $settings.Contains("context") -or $null -eq $settings["context"]) {
@@ -174,14 +175,7 @@ matcher = "^Bash`$"
         $context = $newContext
         $settings["context"] = $context
     }
-    $includeDirs = @()
-    if ($context.Contains("includeDirectories") -and $null -ne $context["includeDirectories"]) {
-        $includeDirs = @($context["includeDirectories"])
-    }
-    foreach ($root in $geminiWorkspaceRoots) {
-        if ($includeDirs -notcontains $root) { $includeDirs += $root }
-    }
-    $context["includeDirectories"] = $includeDirs
+    $context["includeDirectories"] = $geminiWorkspaceRoots
     if (-not $settings.Contains("tools") -or $null -eq $settings["tools"]) {
         $settings["tools"] = [ordered]@{}
     }
@@ -194,14 +188,7 @@ matcher = "^Bash`$"
         $tools = $newTools
         $settings["tools"] = $tools
     }
-    $sandboxAllowedPaths = @()
-    if ($tools.Contains("sandboxAllowedPaths") -and $null -ne $tools["sandboxAllowedPaths"]) {
-        $sandboxAllowedPaths = @($tools["sandboxAllowedPaths"])
-    }
-    foreach ($root in $geminiWorkspaceRoots) {
-        if ($sandboxAllowedPaths -notcontains $root) { $sandboxAllowedPaths += $root }
-    }
-    $tools["sandboxAllowedPaths"] = $sandboxAllowedPaths
+    $tools["sandboxAllowedPaths"] = $geminiWorkspaceRoots
     $tools["sandboxNetworkAccess"] = $true
     if (-not $settings.Contains("security") -or $null -eq $settings["security"]) {
         $settings["security"] = [ordered]@{}

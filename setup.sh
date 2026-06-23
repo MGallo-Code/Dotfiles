@@ -145,37 +145,29 @@ if not isinstance(general, dict):
     general = {}
     data["general"] = general
 general["defaultApprovalMode"] = "auto_edit"
+# Gemini's persistent multi-root workspace. ONLY genuine project SOURCE roots - NOT the bulky
+# parents (~/Documents is 85G incl. Customer-Work, ~/Downloads 47G) or the agent-state dirs
+# (~/.codex 496M, ~/.claude 2.2G, ~/.gemini) which carry GB of tmp/logs/caches/cloned-plugins.
+# A ~135GB workspace made gemini's file-discovery roam junk (e.g. ~/.codex/.tmp/plugins/.../nvidia)
+# and confabulate it into reviews. This mirrors the claude `sysupdate` --add-dir set (EA +
+# agent-skills) plus the control-plane roots. Assigned (NOT appended) so a re-run PRUNES any stale
+# entry - this list is authoritative for the managed setting.
 gemini_workspace_roots = [
-    os.path.expanduser("~/Documents"),
-    os.path.expanduser("~/Downloads"),
+    os.path.expanduser("~/Documents/EA"),
+    os.path.expanduser("~/Documents/agent-skills"),
     os.path.expanduser("~/.dotfiles"),
-    os.path.expanduser("~/.codex"),
-    os.path.expanduser("~/.claude"),
-    os.path.expanduser("~/.gemini"),
     os.path.expanduser("~/.config/nvim"),
 ]
 context = data.setdefault("context", {})
 if not isinstance(context, dict):
     context = {}
     data["context"] = context
-include_dirs = context.setdefault("includeDirectories", [])
-if not isinstance(include_dirs, list):
-    include_dirs = []
-for root in gemini_workspace_roots:
-    if root not in include_dirs:
-        include_dirs.append(root)
-context["includeDirectories"] = include_dirs
+context["includeDirectories"] = gemini_workspace_roots
 tools = data.setdefault("tools", {})
 if not isinstance(tools, dict):
     tools = {}
     data["tools"] = tools
-sandbox_paths = tools.setdefault("sandboxAllowedPaths", [])
-if not isinstance(sandbox_paths, list):
-    sandbox_paths = []
-for root in gemini_workspace_roots:
-    if root not in sandbox_paths:
-        sandbox_paths.append(root)
-tools["sandboxAllowedPaths"] = sandbox_paths
+tools["sandboxAllowedPaths"] = gemini_workspace_roots
 tools["sandboxNetworkAccess"] = True
 security = data.setdefault("security", {})
 if not isinstance(security, dict):

@@ -64,3 +64,16 @@ _proj_completion() {
     compadd $(find ~/Documents/Projects -maxdepth 1 -mindepth 1 -type d -not -path '*/.*' -exec basename {} \;)
 }
 compdef _proj_completion proj
+
+# ── Prompt: working dir + git branch ─────────────────────────────────
+# zsh's default prompt shows neither the cwd nor git state. Show the cwd (home as ~)
+# in cyan, the branch in yellow when inside a git repo, and a prompt char that turns
+# into a red '#' when running as root. vcs_info is zsh's built-in git helper; it is
+# hooked additively via precmd_functions (never clobbering an existing precmd), and
+# prompt_subst lets ${vcs_info_msg_0_} re-expand on every prompt.
+autoload -Uz vcs_info
+zstyle ':vcs_info:*' enable git
+zstyle ':vcs_info:git:*' formats ' %F{yellow}(%b)%f'
+precmd_functions+=( vcs_info )
+setopt prompt_subst
+PROMPT='%F{cyan}%~%f${vcs_info_msg_0_} %(!.%F{red}#%f.%F{green}❯%f) '

@@ -70,3 +70,19 @@ function _ollama_claude {
 function qwen { _ollama_claude "qwen3.6:27b" @args }
 function gemma { _ollama_claude "gemma4:26b" @args }
 function gemma31b { _ollama_claude "gemma4:31b" @args }
+
+# Prompt: working dir + git branch (parity with shell/core.zsh).
+# PowerShell already shows the cwd by default; this adds the git branch and matches the
+# zsh style (cwd cyan, branch yellow). The real $LASTEXITCODE is saved/restored around
+# the git call so the prompt never clobbers the exit code of the user's last command.
+function prompt {
+    $realLEC = $LASTEXITCODE
+    $cwd = $PWD.Path
+    if ($HOME -and $cwd.StartsWith($HOME)) { $cwd = '~' + $cwd.Substring($HOME.Length) }
+    Write-Host $cwd -ForegroundColor Cyan -NoNewline
+    $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    if ($branch) { Write-Host " ($branch)" -ForegroundColor Yellow -NoNewline }
+    Write-Host ' >' -ForegroundColor Green -NoNewline
+    $global:LASTEXITCODE = $realLEC
+    return ' '
+}

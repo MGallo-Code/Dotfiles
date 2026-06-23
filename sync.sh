@@ -680,7 +680,7 @@ if [ -f "$NEXUS_SERVER" ]; then
     # Hubs are wired per-ROLE through register_all_hub_mcp / register_hub_mcp (manifest.sh,
     # sourced at the top) - ONE copy shared with setup.sh; check-hub-wiring (INV-5) proves no
     # script wires a hub directly. CLIENT machines: token on disk before the http courier entry.
-    is_mcp_host || provision_courier_client_token
+    is_mcp_host || provision_all_client_tokens
     register_all_hub_mcp claude
     register_all_hub_mcp codex
     register_all_hub_mcp gemini

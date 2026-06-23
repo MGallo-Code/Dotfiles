@@ -36,9 +36,10 @@ ALLOW = "hub-wiring-allow"
 ALL_SCRIPTS = ["manifest.sh", "manifest.ps1", "setup.sh", "setup.ps1", "sync.sh", "sync.ps1"]
 # INV-5 scans the setup/sync subset - manifest is the ONE allowed home for a hub add.
 WIRING_SCRIPTS = ["setup.sh", "setup.ps1", "sync.sh", "sync.ps1"]
-# Managed local-stdio servers (always wired by register_all_hub_mcp, never http-served, so not in
-# hubs.json). The http-served hubs come from hubs.json and are UNIONed in at runtime.
-MANAGED_STDIO = ["nexus", "docgen", "calendar"]
+# Managed local-stdio-ONLY servers (always wired host-stdio by register_all_hub_mcp, never
+# http-served, so not in hubs.json). The http-served, role-aware hubs (courier, calendar) come from
+# hubs.json and are UNIONed in at runtime - calendar joined them in remote-hubs Phase C.
+MANAGED_STDIO = ["nexus", "docgen"]
 # The manifest's generic indirection variable, always an allowed bearer reference.
 GENERIC_TOKEN_REF = "${$token_env}"
 

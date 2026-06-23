@@ -147,6 +147,13 @@ COURIER_REMOTE_URL="https://${MCP_HOST}.${TAILNET}/mcp"
 # config. See ADR-0002 "As-built" + the cross-check review.
 COURIER_TOKEN_FILE="~/.config/courier/auth-token"
 
+# calendar (cloud Google-API hub; remoted in remote-hubs Phase C). Role-aware exactly like courier:
+# host stdio on the MCP host, http+bearer client elsewhere, fronted by `tailscale serve --set-path
+# /calendar`. Its OWN per-hub bearer (${CALENDAR_BEARER}) + mode-600 token file - NEVER shared with
+# courier (one leak must not expose two hubs). Port + serve/mcp paths are sole-sourced in hubs.json.
+CALENDAR_REMOTE_URL="https://${MCP_HOST}.${TAILNET}/calendar/mcp"
+CALENDAR_TOKEN_FILE="~/.config/calendar/auth-token"
+
 # ── Custom global skills (tracked in EA) ─────────────────────────────
 # Custom skills authored in EA (calendar, contact, dev-update, forge), linked into all 3
 # agents alongside the vendor agent-skills, into the SAME AGENT_SKILLS_TARGETS dirs.
@@ -299,10 +306,17 @@ register_all_hub_mcp() {
         for name in nexus courier docgen calendar; do "$cli" mcp remove $scope_flag "$name" >/dev/null 2>&1; done
     fi
     register_hub_mcp "$cli" nexus host
-    if is_mcp_host; then register_hub_mcp "$cli" courier host
-    else                 register_hub_mcp "$cli" courier client "$COURIER_REMOTE_URL" COURIER_BEARER; fi
     register_hub_mcp "$cli" docgen host
-    register_hub_mcp "$cli" calendar host
+    # Role-aware HTTP-served hubs (hubs.json): host stdio on the MCP host, http+bearer client
+    # elsewhere. Each carries its OWN per-hub bearer + mode-600 token, never shared. courier (Phase A)
+    # + calendar (Phase C). A Linux/WSL client (is_mcp_host false) wires both as http clients.
+    if is_mcp_host; then
+        register_hub_mcp "$cli" courier  host
+        register_hub_mcp "$cli" calendar host
+    else
+        register_hub_mcp "$cli" courier  client "$COURIER_REMOTE_URL"  COURIER_BEARER
+        register_hub_mcp "$cli" calendar client "$CALENDAR_REMOTE_URL" CALENDAR_BEARER
+    fi
     ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
 }
 
@@ -330,21 +344,29 @@ bootstrap_all_hubs() {
     return 0
 }
 
-# CLIENT-only: ensure the mode-600 token file exists (prompt-paste once - ADR-0002 token
-# decision (a)). EOF-safe under `set -e` (read || true), so a non-TTY/piped setup run does
-# not abort here. The COURIER_BEARER env export itself lives in shell/ea.zsh.
-provision_courier_client_token() {
-    local tf; tf="$(expand "$COURIER_TOKEN_FILE")"
+# CLIENT-only: ensure ONE hub's mode-600 bearer file exists (prompt-paste once - ADR-0002 token
+# decision (a)). GENERIC over (display name, token file, env-var name) so every role-aware hub reuses
+# it; per-hub tokens, never shared. EOF-safe under `set -e` (read || true), so a non-TTY/piped run
+# does not abort here. The <HUB>_BEARER env export itself lives in shell/ea.zsh.
+provision_hub_client_token() {
+    local name="$1" token_path="$2" bearer_var="$3"
+    local tf; tf="$(expand "$token_path")"
     mkdir -p "$(dirname "$tf")"; chmod 700 "$(dirname "$tf")" 2>/dev/null || true
-    if [ -s "$tf" ]; then chmod 600 "$tf"; ok "courier client token present ($tf)"; return; fi
-    warn "courier client needs the bearer token from the MCP host ($MCP_HOST)."
-    warn "On the host run:  cat ~/.config/courier/auth-token   then paste it here."
-    printf "  Paste courier token (hidden; empty to skip): "
+    if [ -s "$tf" ]; then chmod 600 "$tf"; ok "$name client token present ($tf)"; return; fi
+    warn "$name client needs the bearer token from the MCP host ($MCP_HOST)."
+    warn "On the host run:  cat $token_path   then paste it here."
+    printf "  Paste %s token (hidden; empty to skip): " "$name"
     local tok=""; read -rs tok || true; echo
     if [ -n "$tok" ]; then
         ( umask 177; printf '%s' "$tok" > "$tf" ); chmod 600 "$tf"
-        ok "courier token saved ($tf, mode 600). Open a new shell to export COURIER_BEARER."
+        ok "$name token saved ($tf, mode 600). Open a new shell to export $bearer_var."
     else
-        warn "no token entered - courier client will 401 until $tf exists."
+        warn "no token entered - $name client will 401 until $tf exists."
     fi
+}
+
+# CLIENT-only: provision EVERY role-aware hub's bearer token in one pass (one paste per hub).
+provision_all_client_tokens() {
+    provision_hub_client_token courier  "$COURIER_TOKEN_FILE"  COURIER_BEARER
+    provision_hub_client_token calendar "$CALENDAR_TOKEN_FILE" CALENDAR_BEARER
 }

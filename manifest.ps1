@@ -80,6 +80,12 @@ $CourierRemoteUrl = "https://$McpHost.$Tailnet/mcp"
 # line. On Windows the file gets a restrictive ACL (icacls) since there is no chmod 600.
 $CourierTokenFile = "$HOME\.config\courier\auth-token"
 
+# calendar (remote-hubs Phase C): role-aware exactly like courier; Windows is always its CLIENT. Its
+# OWN per-hub bearer (${CALENDAR_BEARER}) + token file, NEVER shared with courier. Port + serve/mcp
+# paths are sole-sourced in hubs.json. (parity-checked: scripts/ci/check-parity.py)
+$CalendarRemoteUrl = "https://$McpHost.$Tailnet/calendar/mcp"
+$CalendarTokenFile = "$HOME\.config\calendar\auth-token"
+
 # ── Custom global skills (tracked in EA), linked into all 3 agents ────
 $GlobalSkillsDir = "$HOME\Documents\EA\claude-config\global-skills"
 
@@ -110,51 +116,60 @@ $Directories = @(
     "$HOME\Documents\Jobs"
 )
 
-# ── Courier per-ROLE MCP wiring (shared by setup.ps1 AND sync.ps1) ────
-# Dot-sourced by both so the wiring lives in ONE place (the ADR-0002 review caught setup
-# and sync each owning a copy, with the repeatable sync re-wiring courier as broken stdio).
-# Windows is ALWAYS a courier CLIENT (no macOS login keychain) -> always the http path.
-function Initialize-CourierClientToken {
-    $tokenDir = Split-Path $CourierTokenFile -Parent
+# ── Per-ROLE hub client token (shared by setup.ps1 AND sync.ps1) ──────
+# Dot-sourced by both so the wiring lives in ONE place (the ADR-0002 review caught setup and sync
+# each owning a copy, with the repeatable sync re-wiring courier as broken stdio). Windows is ALWAYS
+# a CLIENT (no macOS login keychain) -> always the http path. GENERIC over (name, token file, bearer
+# env-var) so every role-aware hub (courier + calendar) reuses it; per-hub tokens, never shared.
+function Initialize-HubClientToken {
+    param([string]$Name, [string]$TokenFile, [string]$BearerVar)
+    $tokenDir = Split-Path $TokenFile -Parent
     New-Item -ItemType Directory -Path $tokenDir -Force | Out-Null
-    # Lock the DIRECTORY down FIRST (current-user SID, inheritance removed) so a freshly
-    # written token file inherits a restricted ACL - no window where it sits world/group
-    # readable (ADR-0002 review: token-file perms are the highest-stakes parity divergence;
-    # there is no chmod 600 on Windows, so icacls is the mechanism).
+    # Lock the DIRECTORY down FIRST (current-user SID, inheritance removed) so a freshly written token
+    # file inherits a restricted ACL - no window where it sits world/group readable (ADR-0002 review:
+    # token-file perms are the highest-stakes parity divergence; there is no chmod 600 on Windows, so
+    # icacls is the mechanism).
     $sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
     icacls $tokenDir /inheritance:r /grant:r "*${sid}:(OI)(CI)F" | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Warn "courier: icacls on $tokenDir failed (exit $LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) { Write-Warn "${Name}: icacls on $tokenDir failed (exit $LASTEXITCODE)" }
 
-    $haveToken = (Test-Path $CourierTokenFile) -and ((Get-Content $CourierTokenFile -Raw -ErrorAction SilentlyContinue))
+    $haveToken = (Test-Path $TokenFile) -and ((Get-Content $TokenFile -Raw -ErrorAction SilentlyContinue))
     if (-not $haveToken) {
-        Write-Warn "courier client needs the bearer token from the MCP host ($McpHost)."
-        Write-Warn "On the host run:  cat ~/.config/courier/auth-token   then paste it here."
-        $sec = Read-Host "  Paste courier token (hidden; empty to skip)" -AsSecureString
+        Write-Warn "$Name client needs the bearer token from the MCP host ($McpHost)."
+        Write-Warn "On the host run:  cat $TokenFile   then paste it here."
+        $sec = Read-Host "  Paste $Name token (hidden; empty to skip)" -AsSecureString
         $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
         $tok = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
         if ($tok) {
-            [IO.File]::WriteAllText($CourierTokenFile, $tok)   # no trailing newline
-            Write-Ok "courier token saved ($CourierTokenFile)"
+            [IO.File]::WriteAllText($TokenFile, $tok)   # no trailing newline
+            Write-Ok "$Name token saved ($TokenFile)"
         }
         else {
-            Write-Warn "no token entered - courier client will 401 until $CourierTokenFile exists."
+            Write-Warn "no token entered - $Name client will 401 until $TokenFile exists."
         }
     }
     else {
-        Write-Ok "courier client token present ($CourierTokenFile)"
+        Write-Ok "$Name client token present ($TokenFile)"
     }
-    if (Test-Path $CourierTokenFile) {
-        # Lock the FILE explicitly too (current-user SID), then persist COURIER_BEARER
-        # (User scope) so every CLI's runtime sees it without the token ever being argv.
-        icacls $CourierTokenFile /inheritance:r /grant:r "*${sid}:F" | Out-Null
-        if ($LASTEXITCODE -ne 0) { Write-Warn "courier: icacls on token file failed (exit $LASTEXITCODE)" }
-        $tokVal = (Get-Content $CourierTokenFile -Raw).Trim()
+    if (Test-Path $TokenFile) {
+        # Lock the FILE explicitly too (current-user SID), then persist <HUB>_BEARER (User scope +
+        # Process) so every CLI's runtime sees it without the token ever being argv.
+        icacls $TokenFile /inheritance:r /grant:r "*${sid}:F" | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warn "${Name}: icacls on token file failed (exit $LASTEXITCODE)" }
+        $tokVal = (Get-Content $TokenFile -Raw).Trim()
         if ($tokVal) {
-            [Environment]::SetEnvironmentVariable("COURIER_BEARER", $tokVal, "User")
-            $env:COURIER_BEARER = $tokVal
+            [Environment]::SetEnvironmentVariable($BearerVar, $tokVal, "User")
+            [Environment]::SetEnvironmentVariable($BearerVar, $tokVal, "Process")
         }
     }
+}
+
+# Provision EVERY role-aware hub's client bearer in one pass (Windows is always a client). courier +
+# calendar (Phase C); each its own COURIER_BEARER / CALENDAR_BEARER token + env var, never shared.
+function Initialize-AllClientTokens {
+    Initialize-HubClientToken "courier"  $CourierTokenFile  "COURIER_BEARER"
+    Initialize-HubClientToken "calendar" $CalendarTokenFile "CALENDAR_BEARER"
 }
 
 # ── Per-ROLE hub MCP wiring (mirror of manifest.sh register_hub_mcp / register_all_hub_mcp) ──
@@ -246,8 +261,9 @@ function Register-AllHubMcp {
         foreach ($name in @("nexus", "courier", "docgen", "calendar")) { & $cmd.Source mcp remove @scope $name 2>$null | Out-Null }
     }
     Register-HubMcp $Cli $cmd.Source "nexus"    "host"
-    Register-HubMcp $Cli $cmd.Source "courier"  "client" $CourierRemoteUrl "COURIER_BEARER"
     Register-HubMcp $Cli $cmd.Source "docgen"   "host"
-    Register-HubMcp $Cli $cmd.Source "calendar" "host"
+    # Windows is always a client: courier + calendar over http+bearer (each its own per-hub token).
+    Register-HubMcp $Cli $cmd.Source "courier"  "client" $CourierRemoteUrl  "COURIER_BEARER"
+    Register-HubMcp $Cli $cmd.Source "calendar" "client" $CalendarRemoteUrl  "CALENDAR_BEARER"
     Write-Ok "$Cli`: global MCP wired (nexus + courier + docgen + calendar)"
 }

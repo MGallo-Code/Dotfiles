@@ -54,13 +54,14 @@ sysupdate() {
 _ws_agent_completion() { compadd -- --claude --codex --gemini; }
 compdef _ws_agent_completion ea wiki sbic sysupdate
 
-# courier remote (ADR-0002): expose the bearer token to MCP clients. claude/gemini
-# reference it as ${COURIER_BEARER} in their courier http header; codex reads it via
-# --bearer-token-env-var. Sourced from the one mode-600 file (never on a command line).
-# On the mail host this is harmless/redundant (host courier is stdio, no token).
-# NOTE: this path must track manifest.sh COURIER_TOKEN_FILE (ea.zsh can't source the
-# manifest array cleanly; keep them in sync if the token location ever moves).
-[ -r "$HOME/.config/courier/auth-token" ] && export COURIER_BEARER="$(< "$HOME/.config/courier/auth-token")"
+# Hub remotes (ADR-0002 / remote-hubs): expose each per-hub bearer token to MCP clients. claude/gemini
+# reference it as ${<HUB>_BEARER} in their http header; codex reads it via --bearer-token-env-var.
+# Sourced from the one mode-600 file per hub (never on a command line). On the MCP host these are
+# harmless/redundant (host hubs are stdio, no token). NOTE: these paths must track manifest.sh
+# COURIER_TOKEN_FILE / CALENDAR_TOKEN_FILE (ea.zsh can't source the manifest cleanly; keep in sync if
+# a token location ever moves).
+[ -r "$HOME/.config/courier/auth-token" ]  && export COURIER_BEARER="$(< "$HOME/.config/courier/auth-token")"
+[ -r "$HOME/.config/calendar/auth-token" ] && export CALENDAR_BEARER="$(< "$HOME/.config/calendar/auth-token")"
 
 # Drop into practice workspace with venv active
 practice() {

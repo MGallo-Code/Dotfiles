@@ -6,5 +6,13 @@
     "mcp_path": "/mcp",
     "token_file": "~/.config/courier/auth-token",
     "run_cmd": "/usr/bin/env PYTHONPATH=$HOME/Documents/EA/courier/src:$HOME/Documents/EA/ea_mcp_remote/src $HOME/Documents/EA/courier/.venv/bin/python -u -m courier.server"
+  },
+  {
+    "name": "calendar",
+    "port": 8766,
+    "serve_path": "/calendar",
+    "mcp_path": "/calendar/mcp",
+    "token_file": "~/.config/calendar/auth-token",
+    "run_cmd": "/usr/bin/env EA_CALENDAR_FORCE_FILE=1 PYTHONPATH=$HOME/Documents/EA/calendar/src:$HOME/Documents/EA/ea_mcp_remote/src $HOME/Documents/EA/calendar/.venv/bin/python -u -m ea_calendar.server"
   }
 ]

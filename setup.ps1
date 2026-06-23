@@ -590,7 +590,7 @@ if ($Mode -eq "full") {
     # (INV-5) can prove no script wires a hub directly. Windows is always a CLIENT (no macOS login
     # keychain): courier is wired http, the rest local stdio.
     if (Test-Path $NexusServer) {
-        Initialize-CourierClientToken   # Windows is always a courier CLIENT (ADR-0002)
+        Initialize-AllClientTokens   # Windows is always a CLIENT of every hub (ADR-0002)
         Register-AllHubMcp "claude"
         Register-AllHubMcp "codex"
         Register-AllHubMcp "gemini"

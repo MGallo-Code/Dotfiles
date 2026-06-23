@@ -521,8 +521,8 @@ EOF
     # CAN be the host - same predicate as before); the ROLE flag (intent) governs only the
     # host-SERVING block below, never the wiring - so --client never re-wires the live courier on
     # the host, and a Linux/WSL box (is_mcp_host false) correctly wires the HTTP client.
-    # CLIENT machines: get the token on disk before wiring the http courier entries.
-    is_mcp_host || provision_courier_client_token
+    # CLIENT machines: get every hub's token on disk before wiring the http entries (courier + calendar).
+    is_mcp_host || provision_all_client_tokens
     register_all_hub_mcp claude
     register_all_hub_mcp codex
     register_all_hub_mcp gemini

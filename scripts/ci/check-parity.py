@@ -188,6 +188,13 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"COURIER_BEARER"),
     },
     {
+        # calendar (remote-hubs Phase C) is role-aware like courier: its ${CALENDAR_BEARER} env-var
+        # indirection + http client wiring live in manifest.{sh,ps1} on both OSes (never inlined).
+        "name": "calendar token never on a command line (env-var ref)",
+        "sh": ("manifest.sh", r"CALENDAR_BEARER"),
+        "ps1": ("manifest.ps1", r"CALENDAR_BEARER"),
+    },
+    {
         # Highest-stakes semantic divergence the ADR-0002 review flagged: the secret
         # file's permissions. chmod 600 (sh) has no Windows equivalent, so the ps1 side
         # MUST lock it with an ACL (icacls) instead - different mechanism, same behavior.

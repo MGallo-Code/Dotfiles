@@ -334,7 +334,9 @@ else {
 # ── SSH Key ──────────────────────────────────────────────────────────
 Write-Step "SSH key setup"
 
-# Ensure OpenSSH client is available
+# Ensure OpenSSH client is available (for the GitHub SSH key). NON-FATAL: git may already work via HTTPS
+# or Git's bundled ssh, and the rest of setup (MCP wiring etc.) needs no new key - so if OpenSSH can't be
+# installed (needs admin), WARN + skip the key step rather than aborting the whole setup.
 $sshKeygen = Get-Command ssh-keygen -ErrorAction SilentlyContinue
 if (-not $sshKeygen) {
     Write-Host "Installing OpenSSH Client..."
@@ -344,17 +346,21 @@ if (-not $sshKeygen) {
         $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
         $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
         $env:Path = "$machinePath;$userPath"
-        Write-Ok "OpenSSH Client installed"
+        $sshKeygen = Get-Command ssh-keygen -ErrorAction SilentlyContinue
+        if ($sshKeygen) { Write-Ok "OpenSSH Client installed" }
     }
     catch {
-        Write-Err "Failed to install OpenSSH Client. Run this script as Administrator."
-        Write-Host "Or install manually: Settings > Apps > Optional Features > OpenSSH Client"
-        exit 1
+        Write-Warn "Could not install OpenSSH Client (needs admin) - skipping SSH key setup. git already"
+        Write-Warn "works via HTTPS/bundled ssh; install it later (Settings > Optional Features > OpenSSH"
+        Write-Warn "Client, or run setup once as Administrator) if you want SSH cloning."
     }
 }
 
 $SshKey = "$HOME\.ssh\id_ed25519"
-if (Test-Path $SshKey) {
+if (-not $sshKeygen) {
+    Write-Warn "ssh-keygen unavailable - skipping SSH key generation (setup continues)"
+}
+elseif (Test-Path $SshKey) {
     Write-Ok "SSH key already exists"
 }
 else {

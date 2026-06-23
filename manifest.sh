@@ -147,7 +147,7 @@ COURIER_REMOTE_URL="https://${MAIL_HOST}.${TAILNET}/mcp"
 COURIER_TOKEN_FILE="~/.config/courier/auth-token"
 
 # ── Custom global skills (tracked in EA) ─────────────────────────────
-# Three skills authored in EA (calendar, contact, dev-update), linked into all 3
+# Custom skills authored in EA (calendar, contact, dev-update, forge), linked into all 3
 # agents alongside the vendor agent-skills, into the SAME AGENT_SKILLS_TARGETS dirs.
 # Linked by sync's regen_agent_skills_links (idempotent; never clobbers real dirs).
 GLOBAL_SKILLS_DIR="~/Documents/EA/claude-config/global-skills"

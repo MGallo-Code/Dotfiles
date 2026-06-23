@@ -20,8 +20,10 @@
 #               venv editable install is inert and the plist sets no PYTHONPATH key.
 #   token-file  mode-600 bearer file outside any repo (e.g. ~/.config/courier/auth-token)
 #   serve_path  the `tailscale serve --set-path` prefix; EMPTY string = serve at root
-#   mcp_path    the app mount == self-test == client-URL path (e.g. /mcp ; or /<hub>/mcp for a
-#               path-mounted hub - tailscale serve does NOT strip the prefix)
+#   mcp_path    the app mount path == in-process self-test == LOOPBACK probe path (e.g. /mcp).
+#               `tailscale serve --set-path <serve_path>` STRIPS the prefix before forwarding, so even a
+#               path-mounted hub mounts at /mcp (post-strip), NOT serve_path+/mcp. The CLIENT URL is
+#               https://<host><serve_path>/mcp (tailscale strips serve_path back to /mcp).
 #
 # Re-run any time (token rotation: delete the file first; a plist/env change; a hub code update;
 # the Mac-mini migration: set MCP_HOST in manifest.sh, run there). Deliberately SEPARATE from
@@ -170,7 +172,8 @@ ok "$NAME LaunchAgent (re)loaded"
 
 # --- 4. tailscale serve (tailnet-only TLS front) ------------------------------
 # Root hub -> `serve --bg <port>`; path-mounted hub -> `serve --set-path <serve_path> --bg <port>`
-# (tailscale serve does NOT strip the prefix, so a path hub's app must mount at the full path).
+# (tailscale serve STRIPS the --set-path prefix before forwarding, so a path hub's app mounts at /mcp,
+#  post-strip; the prefix only lives on the tunnel URL the client uses).
 TS_BIN="$(command -v tailscale || true)"
 [ -n "$TS_BIN" ] || TS_BIN="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 if [ -x "$TS_BIN" ]; then
@@ -181,7 +184,7 @@ if [ -x "$TS_BIN" ]; then
         "$TS_BIN" serve --bg "$PORT" >/dev/null 2>&1 && serve_ok=1
     fi
     if [ -n "$serve_ok" ]; then
-        ok "tailscale serve -> 127.0.0.1:$PORT  (https://$ALLOWED_HOST$MCP_PATH)"
+        ok "tailscale serve -> 127.0.0.1:$PORT  (client URL: https://$ALLOWED_HOST$SERVE_PATH$MCP_PATH)"
     else
         warn "tailscale serve failed - check 'tailscale serve status' and that MagicDNS + HTTPS certs are enabled for the tailnet"
     fi

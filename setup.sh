@@ -1,11 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Cross-platform dev environment setup (macOS)
-# Usage: setup.sh [--full|--dev|--minimal]
+# Cross-platform dev environment setup (macOS + Linux/WSL clients).
+# Usage: setup.sh [--full|--dev|--minimal] [--host|--client]
+#   --full|--dev|--minimal  MODE - scope of what gets configured (default --full).
+#   --host                  ROLE - this machine RUNS + SERVES the MCP hubs. macOS-only (fails loud
+#                           off Darwin). Auto-selected when this box IS the MCP host (is_mcp_host).
+#   --client                ROLE - thin HTTP+bearer CLIENT of the hubs on the MCP host. Runs on
+#                           Linux/WSL (and any non-host Mac). Auto-selected on a non-host machine.
+# MODE (scope) and ROLE (host vs client) are ORTHOGONAL: any mode can run as host or client.
 
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
-MODE="${1:---full}"
+
+# Parse args: MODE (the scope) + an orthogonal ROLE flag (host/client). Order-independent; the old
+# positional `setup.sh --dev` still works (no caller passes anything else - verified).
+MODE="--full"
+ROLE_FLAG=""
+for arg in "$@"; do
+    case "$arg" in
+        --full|--dev|--minimal) MODE="$arg" ;;
+        --host)   ROLE_FLAG="host" ;;
+        --client) ROLE_FLAG="client" ;;
+        *) echo "usage: setup.sh [--full|--dev|--minimal] [--host|--client]" >&2; exit 2 ;;
+    esac
+done
 
 # Colors
 GREEN='\033[0;32m'
@@ -18,16 +36,34 @@ warn() { echo -e "${YELLOW}[skip]${NC} $1"; }
 err()  { echo -e "${RED}[error]${NC} $1"; }
 step() { echo -e "\n${GREEN}==>${NC} $1"; }
 
-# Platform check
-if [[ "$(uname)" != "Darwin" ]]; then
-    err "This script is for macOS. Use setup.ps1 for Windows."
-    exit 1
-fi
+# Expand ~ in a path (manifest.sh functions use it at call time; define BEFORE sourcing manifest).
+expand() { echo "${1/#\~/$HOME}"; }
 
+# manifest.sh is pure declarations (no top-level execution), so sourcing it here - before the
+# role/platform decision - is side-effect-free and makes is_mcp_host available for auto-detect.
 source "$DOTFILES_DIR/manifest.sh"
 
-# Expand ~ in a path
-expand() { echo "${1/#\~/$HOME}"; }
+# ── Role: host (runs + serves hubs) vs client (thin HTTP+bearer consumer) ─────
+# Explicit --host/--client wins; else auto-detect from CAPABILITY (is_mcp_host: this box's macOS
+# LocalHostName == MCP_HOST). Host is macOS-only.
+if [ -n "$ROLE_FLAG" ]; then
+    ROLE="$ROLE_FLAG"
+elif is_mcp_host; then
+    ROLE="host"
+else
+    ROLE="client"
+fi
+
+# ROLE_HOST_GUARD: the host role is macOS-only (login keychain / launchd / tailscale serve). Fail
+# LOUD if asked to be a host off Darwin - never silently degrade. A non-Darwin box with no --host
+# (auto -> client, or explicit --client) falls through here and runs as a Linux/WSL client. This is
+# the gate that replaced the old unconditional "macOS only" exit. (parity: setup.ps1 rejects
+# -Role host because Windows is always a client.)
+if [ "$ROLE" = "host" ] && [ "$(uname)" != "Darwin" ]; then
+    err "The --host role is macOS-only (login keychain / launchd / tailscale serve). This is $(uname)."
+    err "Run as a client instead:  bash setup.sh ${MODE} --client"
+    exit 1
+fi
 
 ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
     local codex_config="$HOME/.codex/config.toml"
@@ -225,7 +261,9 @@ CURRENT_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
 
 if [ -n "$CURRENT_NAME" ] && [ -n "$CURRENT_EMAIL" ]; then
     ok "Git user: $CURRENT_NAME <$CURRENT_EMAIL>"
-else
+elif [ -t 0 ]; then
+    # The read AND its git-config consumer must BOTH sit inside the [ -t 0 ] guard: under `set -u`
+    # a wrapped read with an unwrapped `git config "$GIT_NAME"` would reference an unbound var and abort.
     if [ -z "$CURRENT_NAME" ]; then
         echo "Enter your Git name (e.g. Michael Gallo):"
         read -r GIT_NAME
@@ -237,6 +275,9 @@ else
         git config --global user.email "$GIT_EMAIL"
     fi
     ok "Git config set"
+else
+    warn "Git user.name/email unset and no TTY to prompt - set them manually:"
+    warn "  git config --global user.name '...'  &&  git config --global user.email '...'"
 fi
 
 # ── SSH Key ──────────────────────────────────────────────────────────
@@ -255,14 +296,20 @@ else
     mkdir -p ~/.ssh
     ssh-keygen -t ed25519 -C "$(whoami)@$(hostname)" -f ~/.ssh/id_ed25519 -N ""
 
-    # Copy to clipboard and open GitHub
-    cat ~/.ssh/id_ed25519.pub | pbcopy
-    ok "Public key copied to clipboard"
-
-    open "https://github.com/settings/ssh/new"
-    echo ""
-    echo "Paste your key on GitHub, then press Enter to continue..."
-    read -r
+    # Clipboard + auto-open are macOS-only (pbcopy/open). Under `set -euo pipefail` a missing
+    # pbcopy returns 127 and would abort, so on non-Darwin just print the key + URL to paste, and
+    # only block on an interactive read when a TTY is present (a headless client must not hang).
+    if [ "$(uname)" = "Darwin" ]; then
+        cat ~/.ssh/id_ed25519.pub | pbcopy
+        ok "Public key copied to clipboard"
+        open "https://github.com/settings/ssh/new"
+        echo ""
+        echo "Paste your key on GitHub, then press Enter to continue..."
+        if [ -t 0 ]; then read -r || true; fi
+    else
+        echo "Add this public key to GitHub (https://github.com/settings/ssh/new):"
+        cat ~/.ssh/id_ed25519.pub
+    fi
 fi
 
 # SSH config - create if missing, or ensure github alias exists
@@ -309,8 +356,14 @@ if [[ "$MODE" != "--minimal" ]]; then
     if ! command -v brew &>/dev/null; then
         warn "Homebrew not installed. Install it first: https://brew.sh"
     else
-        echo "Install packages from Brewfile? (y/n)"
-        read -r INSTALL_BREW
+        # Guard the prompt + seed the var on the non-TTY path so the `[[ ]]` consumer below stays
+        # bound under `set -u` (a headless run skips the install, same as answering "n").
+        if [ -t 0 ]; then
+            echo "Install packages from Brewfile? (y/n)"
+            read -r INSTALL_BREW
+        else
+            INSTALL_BREW="n"
+        fi
         if [[ "$INSTALL_BREW" == "y" ]]; then
             brew bundle --file="$DOTFILES_DIR/packages/Brewfile"
             ok "Packages installed"
@@ -396,13 +449,20 @@ if [[ "$MODE" == "--full" ]]; then
     CALENDAR_SRC="$CALENDAR_PATH/src"
     DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
 
-    # Build nexus (TypeScript)
+    # Build nexus (TypeScript). Gate on `command -v npm` (like the `uv` sync below): npm is not
+    # guaranteed on a client (Node is a Phase-F prereq) and under `set -euo pipefail` a missing npm
+    # returns 127 and aborts - even with the 2>/dev/null (that hides stderr, not the exit code). A
+    # client without Node just skips the local build; it wires nexus over HTTP, it does not run it.
     if [ -f "$NEXUS_PATH/package.json" ]; then
-        cd "$NEXUS_PATH"
-        npm install --silent 2>/dev/null
-        npm run build 2>/dev/null
-        ok "Nexus: installed and built"
-        cd - >/dev/null
+        if command -v npm >/dev/null 2>&1; then
+            cd "$NEXUS_PATH"
+            npm install --silent 2>/dev/null
+            npm run build 2>/dev/null
+            ok "Nexus: installed and built"
+            cd - >/dev/null
+        else
+            warn "Nexus: npm not found - skipping local build (client wires nexus over HTTP, not stdio)"
+        fi
     else
         warn "Nexus: package.json not found at $NEXUS_PATH"
     fi
@@ -456,35 +516,42 @@ EOF
     # courier/nexus/docgen/calendar reach SBIC/lab/etc WITHOUT being written into those repos.
     # Hubs are wired per-ROLE through the shared register_all_hub_mcp / register_hub_mcp in
     # manifest.sh (sourced at the top), so setup AND sync share ONE copy of the host-vs-client
-    # decision and check-hub-wiring (INV-5) can prove no script wires a hub directly. is_mail_host
-    # keys on the STABLE macOS LocalHostName (not `hostname`, "MacBookPro" here); the host
-    # bootstrap below re-asserts it and fails loud rather than silently wiring a client.
+    # decision and check-hub-wiring (INV-5) can prove no script wires a hub directly. Courier's
+    # host/client WIRING keys on is_mcp_host (CAPABILITY: a box wires courier host-stdio ONLY if it
+    # CAN be the host - same predicate as before); the ROLE flag (intent) governs only the
+    # host-SERVING block below, never the wiring - so --client never re-wires the live courier on
+    # the host, and a Linux/WSL box (is_mcp_host false) correctly wires the HTTP client.
     # CLIENT machines: get the token on disk before wiring the http courier entries.
-    is_mail_host || provision_courier_client_token
+    is_mcp_host || provision_courier_client_token
     register_all_hub_mcp claude
     register_all_hub_mcp codex
     register_all_hub_mcp gemini
 
-    # MAIL HOST: stand up / refresh the HTTP service(s) that clients connect to - one per hub in
-    # hubs.json (courier today). Idempotent + re-runnable on its own (token rotation, plist
-    # change, mini migration).
-    if is_mail_host; then
-        step "Hub host bootstrap (this machine is the mail host: $MAIL_HOST)"
+    # HOST: stand up / refresh the HTTP service(s) clients connect to - one per hub in hubs.json
+    # (courier today). Idempotent + re-runnable (token rotation, plist change, mini migration).
+    # Keyed on CAPABILITY (is_mcp_host) so the real host always (re)serves on a plain `setup.sh`,
+    # OR on explicit --host (intent) so `setup.sh --host` on a renamed/misnamed Mac REACHES
+    # hub-host-bootstrap's LOUD "LocalHostName != MCP_HOST" refusal instead of silently degrading.
+    if is_mcp_host || [ "$ROLE" = "host" ]; then
+        step "Hub host bootstrap (MCP host: $MCP_HOST)"
         bootstrap_all_hubs "$DOTFILES_DIR/hubs.json" "$DOTFILES_DIR/scripts/hub-host-bootstrap.sh"
-    else
-        # Fail-LOUD (ADR-0002 review): a macOS box with local mail state but a name that
-        # doesn't match MAIL_HOST is probably the host after a rename - don't silently
-        # treat it as a client.
-        if [ "$(uname -s)" = "Darwin" ] && [ -d "$HOME/Mail" ]; then
-            warn "This Mac has a ~/Mail maildir but LocalHostName != MAIL_HOST ('$MAIL_HOST')."
-            warn "If this is actually the mail host (e.g. renamed), set MAIL_HOST in manifest.sh and re-run."
-            warn "Otherwise ignore - wiring courier as a CLIENT of '$MAIL_HOST'."
-        fi
+    fi
+    # Fail-LOUD safety net (ADR-0002 review), independent of ROLE: a macOS box with local mail state
+    # whose LocalHostName != MCP_HOST is probably the host after a rename. Always warn so a renamed
+    # host is never silently treated as a client (the default no-flag run resolves ROLE=client there).
+    if [ "$(uname -s)" = "Darwin" ] && [ -d "$HOME/Mail" ] && ! is_mcp_host; then
+        warn "This Mac has a ~/Mail maildir but LocalHostName != MCP_HOST ('$MCP_HOST')."
+        warn "If this is actually the host (e.g. renamed), set MCP_HOST in manifest.sh and re-run,"
+        warn "or run 'bash setup.sh --host' to force the host bootstrap (it names the exact fix)."
+        warn "Otherwise ignore - wiring courier as a CLIENT of '$MCP_HOST'."
     fi
 
     check_calendar_health() {
-        command -v uv >/dev/null 2>&1 || return
-        [ -d "$CALENDAR_PATH" ] || return
+        # `return 0` (not bare `return`): a bare return propagates `command -v`'s non-zero exit, and
+        # this advisory fn is called as a plain statement under `set -e` - so on a client without uv
+        # it would ABORT setup. (Latent until Phase B made setup.sh run past the old Darwin exit.)
+        command -v uv >/dev/null 2>&1 || return 0
+        [ -d "$CALENDAR_PATH" ] || return 0
         if PYTHONPATH="$CALENDAR_SRC" uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.cli status --check-events --quiet >/dev/null 2>&1; then
             ok "Calendar: authenticated as michaelgallo.va@gmail.com"
         else
@@ -494,8 +561,10 @@ EOF
     check_calendar_health
 
     trust_gemini_managed_repos() {
-        command -v gemini >/dev/null 2>&1 || return
-        command -v jq >/dev/null 2>&1 || { warn "Gemini trust: jq not found - skipping trustedFolders update"; return; }
+        # `return 0` for the same reason as check_calendar_health: bare `return` would propagate a
+        # non-zero `command -v` status and abort this advisory fn under `set -e` on a client.
+        command -v gemini >/dev/null 2>&1 || return 0
+        command -v jq >/dev/null 2>&1 || { warn "Gemini trust: jq not found - skipping trustedFolders update"; return 0; }
         local trust_file="$HOME/.gemini/trustedFolders.json"
         local tmp target entry
         mkdir -p "$(dirname "$trust_file")"
@@ -517,7 +586,12 @@ EOF
     trust_gemini_managed_repos
 fi
 ensure_agent_defaults
-ensure_gemini_cross_check_setup
+# Darwin-gate (cosmetic, not a safety fix - the call is already non-fatal via `|| warn` inside it):
+# the gemini cross-check keys its API key off the macOS keychain, so on a Linux/WSL client it can
+# only emit a confusing keychain warning. Skip it off Darwin to keep client output clean.
+if [ "$(uname)" = "Darwin" ]; then
+    ensure_gemini_cross_check_setup
+fi
 
 # ── Symlinks ─────────────────────────────────────────────────────────
 if [[ "$MODE" == "--full" ]]; then

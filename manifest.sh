@@ -122,24 +122,25 @@ AGENT_SKILLS_TARGETS=(
   "~/.gemini/skills"
 )
 
-# ── Courier remote (ADR-0002): mail-host identity ────────────────────
-# courier (email) runs on exactly ONE machine - the mail host - because all email
-# state lives there: the ~/Mail maildir, the notmuch index, and 14 account passwords
-# in the macOS *login* keychain (readable only in a logged-in GUI session). Every
-# OTHER machine is a CLIENT that reaches courier over Tailscale. "Mail host" is a ROLE
-# keyed on this ONE variable: migrating to the planned always-on Mac mini is "change
-# MAIL_HOST, run the host bootstrap there" - nothing else moves.
+# ── MCP host identity (ADR-0002 / remote-hubs): the one machine that serves hubs ──
+# The HOST is exactly ONE machine that runs the MCP hubs and serves them over Tailscale
+# (courier today; calendar/nexus as they are remoted). Mac-only: courier needs the macOS
+# *login* keychain (14 account passwords in a logged-in GUI session) + the ~/Mail maildir +
+# notmuch index; nexus needs the macOS chat.db. Every OTHER machine is a CLIENT that reaches
+# the hubs over Tailscale. "MCP host" is a ROLE keyed on this ONE variable: migrating to the
+# planned always-on Mac mini is "change MCP_HOST, run the host bootstrap there" - nothing else
+# moves. (Was MAIL_HOST when courier was the only remoted hub; generalized in remote-hubs Phase B.)
 #
-# MAIL_HOST is the Tailscale MagicDNS *host label* (lowercase, hyphenated). It is NOT
-# `hostname` (which on this Mac is "MacBookPro") - it is derived from macOS
-# LocalHostName ("Michaels-MacBook-Pro" -> lowercased). Host self-detection (setup)
-# normalizes LocalHostName and compares to this, then asserts host capability and
-# FAILS LOUD rather than silently wiring itself as a client (ADR-0002 review finding).
-MAIL_HOST="michaels-macbook-pro"
+# MCP_HOST is the Tailscale MagicDNS *host label* (lowercase, hyphenated). It is NOT `hostname`
+# (which on this Mac is "MacBookPro") - it is derived from macOS LocalHostName
+# ("Michaels-MacBook-Pro" -> lowercased). Host self-detection (is_mcp_host) normalizes
+# LocalHostName and compares to this; setup + hub-host-bootstrap then assert host capability and
+# FAIL LOUD rather than silently wiring a host as a client (ADR-0002 review finding).
+MCP_HOST="michaels-macbook-pro"
 TAILNET="tail7a0764.ts.net"
 COURIER_HTTP_PORT="8765"
-# Client URL: TLS terminated by `tailscale serve` on the host, stable MagicDNS name.
-COURIER_REMOTE_URL="https://${MAIL_HOST}.${TAILNET}/mcp"
+# courier client URL: TLS terminated by `tailscale serve` on the host, stable MagicDNS name.
+COURIER_REMOTE_URL="https://${MCP_HOST}.${TAILNET}/mcp"
 # Mandatory bearer token: ONE mode-600 file per machine, OUTSIDE any repo (never in
 # git; secret-scan-gated). Consumed via the COURIER_BEARER env var - NEVER passed on a
 # command line (would leak to the process table) and never inlined into a CLI's stored
@@ -202,13 +203,16 @@ SHELL_EA="shell/ea.zsh"
 # DOCGEN_BROWSERS, CALENDAR_PATH/SRC, COURIER_REMOTE_URL; set in each script's MCP section),
 # resolved lazily at call time.
 
-# True iff THIS machine is the mail host. Keys on the STABLE macOS LocalHostName normalized to
-# the MagicDNS label, NOT `hostname` (which is "MacBookPro" here). The fail-loud guards live in
-# setup.sh + scripts/hub-host-bootstrap.sh.
-is_mail_host() {
+# True iff THIS machine is the MCP host (the box that runs + serves the hubs). Keys on the STABLE
+# macOS LocalHostName normalized to the MagicDNS label, NOT `hostname` (which is "MacBookPro" here);
+# Mac-only by definition (returns 1 off Darwin before scutil is ever called). This is the CAPABILITY
+# predicate - it drives the per-hub host/client WIRING below (a box wires courier host-stdio iff it
+# CAN be the host). The host/client ROLE (intent: --host/--client) is a separate, flag-overridable
+# decision made in setup.sh; the fail-loud guards live in setup.sh + scripts/hub-host-bootstrap.sh.
+is_mcp_host() {
     [ "$(uname -s)" = "Darwin" ] || return 1
     local lh; lh="$(scutil --get LocalHostName 2>/dev/null | tr '[:upper:]' '[:lower:]')"
-    [ "$lh" = "$MAIL_HOST" ]
+    [ "$lh" = "$MCP_HOST" ]
 }
 
 # stdio add for one hub on one CLI (host/local role; no token). Per-hub env flags + exec command
@@ -275,7 +279,7 @@ register_hub_mcp() {
 
 # Wire ALL global hubs for one CLI - the dedup'd replacement for the old register_global_mcp that
 # setup.sh and sync.sh each carried byte-identically. Idempotent (remove-then-add); courier is the
-# only role-aware hub (host stdio on the mail host, http+bearer elsewhere), the rest are always
+# only role-aware hub (host stdio on the MCP host, http+bearer elsewhere), the rest are always
 # local stdio. EVERY hub `mcp add` lives HERE, so check-hub-wiring (INV-5) can prove no setup/sync
 # script wires a hub directly.
 register_all_hub_mcp() {
@@ -295,8 +299,8 @@ register_all_hub_mcp() {
         for name in nexus courier docgen calendar; do "$cli" mcp remove $scope_flag "$name" >/dev/null 2>&1; done
     fi
     register_hub_mcp "$cli" nexus host
-    if is_mail_host; then register_hub_mcp "$cli" courier host
-    else                  register_hub_mcp "$cli" courier client "$COURIER_REMOTE_URL" COURIER_BEARER; fi
+    if is_mcp_host; then register_hub_mcp "$cli" courier host
+    else                 register_hub_mcp "$cli" courier client "$COURIER_REMOTE_URL" COURIER_BEARER; fi
     register_hub_mcp "$cli" docgen host
     register_hub_mcp "$cli" calendar host
     ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
@@ -304,7 +308,7 @@ register_all_hub_mcp() {
 
 # HOST only: stand up / refresh one LaunchAgent + `tailscale serve` per HTTP-served hub in the
 # registry (hubs.json). Idempotent + re-runnable. Reads hubs.json with jq (present on macOS, the
-# only host). The caller guards is_mail_host; this guards a missing registry/jq/bootstrap so a
+# only host). The caller guards is_mcp_host; this guards a missing registry/jq/bootstrap so a
 # host without them degrades to a warn, never a hard abort under `set -e`.
 bootstrap_all_hubs() {
     local hubs_json="$1" bootstrap="$2"
@@ -333,7 +337,7 @@ provision_courier_client_token() {
     local tf; tf="$(expand "$COURIER_TOKEN_FILE")"
     mkdir -p "$(dirname "$tf")"; chmod 700 "$(dirname "$tf")" 2>/dev/null || true
     if [ -s "$tf" ]; then chmod 600 "$tf"; ok "courier client token present ($tf)"; return; fi
-    warn "courier client needs the bearer token from the mail host ($MAIL_HOST)."
+    warn "courier client needs the bearer token from the MCP host ($MCP_HOST)."
     warn "On the host run:  cat ~/.config/courier/auth-token   then paste it here."
     printf "  Paste courier token (hidden; empty to skip): "
     local tok=""; read -rs tok || true; echo

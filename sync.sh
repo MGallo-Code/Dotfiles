@@ -680,7 +680,7 @@ if [ -f "$NEXUS_SERVER" ]; then
     # Hubs are wired per-ROLE through register_all_hub_mcp / register_hub_mcp (manifest.sh,
     # sourced at the top) - ONE copy shared with setup.sh; check-hub-wiring (INV-5) proves no
     # script wires a hub directly. CLIENT machines: token on disk before the http courier entry.
-    is_mail_host || provision_courier_client_token
+    is_mcp_host || provision_courier_client_token
     register_all_hub_mcp claude
     register_all_hub_mcp codex
     register_all_hub_mcp gemini
@@ -693,10 +693,10 @@ if [ -f "$NEXUS_SERVER" ]; then
             || warn "hub bearer host-scan flagged an exposure (see above) - rotate the token"
     fi
 
-    # MAIL HOST: refresh the HTTP service(s) clients connect to - one per hub in hubs.json
+    # MCP HOST: refresh the HTTP service(s) clients connect to - one per hub in hubs.json
     # (courier today). Idempotent repair.
-    if is_mail_host; then
-        echo -e "\n${GREEN}==>${NC} Hub host bootstrap ($MAIL_HOST)"
+    if is_mcp_host; then
+        echo -e "\n${GREEN}==>${NC} Hub host bootstrap ($MCP_HOST)"
         bootstrap_all_hubs "$DOTFILES_DIR/hubs.json" "$DOTFILES_DIR/scripts/hub-host-bootstrap.sh"
     fi
 

@@ -157,6 +157,15 @@ FEATURES = [
         "ps1": ("scripts/hub-host-bootstrap.ps1", r"HUB-HOST-BOOTSTRAP"),
     },
     {
+        # remote-hubs Phase B: --host/--client are first-class roles. The host role is macOS-only -
+        # setup.sh fails loud for a host off Darwin, setup.ps1 rejects -Role host (Windows is always
+        # a client). Both carry the ROLE_HOST_GUARD marker so neither side silently drops the guard.
+        # (The host-DETECTION asymmetry - is_mcp_host has no Windows mirror - is in PARITY_EXEMPT.)
+        "name": "host/client role guard (host is macOS-only, fails loud off-host)",
+        "sh": ("setup.sh", r"ROLE_HOST_GUARD"),
+        "ps1": ("setup.ps1", r"ROLE_HOST_GUARD"),
+    },
+    {
         # INV-4 defense: re-lock ~/.gemini/settings.json right after a gemini http add (gemini can
         # MATERIALIZE the bearer into it - verified on WSL). chmod 600 (sh) vs icacls (ps1): different
         # mechanism, same behavior - so the row keys on the helper name, not the perms verb.
@@ -285,14 +294,31 @@ PARITY_EXEMPT = [
         "reason": "Claude Code notify hook is macOS-only by design (see "
                   "global-rules/notify-when-done.md: 'Claude Code on macOS only')."
     },
+    {
+        # remote-hubs Phase B: the host/client ROLE GUARD is mirrored (ROLE_HOST_GUARD feature row),
+        # but host self-DETECTION is genuinely macOS-only.
+        "name": "MCP host-role detection (is_mcp_host)",
+        "reason": "Host self-detection is macOS-only: is_mcp_host keys on the macOS LocalHostName and "
+                  "host capability needs the login keychain / launchd / tailscale serve. Windows is "
+                  "ALWAYS a client (manifest.ps1 hardcodes the client wiring; setup.ps1 -Role host fails "
+                  "loud), so there is no ps1 host-detection function to mirror."
+    },
+    {
+        "name": "setup.sh --client Linux/WSL safety (Darwin-gated pbcopy/open, headless reads, npm guard)",
+        "reason": "Making setup.sh runnable on a non-Darwin client (gating the Darwin exit, skipping "
+                  "pbcopy/open, [ -t 0 ]-guarding interactive reads) is bash-only: WSL/Linux clients run "
+                  "setup.sh, while setup.ps1 is the Windows-native entrypoint and never runs on Linux. "
+                  "The host-role guard itself IS mirrored (ROLE_HOST_GUARD feature row)."
+    },
 ]
 
 # Values that MUST be byte-identical across the two manifests. ADR-0002 frames the
-# Mac-mini migration as "change MAIL_HOST" - but it lives in BOTH manifest.sh and
+# Mac-mini migration as "change MCP_HOST" - but it lives in BOTH manifest.sh and
 # manifest.ps1, so this enforces they can't silently drift apart. (label, sh_rx, ps1_rx);
-# each regex captures group 1 = the value.
+# each regex captures group 1 = the value. (MAIL_HOST was generalized to MCP_HOST in
+# remote-hubs Phase B; the regexes require the `= "..."` assignment so prose mentions don't match.)
 SHARED_VALUES = [
-    ("MAIL_HOST",         r'MAIL_HOST="([^"]+)"',          r'\$MailHost\s*=\s*"([^"]+)"'),
+    ("MCP_HOST",          r'MCP_HOST="([^"]+)"',           r'\$McpHost\s*=\s*"([^"]+)"'),
     ("TAILNET",           r'\bTAILNET="([^"]+)"',          r'\$Tailnet\s*=\s*"([^"]+)"'),
     ("COURIER_HTTP_PORT", r'COURIER_HTTP_PORT="([^"]+)"',  r'\$CourierHttpPort\s*=\s*"([^"]+)"'),
 ]

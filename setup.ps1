@@ -3,7 +3,12 @@
 
 param(
     [ValidateSet("full", "dev", "minimal")]
-    [string]$Mode = "full"
+    [string]$Mode = "full",
+    # ROLE (orthogonal to $Mode): Windows is ALWAYS a client of the MCP host (no macOS login
+    # keychain / launchd / tailscale serve), so the host role is rejected. Mirrors setup.sh's
+    # --host/--client; -Role host fails loud just as setup.sh fails loud off Darwin.
+    [ValidateSet("host", "client")]
+    [string]$Role = "client"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +18,15 @@ function Write-Ok   { param($msg) Write-Host "[ok] $msg" -ForegroundColor Green 
 function Write-Warn { param($msg) Write-Host "[skip] $msg" -ForegroundColor Yellow }
 function Write-Err  { param($msg) Write-Host "[error] $msg" -ForegroundColor Red }
 function Write-Step { param($msg) Write-Host "`n==> $msg" -ForegroundColor Green }
+
+# ROLE_HOST_GUARD: the host role is macOS-only (login keychain / launchd / tailscale serve), so on
+# Windows -Role host is rejected - the parity mirror of setup.sh failing loud off Darwin. Windows is
+# ALWAYS a client; -Role defaults to client. (parity-checked: scripts/ci/check-parity.py)
+if ($Role -eq "host") {
+    Write-Err "The -Role host option is macOS-only; Windows is always a client of the MCP host."
+    Write-Err "Re-run without -Role host (or with -Role client)."
+    exit 1
+}
 
 # Helper: find ssh.exe (OpenSSH or Git's bundled copy)
 function Find-Ssh {
@@ -500,11 +514,16 @@ if ($Mode -eq "full") {
     $DocgenBrowsers = "$DocgenPath\.playwright-browsers"
 
     if (Test-Path "$NexusPath\package.json") {
-        Push-Location $NexusPath
-        npm install --silent 2>$null
-        npm run build 2>$null
-        Pop-Location
-        Write-Ok "Nexus: installed and built"
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            Push-Location $NexusPath
+            npm install --silent 2>$null
+            npm run build 2>$null
+            Pop-Location
+            Write-Ok "Nexus: installed and built"
+        }
+        else {
+            Write-Warn "Nexus: npm not found - skipping local build (client wires nexus over HTTP, not stdio)"
+        }
     }
     else {
         Write-Warn "Nexus: package.json not found at $NexusPath"
@@ -512,7 +531,7 @@ if ($Mode -eq "full") {
 
     $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
     if ($uvCmd) {
-        # Courier runs ONLY on the mail host (macOS, login keychain). Windows is always a
+        # Courier runs ONLY on the MCP host (macOS, login keychain). Windows is always a
         # client that reaches it over http, so syncing courier's Python deps here is wasted
         # work (and a misleading "deps synced") - skip it. (ADR-0002 review.)
         if (Test-Path $CalendarPath) {

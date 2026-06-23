@@ -63,18 +63,18 @@ $AgentSkillsTargets = @(
     "$HOME\.gemini\skills"
 )
 
-# ── Courier remote (ADR-0002): mail-host identity (mirror of manifest.sh) ──
-# courier (email) runs on exactly ONE machine - the mail host - because all email
-# state (maildir, notmuch index, 14 login-keychain passwords) lives there. Every
-# other machine is a CLIENT reaching courier over Tailscale. "Mail host" is a ROLE
-# keyed on $MailHost: migrating to the always-on Mac mini = change $MailHost + run the
-# host bootstrap there. Windows is NEVER the host (no macOS login keychain), so this
-# box is always a client; $MailHost only supplies the client URL here.
+# ── MCP host identity (ADR-0002 / remote-hubs, mirror of manifest.sh) ──
+# The HOST is the ONE machine that runs + serves the MCP hubs (courier today; calendar/nexus as
+# they are remoted) over Tailscale. Mac-only (login keychain / chat.db). Every other machine is a
+# CLIENT reaching the hubs over Tailscale. "MCP host" is a ROLE keyed on $McpHost: migrating to the
+# always-on Mac mini = change $McpHost + run the host bootstrap there. Windows is NEVER the host
+# (no macOS login keychain), so this box is always a client; $McpHost only supplies the client URL
+# here. (Was $MailHost when courier was the only remoted hub; generalized in remote-hubs Phase B.)
 # (parity-checked: scripts/ci/check-parity.py)
-$MailHost = "michaels-macbook-pro"
+$McpHost = "michaels-macbook-pro"
 $Tailnet = "tail7a0764.ts.net"
 $CourierHttpPort = "8765"
-$CourierRemoteUrl = "https://$MailHost.$Tailnet/mcp"
+$CourierRemoteUrl = "https://$McpHost.$Tailnet/mcp"
 # Mandatory bearer token: ONE current-user-only file per machine, OUTSIDE any repo
 # (never in git). Consumed via the COURIER_BEARER env var - NEVER passed on a command
 # line. On Windows the file gets a restrictive ACL (icacls) since there is no chmod 600.
@@ -127,7 +127,7 @@ function Initialize-CourierClientToken {
 
     $haveToken = (Test-Path $CourierTokenFile) -and ((Get-Content $CourierTokenFile -Raw -ErrorAction SilentlyContinue))
     if (-not $haveToken) {
-        Write-Warn "courier client needs the bearer token from the mail host ($MailHost)."
+        Write-Warn "courier client needs the bearer token from the MCP host ($McpHost)."
         Write-Warn "On the host run:  cat ~/.config/courier/auth-token   then paste it here."
         $sec = Read-Host "  Paste courier token (hidden; empty to skip)" -AsSecureString
         $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
@@ -160,7 +160,7 @@ function Initialize-CourierClientToken {
 # ── Per-ROLE hub MCP wiring (mirror of manifest.sh register_hub_mcp / register_all_hub_mcp) ──
 # Phase A of the remote-hubs plan generalized the single courier function into hub primitives so
 # the same per-role wiring covers EVERY hub (dotfiles INV-5, scripts/ci/check-hub-wiring.py).
-# Windows is NEVER the mail host: courier is always the http CLIENT, the rest are local stdio.
+# Windows is NEVER the MCP host: courier is always the http CLIENT, the rest are local stdio.
 
 # stdio add for one hub on one CLI (local role). nexus/docgen/calendar only - courier is never
 # wired stdio on Windows (always the http client; see Register-AllHubMcp). The `--` exec

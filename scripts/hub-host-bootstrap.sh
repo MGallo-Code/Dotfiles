@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # hub-host-bootstrap.sh  --  HUB-HOST-BOOTSTRAP (ADR-0002, remote-hubs Phase A)
 #
-# Idempotent, RE-RUNNABLE bootstrap of ONE HTTP MCP hub ON THE MAIL HOST. Generalized from the
+# Idempotent, RE-RUNNABLE bootstrap of ONE HTTP MCP hub ON THE MCP HOST. Generalized from the
 # old courier-host-bootstrap.sh: courier is now ONE invocation of this script (driven from
 # hubs.json by manifest.sh's bootstrap_all_hubs). Stands up everything a client needs to reach
 # the hub over Tailscale:
@@ -24,7 +24,7 @@
 #               path-mounted hub - tailscale serve does NOT strip the prefix)
 #
 # Re-run any time (token rotation: delete the file first; a plist/env change; a hub code update;
-# the Mac-mini migration: set MAIL_HOST in manifest.sh, run there). Deliberately SEPARATE from
+# the Mac-mini migration: set MCP_HOST in manifest.sh, run there). Deliberately SEPARATE from
 # `sync` per the ADR-0002 cross-check: the host bootstrap is its OWN idempotent repair path.
 set -euo pipefail
 
@@ -36,7 +36,7 @@ NAME="$1"; PORT="$2"; RUN_CMD="$3"; TOKEN_ARG="$4"; SERVE_PATH="$5"; MCP_PATH="$
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/manifest.sh"   # MAIL_HOST, TAILNET (host identity); the wiring fns are unused here
+source "$SCRIPT_DIR/manifest.sh"   # MCP_HOST, TAILNET (host identity); the wiring fns are unused here
 
 # Minimal helpers (this script runs standalone, not only sourced by setup.sh).
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -51,7 +51,7 @@ LABEL="com.ea.${NAME}-http"
 TOKEN_FILE="$(expand "$TOKEN_ARG")"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/${NAME}-http.log"
-ALLOWED_HOST="$MAIL_HOST.$TAILNET"
+ALLOWED_HOST="$MCP_HOST.$TAILNET"
 UID_NUM="$(id -u)"
 
 # Testability: HUB_BOOTSTRAP_DRY_RUN=<path> writes the generated plist to <path> and exits BEFORE
@@ -66,19 +66,19 @@ RUN_EXPANDED="${RUN_CMD//\$HOME/$HOME}"
 IFS=' ' read -ra PROG_ARGS <<< "$RUN_EXPANDED"
 if [ "${#PROG_ARGS[@]}" -eq 0 ]; then err "empty run-cmd for hub '$NAME'"; exit 1; fi
 
-echo "==> hub host bootstrap: $NAME (MAIL_HOST=$MAIL_HOST, port $PORT, serve '${SERVE_PATH:-/}', mount $MCP_PATH)"
+echo "==> hub host bootstrap: $NAME (MCP_HOST=$MCP_HOST, port $PORT, serve '${SERVE_PATH:-/}', mount $MCP_PATH)"
 
-# --- 0. Sanity: must be macOS, and must actually BE the mail host -------------
+# --- 0. Sanity: must be macOS, and must actually BE the MCP host -------------
 # (ADR-0002 review: fail LOUD, never silently degrade a host into a client.)
 if [ "$(uname -s)" != "Darwin" ]; then
     err "hub host bootstrap is macOS-only (login-keychain / launchd requirement). This is $(uname -s)."
     exit 1
 fi
 LOCAL_HOST_NORM="$(scutil --get LocalHostName 2>/dev/null | tr '[:upper:]' '[:lower:]')"
-if [ "$LOCAL_HOST_NORM" != "$MAIL_HOST" ]; then
-    err "this machine's LocalHostName ('$LOCAL_HOST_NORM') != MAIL_HOST ('$MAIL_HOST')."
-    err "Refusing to bootstrap a hub host here (it would shadow the real mail host)."
-    err "If this SHOULD be the host, set MAIL_HOST in manifest.sh to '$LOCAL_HOST_NORM'"
+if [ "$LOCAL_HOST_NORM" != "$MCP_HOST" ]; then
+    err "this machine's LocalHostName ('$LOCAL_HOST_NORM') != MCP_HOST ('$MCP_HOST')."
+    err "Refusing to bootstrap a hub host here (it would shadow the real MCP host)."
+    err "If this SHOULD be the host, set MCP_HOST in manifest.sh to '$LOCAL_HOST_NORM'"
     err "(or fix the Local hostname in System Settings > General > Sharing), then re-run."
     exit 1
 fi

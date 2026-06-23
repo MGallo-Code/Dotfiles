@@ -22,6 +22,20 @@ cd $HOME\.dotfiles; .\setup.ps1
 - `setup.sh --dev` - Dev tools + NVIM only, no EA/Wiki
 - `setup.sh --minimal` - Just SSH key + git config
 
+## Setup Roles (host vs client)
+
+The MCP hubs (courier, calendar, nexus) run on ONE always-on **host** Mac and are reached over a
+Tailscale tunnel by every other machine as a thin HTTP+bearer **client**. The role is orthogonal to
+the mode (any mode runs as either role):
+
+- `setup.sh --host` - this machine runs + serves the hubs. macOS-only (login keychain / launchd /
+  `tailscale serve`); fails loud off macOS. Auto-selected when this box IS the MCP host.
+- `setup.sh --client` - thin client of the hubs on the host. Runs on Linux/WSL (and any non-host
+  Mac). Auto-selected on a non-host machine, so a plain `setup.sh` on Linux/WSL already runs as a
+  client - the flag is the explicit form.
+
+On Windows, `setup.ps1` is always a client (`-Role host` is rejected); WSL clients run `setup.sh`.
+
 ## Sync
 
 Pull updates across all managed repos, push local commits, and hand dirty repos to Claude for committing:

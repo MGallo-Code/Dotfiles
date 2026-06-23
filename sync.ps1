@@ -716,7 +716,7 @@ $DocgenBrowsers = "$DocgenPath\.playwright-browsers"
 
 $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
 if ($uvCmd) {
-    # Courier runs ONLY on the mail host (macOS); Windows is always a client reaching it
+    # Courier runs ONLY on the MCP host (macOS); Windows is always a client reaching it
     # over http, so syncing courier's Python deps here is wasted work - skip it. (ADR-0002.)
     if (Test-Path $CalendarPath) {
         Push-Location $CalendarPath

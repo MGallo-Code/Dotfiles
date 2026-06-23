@@ -303,7 +303,12 @@ register_all_hub_mcp() {
         ' "$HOME/.codex/config.toml" 2>/dev/null || true
     else
         case "$cli" in claude) scope_flag="--scope=user" ;; gemini) scope_flag="--scope user" ;; esac
-        for name in nexus courier docgen calendar; do "$cli" mcp remove $scope_flag "$name" >/dev/null 2>&1; done
+        # `mcp remove` of an UNREGISTERED server returns rc1 (claude + gemini); the loop's exit status is
+        # the LAST iteration's (calendar), so under `set -e` a FRESH machine with nothing registered yet
+        # would ABORT here before wiring any hub - exactly a client's first `setup.sh --client` (Phase B
+        # newly routed clients through this fn). `|| true` makes each remove idempotent (remove-if-present,
+        # ignore-if-absent), matching the codex branch's tolerant `perl ... || true` above.
+        for name in nexus courier docgen calendar; do "$cli" mcp remove $scope_flag "$name" >/dev/null 2>&1 || true; done
     fi
     register_hub_mcp "$cli" nexus host
     register_hub_mcp "$cli" docgen host
@@ -355,8 +360,14 @@ provision_hub_client_token() {
     if [ -s "$tf" ]; then chmod 600 "$tf"; ok "$name client token present ($tf)"; return; fi
     warn "$name client needs the bearer token from the MCP host ($MCP_HOST)."
     warn "On the host run:  cat $token_path   then paste it here."
-    printf "  Paste %s token (hidden; empty to skip): " "$name"
-    local tok=""; read -rs tok || true; echo
+    # Only PROMPT when attached to a TTY (consistent with the git-identity/Homebrew reads): a headless
+    # client (closed OR open-idle stdin) must neither hang waiting on a pipe nor print prompt text into
+    # non-interactive output. No TTY -> leave the token absent + warn (paste it later).
+    local tok=""
+    if [ -t 0 ]; then
+        printf "  Paste %s token (hidden; empty to skip): " "$name"
+        read -rs tok || true; echo
+    fi
     if [ -n "$tok" ]; then
         ( umask 177; printf '%s' "$tok" > "$tf" ); chmod 600 "$tf"
         ok "$name token saved ($tf, mode 600). Open a new shell to export $bearer_var."

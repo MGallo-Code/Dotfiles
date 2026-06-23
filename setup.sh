@@ -65,6 +65,15 @@ if [ "$ROLE" = "host" ] && [ "$(uname)" != "Darwin" ]; then
     exit 1
 fi
 
+# Visibility: on the actual MCP host, --client cannot make this box a client of ITSELF. Hub WIRING
+# keys on capability (is_mcp_host), so courier/calendar stay host-stdio; AND the host-serving block
+# below still runs (is_mcp_host), which (re-)bootstraps the hub LaunchAgents. So --client here is
+# IGNORED, not a no-op - this box runs as the host. Surface that instead of silently overriding intent.
+if is_mcp_host && [ "$ROLE" = "client" ]; then
+    warn "This machine IS the MCP host; --client is IGNORED - it runs as the host (hubs stay host-wired"
+    warn "and the hub services are (re-)bootstrapped). To set up a client, run on a non-host machine."
+fi
+
 ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
     local codex_config="$HOME/.codex/config.toml"
     mkdir -p "$HOME/.codex"
@@ -300,11 +309,17 @@ else
     # pbcopy returns 127 and would abort, so on non-Darwin just print the key + URL to paste, and
     # only block on an interactive read when a TTY is present (a headless client must not hang).
     if [ "$(uname)" = "Darwin" ]; then
-        cat ~/.ssh/id_ed25519.pub | pbcopy
-        ok "Public key copied to clipboard"
-        open "https://github.com/settings/ssh/new"
-        echo ""
-        echo "Paste your key on GitHub, then press Enter to continue..."
+        # pbcopy/open need a GUI session; on a HEADLESS Mac (CI runner, ssh-in) they can fail with no
+        # window server -> under `set -e` that would abort. Make them non-fatal (same "no clipboard"
+        # class as the non-Darwin branch): print the key if the clipboard is unavailable.
+        if cat ~/.ssh/id_ed25519.pub | pbcopy 2>/dev/null; then
+            ok "Public key copied to clipboard"
+        else
+            warn "clipboard unavailable (headless?) - add this key to GitHub manually:"
+            cat ~/.ssh/id_ed25519.pub
+        fi
+        open "https://github.com/settings/ssh/new" 2>/dev/null || true
+        echo "Paste your key on GitHub (https://github.com/settings/ssh/new), then press Enter to continue..."
         if [ -t 0 ]; then read -r || true; fi
     else
         echo "Add this public key to GitHub (https://github.com/settings/ssh/new):"
@@ -449,19 +464,22 @@ if [[ "$MODE" == "--full" ]]; then
     CALENDAR_SRC="$CALENDAR_PATH/src"
     DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
 
-    # Build nexus (TypeScript). Gate on `command -v npm` (like the `uv` sync below): npm is not
-    # guaranteed on a client (Node is a Phase-F prereq) and under `set -euo pipefail` a missing npm
-    # returns 127 and aborts - even with the 2>/dev/null (that hides stderr, not the exit code). A
-    # client without Node just skips the local build; it wires nexus over HTTP, it does not run it.
+    # Build nexus (TypeScript). nexus is stdio-wired on EVERY machine until it is remoted (Phase D),
+    # so a client needs it built too. Two `set -euo pipefail` aborts to avoid so a client run COMPLETES:
+    # (1) a MISSING npm returns 127 -> gate on `command -v npm`; (2) a present-but-FAILING install/build
+    # returns non-zero (the 2>/dev/null hides stderr, not the exit code) -> warn-and-continue, never
+    # abort. An unbuilt nexus is surfaced loudly, not silently fatal to the whole setup.
     if [ -f "$NEXUS_PATH/package.json" ]; then
         if command -v npm >/dev/null 2>&1; then
             cd "$NEXUS_PATH"
-            npm install --silent 2>/dev/null
-            npm run build 2>/dev/null
-            ok "Nexus: installed and built"
+            if npm install --silent 2>/dev/null && npm run build 2>/dev/null; then
+                ok "Nexus: installed and built"
+            else
+                warn "Nexus: npm install/build failed - nexus stdio won't run until fixed (setup continues)"
+            fi
             cd - >/dev/null
         else
-            warn "Nexus: npm not found - skipping local build (client wires nexus over HTTP, not stdio)"
+            warn "Nexus: npm not found - skipping build (install Node + re-run; nexus stdio needs it)"
         fi
     else
         warn "Nexus: package.json not found at $NEXUS_PATH"

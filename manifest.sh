@@ -376,8 +376,30 @@ provision_hub_client_token() {
     fi
 }
 
-# CLIENT-only: provision EVERY role-aware hub's bearer token in one pass (one paste per hub).
+# CLIENT-only: make the per-hub ${<HUB>_BEARER} vars available to a BASH-launched client. shell/ea.zsh
+# exports them for zsh, but WSL (and any bash client) launches claude from bash, which never sources
+# ea.zsh - so without this the tokens sit on disk but are never exported and every hub stays 401. This
+# is the bash analog of the Windows User-env-set in Initialize-HubClientToken. Idempotent (marker-gated);
+# appends to an EXISTING ~/.bashrc only (a zsh client has none -> skip, ea.zsh covers it). The exports run
+# in interactive shells (where claude is launched), matching the zsh side. Token paths mirror ea.zsh.
+ensure_client_bearer_exports() {
+    local rc="$HOME/.bashrc"
+    local marker="# dotfiles: hub bearer tokens"
+    [ -e "$rc" ] || return 0
+    grep -qF "$marker" "$rc" 2>/dev/null && return 0
+    {
+        echo ""
+        echo "$marker (WSL/bash clients: ea.zsh is zsh-only, so export the per-hub bearers here too)"
+        echo '[ -r "$HOME/.config/courier/auth-token" ]  && export COURIER_BEARER="$(cat "$HOME/.config/courier/auth-token")"'
+        echo '[ -r "$HOME/.config/calendar/auth-token" ] && export CALENDAR_BEARER="$(cat "$HOME/.config/calendar/auth-token")"'
+    } >> "$rc"
+    ok "wired per-hub bearer exports into ~/.bashrc (open a new shell to pick them up)"
+}
+
+# CLIENT-only: provision EVERY role-aware hub's bearer token in one pass (one paste per hub), then make
+# the bearers available to a bash-launched client too (ea.zsh only covers zsh).
 provision_all_client_tokens() {
     provision_hub_client_token courier  "$COURIER_TOKEN_FILE"  COURIER_BEARER
     provision_hub_client_token calendar "$CALENDAR_TOKEN_FILE" CALENDAR_BEARER
+    ensure_client_bearer_exports
 }

@@ -46,16 +46,16 @@ jobs:
       - name: check-parity
         run: python scripts/ci/check-parity.py
 
-  courier-wiring:
-    # INV-4 (no inlined courier bearer) + INV-5 (courier wired per-role via the shared fn).
+  hub-wiring:
+    # INV-4 (no inlined hub bearer) + INV-5 (every hub wired per-role via the shared fn).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: check-courier-wiring
-        run: python scripts/ci/check-courier-wiring.py
+      - name: check-hub-wiring
+        run: python scripts/ci/check-hub-wiring.py
 
   skill-targets:
     # Generated skills have a live source; an archived root never leaks into an active list.

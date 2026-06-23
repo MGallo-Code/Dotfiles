@@ -579,63 +579,15 @@ if ($Mode -eq "full") {
         }
     }
 
-    # Courier is per-ROLE (ADR-0002). Initialize-CourierClientToken + Register-CourierMcp
-    # are defined in manifest.ps1 (dot-sourced at the top) so setup AND sync share ONE copy.
-    # Windows is always a courier CLIENT (no macOS login keychain) -> the http path.
-    function Register-GlobalMcp {
-        param([string]$Cli)
-        $cmd = Get-Command $Cli -ErrorAction SilentlyContinue
-        if (-not $cmd) {
-            Write-Warn "$Cli not found - skipping its global MCP wiring"
-            return
-        }
-
-        foreach ($name in @("nexus", "courier", "docgen", "calendar")) {
-            switch ($Cli) {
-                "claude" { & $cmd.Source mcp remove --scope=user $name 2>$null | Out-Null }
-                "codex"  { }  # codex entries are text-stripped in the add-switch below (mcp remove can't load a broken config.toml)
-                "gemini" { & $cmd.Source mcp remove --scope user $name 2>$null | Out-Null }
-            }
-        }
-
-        switch ($Cli) {
-            "claude" {
-                & $cmd.Source mcp add --scope=user nexus -- node $NexusServer | Out-Null
-                Register-CourierMcp $Cli $cmd.Source
-                & $cmd.Source mcp add --scope=user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
-                & $cmd.Source mcp add --scope=user calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
-            }
-            "codex" {
-                # codex keeps MCP servers in config.toml; `codex mcp` can't run when that file
-                # won't parse (a drifted-version entry with an invalid transport), deadlocking
-                # re-wiring. Text-strip the managed blocks first so codex can always load.
-                $cfg = Join-Path $HOME ".codex\config.toml"
-                if (Test-Path $cfg) {
-                    $c = Get-Content $cfg -Raw
-                    $c = [regex]::Replace($c, '(?m)^\[mcp_servers\.(?:nexus|courier|docgen|calendar)(?:\.[^\]]*)?\][^\r\n]*\r?\n(?:(?!^\[)[^\r\n]*\r?\n?)*', '')
-                    $c = [regex]::Replace($c, '(\r?\n){3,}', "`n`n")
-                    Set-Content -Path $cfg -Value $c -NoNewline
-                }
-                & $cmd.Source mcp add nexus -- node $NexusServer | Out-Null
-                Register-CourierMcp $Cli $cmd.Source
-                & $cmd.Source mcp add docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" -- uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
-                & $cmd.Source mcp add calendar --env "PYTHONPATH=$CalendarSrc" -- uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
-            }
-            "gemini" {
-                & $cmd.Source mcp add --scope user nexus node $NexusServer | Out-Null
-                Register-CourierMcp $Cli $cmd.Source
-                & $cmd.Source mcp add --scope user docgen --env "PYTHONPATH=$DocgenSrc" --env "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers" uv run --project $DocgenPath --no-sync python -m docgen.server | Out-Null
-                & $cmd.Source mcp add --scope user calendar --env "PYTHONPATH=$CalendarSrc" uv run --project $CalendarPath --no-sync python -m ea_calendar.server | Out-Null
-            }
-        }
-        Write-Ok "$Cli`: global MCP wired (nexus + courier + docgen + calendar)"
-    }
-
+    # Hubs are wired per-ROLE through Register-AllHubMcp / Register-HubMcp (manifest.ps1,
+    # dot-sourced at the top) so setup AND sync share ONE copy of the wiring and check-hub-wiring
+    # (INV-5) can prove no script wires a hub directly. Windows is always a CLIENT (no macOS login
+    # keychain): courier is wired http, the rest local stdio.
     if (Test-Path $NexusServer) {
         Initialize-CourierClientToken   # Windows is always a courier CLIENT (ADR-0002)
-        Register-GlobalMcp "claude"
-        Register-GlobalMcp "codex"
-        Register-GlobalMcp "gemini"
+        Register-AllHubMcp "claude"
+        Register-AllHubMcp "codex"
+        Register-AllHubMcp "gemini"
     }
 
     function Test-CalendarHealth {

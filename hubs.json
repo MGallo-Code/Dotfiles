@@ -1,0 +1,10 @@
+[
+  {
+    "name": "courier",
+    "port": 8765,
+    "serve_path": "",
+    "mcp_path": "/mcp",
+    "token_file": "~/.config/courier/auth-token",
+    "run_cmd": "/usr/bin/env PYTHONPATH=$HOME/Documents/EA/courier/src:$HOME/Documents/EA/ea_mcp_remote/src $HOME/Documents/EA/courier/.venv/bin/python -u -m courier.server"
+  }
+]

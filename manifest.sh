@@ -191,42 +191,139 @@ DIRECTORIES=(
 SHELL_CORE="shell/core.zsh"
 SHELL_EA="shell/ea.zsh"
 
-# ── Courier per-ROLE MCP wiring (shared by setup.sh AND sync.sh) ──────
-# Defined here - sourced by BOTH - so the host-vs-client decision lives in ONE place.
-# (The ADR-0002 review caught setup.sh and sync.sh each owning a separate copy, with the
-# repeatable `sync` silently re-wiring courier as broken local stdio on clients.) These
-# functions use expand/ok/warn (provided by the sourcing script) and COURIER_PATH /
-# COURIER_SRC (set in each script's MCP section); resolved lazily at call time.
+# ── Per-ROLE hub MCP wiring (shared by setup.sh AND sync.sh) ──────────
+# Defined here - sourced by BOTH - so the host-vs-client decision AND every hub `mcp add`
+# live in ONE place. (The ADR-0002 review caught setup.sh and sync.sh each owning a separate
+# copy, with the repeatable `sync` silently re-wiring courier as broken local stdio on clients;
+# Phase A of the remote-hubs plan generalized that single courier function into the hub
+# primitives below so the same guard covers EVERY hub - dotfiles INV-5, enforced by
+# scripts/ci/check-hub-wiring.py.) These functions use expand/ok/warn (from the sourcing script)
+# and the per-server PATH/SRC vars (NEXUS_SERVER, COURIER_PATH/SRC, DOCGEN_PATH/SRC,
+# DOCGEN_BROWSERS, CALENDAR_PATH/SRC, COURIER_REMOTE_URL; set in each script's MCP section),
+# resolved lazily at call time.
 
-# True iff THIS machine is the mail host. Keys on the STABLE macOS LocalHostName
-# normalized to the MagicDNS label, NOT `hostname` (which is "MacBookPro" here). The
-# fail-loud guards live in setup.sh + courier-host-bootstrap.sh.
+# True iff THIS machine is the mail host. Keys on the STABLE macOS LocalHostName normalized to
+# the MagicDNS label, NOT `hostname` (which is "MacBookPro" here). The fail-loud guards live in
+# setup.sh + scripts/hub-host-bootstrap.sh.
 is_mail_host() {
     [ "$(uname -s)" = "Darwin" ] || return 1
     local lh; lh="$(scutil --get LocalHostName 2>/dev/null | tr '[:upper:]' '[:lower:]')"
     [ "$lh" = "$MAIL_HOST" ]
 }
 
-# Wire courier for THIS machine's role, for one CLI. HOST = local stdio (reads the login
-# keychain; no token). CLIENT = http to the mail host over Tailscale, bearer supplied via
-# the ${COURIER_BEARER} env var - NEVER on a command line (process-table leak) or inlined
-# into the CLI's stored config (claude/gemini expand it at runtime; codex reads it via
-# --bearer-token-env-var).
-register_courier_mcp() {
+# stdio add for one hub on one CLI (host/local role; no token). Per-hub env flags + exec command
+# are literal arrays (NOT a word-split string). The `--` exec separator is cli-specific:
+# claude/codex take it, gemini does NOT. Empty arrays use the bash-3.2 `set -u`-safe
+# `"${a[@]+"${a[@]}"}"` idiom - macOS ships bash 3.2, where a bare "${a[@]}" on an EMPTY array
+# aborts under set -u.
+_hub_stdio_add() {
+    local cli="$1" name="$2"
+    local -a envs=() exec_cmd=()
+    case "$name" in
+        nexus)    exec_cmd=(node "$NEXUS_SERVER") ;;
+        courier)  envs=(--env "PYTHONPATH=$COURIER_SRC")
+                  exec_cmd=(uv run --project "$COURIER_PATH" --no-sync python -m courier.server) ;;
+        docgen)   envs=(--env "PYTHONPATH=$DOCGEN_SRC" --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS")
+                  exec_cmd=(uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server) ;;
+        calendar) envs=(--env "PYTHONPATH=$CALENDAR_SRC")
+                  exec_cmd=(uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server) ;;
+        *) warn "_hub_stdio_add: unknown hub '$name'"; return 1 ;;
+    esac
+    case "$cli" in
+        claude) "$cli" mcp add --scope=user "$name" "${envs[@]+"${envs[@]}"}" -- "${exec_cmd[@]}" >/dev/null ;;
+        codex)  "$cli" mcp add "$name" "${envs[@]+"${envs[@]}"}" -- "${exec_cmd[@]}" >/dev/null ;;
+        gemini) "$cli" mcp add --scope user "$name" "${envs[@]+"${envs[@]}"}" "${exec_cmd[@]}" >/dev/null ;;
+    esac
+}
+
+# http client add for one hub on one CLI (client role). GENERIC over (url, token_env): the bearer is
+# referenced ONLY as the ${<token_env>} env var in the wiring SOURCE, never a literal token (dotfiles
+# INV-4). The inline `\${$token_env}` expands to e.g. ${COURIER_BEARER} in the argv. claude/codex
+# store that REFERENCE and resolve it at launch (codex via --bearer-token-env-var). gemini is the
+# exception: on WSL/Linux it MATERIALIZES the reference into ~/.gemini/settings.json at add-time (the
+# COURIER_BEARER value is in the env there, so the real token lands at-rest in the config; on macOS
+# this box stores the ref, so it is platform-dependent). So after the gemini add we re-lock that file
+# 0600 (the materialized token is never group/world-readable), and check-hub-wiring.py --host
+# (host-side) flags any literal so the token can be ROTATED. See gemini_relock_settings.
+_hub_http_add() {
+    local cli="$1" name="$2" url="$3" token_env="$4"
+    case "$cli" in
+        claude) "$cli" mcp add --scope=user --transport http "$name" "$url" --header "Authorization: Bearer \${$token_env}" >/dev/null ;;
+        gemini) "$cli" mcp add --scope user --transport http -H "Authorization: Bearer \${$token_env}" "$name" "$url" >/dev/null
+                gemini_relock_settings ;;
+        codex)  "$cli" mcp add "$name" --url "$url" --bearer-token-env-var "$token_env" >/dev/null ;;
+    esac
+}
+
+# INV-4 defense: re-lock ~/.gemini/settings.json to 0600 right after a gemini http add, because gemini
+# may materialize the bearer REFERENCE into the file (verified on WSL). Idempotent + EOF/`set -e`-safe.
+gemini_relock_settings() {
+    local gs="$HOME/.gemini/settings.json"
+    [ -f "$gs" ] && chmod 600 "$gs" 2>/dev/null || true
+}
+
+# Wire ONE hub for THIS machine's role, for one CLI (the per-hub primitive; folds the old
+# register_courier_mcp). role=host -> stdio; role=client -> http+bearer.
+register_hub_mcp() {
+    local cli="$1" name="$2" role="$3" url="${4:-}" token_env="${5:-}"
+    case "$role" in
+        host)   _hub_stdio_add "$cli" "$name" ;;
+        client) _hub_http_add "$cli" "$name" "$url" "$token_env" ;;
+        *) warn "register_hub_mcp: unknown role '$role' for $name"; return 1 ;;
+    esac
+}
+
+# Wire ALL global hubs for one CLI - the dedup'd replacement for the old register_global_mcp that
+# setup.sh and sync.sh each carried byte-identically. Idempotent (remove-then-add); courier is the
+# only role-aware hub (host stdio on the mail host, http+bearer elsewhere), the rest are always
+# local stdio. EVERY hub `mcp add` lives HERE, so check-hub-wiring (INV-5) can prove no setup/sync
+# script wires a hub directly.
+register_all_hub_mcp() {
     local cli="$1"
-    if is_mail_host; then
-        case "$cli" in
-            claude) "$cli" mcp add --scope=user courier --env "PYTHONPATH=$COURIER_SRC" -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null ;;
-            codex)  "$cli" mcp add courier --env "PYTHONPATH=$COURIER_SRC" -- uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null ;;
-            gemini) "$cli" mcp add --scope user courier --env "PYTHONPATH=$COURIER_SRC" uv run --project "$COURIER_PATH" --no-sync python -m courier.server >/dev/null ;;
-        esac
+    command -v "$cli" >/dev/null 2>&1 || { warn "$cli not found - skipping its global MCP wiring"; return; }
+    local name scope_flag=""
+    if [ "$cli" = "codex" ]; then
+        # codex keeps MCP servers in config.toml; `codex mcp remove` can't run when that file
+        # won't parse (a drifted-version entry with an invalid transport), which deadlocks
+        # re-wiring. Text-strip the managed blocks first so codex can always load, then re-add.
+        perl -0pi -e '
+            s/^\[mcp_servers\.(?:nexus|courier|docgen|calendar)(?:\.[^\]]*)?\][^\n]*\n(?:(?!^\[)[^\n]*\n?)*//mg;
+            s/\n{3,}/\n\n/g;
+        ' "$HOME/.codex/config.toml" 2>/dev/null || true
     else
-        case "$cli" in
-            claude) "$cli" mcp add --scope=user --transport http courier "$COURIER_REMOTE_URL" --header "Authorization: Bearer \${COURIER_BEARER}" >/dev/null ;;
-            gemini) "$cli" mcp add --scope user --transport http -H "Authorization: Bearer \${COURIER_BEARER}" courier "$COURIER_REMOTE_URL" >/dev/null ;;
-            codex)  "$cli" mcp add courier --url "$COURIER_REMOTE_URL" --bearer-token-env-var COURIER_BEARER >/dev/null ;;
-        esac
+        case "$cli" in claude) scope_flag="--scope=user" ;; gemini) scope_flag="--scope user" ;; esac
+        for name in nexus courier docgen calendar; do "$cli" mcp remove $scope_flag "$name" >/dev/null 2>&1; done
     fi
+    register_hub_mcp "$cli" nexus host
+    if is_mail_host; then register_hub_mcp "$cli" courier host
+    else                  register_hub_mcp "$cli" courier client "$COURIER_REMOTE_URL" COURIER_BEARER; fi
+    register_hub_mcp "$cli" docgen host
+    register_hub_mcp "$cli" calendar host
+    ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
+}
+
+# HOST only: stand up / refresh one LaunchAgent + `tailscale serve` per HTTP-served hub in the
+# registry (hubs.json). Idempotent + re-runnable. Reads hubs.json with jq (present on macOS, the
+# only host). The caller guards is_mail_host; this guards a missing registry/jq/bootstrap so a
+# host without them degrades to a warn, never a hard abort under `set -e`.
+bootstrap_all_hubs() {
+    local hubs_json="$1" bootstrap="$2"
+    if [ ! -f "$hubs_json" ]; then warn "hub bootstrap: $hubs_json not found - skipping"; return 0; fi
+    if ! command -v jq >/dev/null 2>&1; then warn "hub bootstrap: jq not found - skipping"; return 0; fi
+    if [ ! -x "$bootstrap" ]; then warn "hub bootstrap: $bootstrap not executable - skipping"; return 0; fi
+    local hub name port run token serve mcp
+    jq -c '.[]' "$hubs_json" | while IFS= read -r hub; do
+        [ -n "$hub" ] || continue
+        name="$(printf '%s' "$hub"  | jq -r '.name')"
+        port="$(printf '%s' "$hub"  | jq -r '.port')"
+        run="$(printf '%s' "$hub"   | jq -r '.run_cmd')"
+        token="$(printf '%s' "$hub" | jq -r '.token_file')"
+        serve="$(printf '%s' "$hub" | jq -r '.serve_path')"
+        mcp="$(printf '%s' "$hub"   | jq -r '.mcp_path')"
+        "$bootstrap" "$name" "$port" "$run" "$token" "$serve" "$mcp" \
+            || warn "hub host bootstrap ($name) reported an issue - see output above"
+    done
+    return 0
 }
 
 # CLIENT-only: ensure the mode-600 token file exists (prompt-paste once - ADR-0002 token

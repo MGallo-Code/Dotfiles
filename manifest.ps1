@@ -157,13 +157,97 @@ function Initialize-CourierClientToken {
     }
 }
 
-function Register-CourierMcp {
-    param([string]$Cli, $CmdSource)
-    # Windows is never the mail host -> always the http client path. The backtick before $
-    # passes the LITERAL ${COURIER_BEARER} to the CLI (claude/gemini expand it at runtime).
-    switch ($Cli) {
-        "claude" { & $CmdSource mcp add --scope=user --transport http courier $CourierRemoteUrl --header "Authorization: Bearer `${COURIER_BEARER}" | Out-Null }
-        "gemini" { & $CmdSource mcp add --scope user --transport http -H "Authorization: Bearer `${COURIER_BEARER}" courier $CourierRemoteUrl | Out-Null }
-        "codex"  { & $CmdSource mcp add courier --url $CourierRemoteUrl --bearer-token-env-var COURIER_BEARER | Out-Null }
+# ── Per-ROLE hub MCP wiring (mirror of manifest.sh register_hub_mcp / register_all_hub_mcp) ──
+# Phase A of the remote-hubs plan generalized the single courier function into hub primitives so
+# the same per-role wiring covers EVERY hub (dotfiles INV-5, scripts/ci/check-hub-wiring.py).
+# Windows is NEVER the mail host: courier is always the http CLIENT, the rest are local stdio.
+
+# stdio add for one hub on one CLI (local role). nexus/docgen/calendar only - courier is never
+# wired stdio on Windows (always the http client; see Register-AllHubMcp). The `--` exec
+# separator is cli-specific: claude/codex take it, gemini does not.
+function Add-HubStdioMcp {
+    param([string]$Cli, $CmdSource, [string]$Name)
+    $envArgs = @(); $exec = @()
+    switch ($Name) {
+        "nexus"    { $exec = @("node", $NexusServer) }
+        "docgen"   { $envArgs = @("--env", "PYTHONPATH=$DocgenSrc", "--env", "PLAYWRIGHT_BROWSERS_PATH=$DocgenBrowsers"); $exec = @("uv", "run", "--project", $DocgenPath, "--no-sync", "python", "-m", "docgen.server") }
+        "calendar" { $envArgs = @("--env", "PYTHONPATH=$CalendarSrc"); $exec = @("uv", "run", "--project", $CalendarPath, "--no-sync", "python", "-m", "ea_calendar.server") }
     }
+    switch ($Cli) {
+        "claude" { & $CmdSource mcp add --scope=user $Name @envArgs -- @exec | Out-Null }
+        "codex"  { & $CmdSource mcp add $Name @envArgs -- @exec | Out-Null }
+        "gemini" { & $CmdSource mcp add --scope user $Name @envArgs @exec | Out-Null }
+    }
+}
+
+# http client add for one hub on one CLI. GENERIC over (url, token_env). The header is built by
+# SINGLE-QUOTE concatenation so the literal ${<TokenEnv>} REFERENCE (not its value) reaches the
+# CLI, which stores the ref and resolves it at runtime (dotfiles INV-4). Single-quote concat
+# avoids the backtick-escape fragility of an interpolated string.
+# INV-4 defense: re-lock ~/.gemini/settings.json to the current user after a gemini http add, because
+# gemini may MATERIALIZE the bearer reference into the file (verified on WSL/Linux). Unlike the courier
+# token file - which WE create inside an already-locked dir, so it is clean by construction and needs no
+# reset - settings.json is created by GEMINI and may carry a pre-existing EXPLICIT ACE. So `icacls
+# /reset` FIRST strips any explicit ACE (back to inherited), THEN /inheritance:r removes inherited and
+# /grant:r grants owner-only: a FULL owner lock, not best-effort. The cross-platform backstop is
+# check-hub-wiring.py --host, which DETECTS a materialized literal token (not perms-gated) for ROTATION.
+function Lock-GeminiSettings {
+    $gset = Join-Path $HOME ".gemini\settings.json"
+    if (Test-Path $gset) {
+        $sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+        icacls $gset /reset | Out-Null
+        icacls $gset /inheritance:r /grant:r "*${sid}:F" | Out-Null
+    }
+}
+
+function Add-HubHttpMcp {
+    param([string]$Cli, $CmdSource, [string]$Name, [string]$Url, [string]$TokenEnv)
+    $hdr = 'Authorization: Bearer ${' + $TokenEnv + '}'  # hub-wiring-allow (audited: env-ref via single-quote concat; PS has no bash ${$var} indirection)
+    switch ($Cli) {
+        "claude" { & $CmdSource mcp add --scope=user --transport http $Name $Url --header $hdr | Out-Null }
+        "gemini" {
+            & $CmdSource mcp add --scope user --transport http -H $hdr $Name $Url | Out-Null
+            Lock-GeminiSettings
+        }
+        "codex"  { & $CmdSource mcp add $Name --url $Url --bearer-token-env-var $TokenEnv | Out-Null }
+    }
+}
+
+# Wire ONE hub for its role, for one CLI (the per-hub primitive; folds the old Register-CourierMcp).
+function Register-HubMcp {
+    param([string]$Cli, $CmdSource, [string]$Name, [string]$Role, [string]$Url = "", [string]$TokenEnv = "")
+    switch ($Role) {
+        "host"   { Add-HubStdioMcp $Cli $CmdSource $Name }
+        "client" { Add-HubHttpMcp  $Cli $CmdSource $Name $Url $TokenEnv }
+        default  { Write-Warn "Register-HubMcp: unknown role '$Role' for $Name" }
+    }
+}
+
+# Wire ALL global hubs for one CLI - the dedup'd replacement for the Register-GlobalMcp that
+# setup.ps1 and sync.ps1 each carried. Idempotent (remove-then-add). Windows is always a client,
+# so courier is wired http; nexus/docgen/calendar are local stdio. EVERY hub `mcp add` lives HERE.
+function Register-AllHubMcp {
+    param([string]$Cli)
+    $cmd = Get-Command $Cli -ErrorAction SilentlyContinue
+    if (-not $cmd) { Write-Warn "$Cli not found - skipping its global MCP wiring"; return }
+    if ($Cli -eq "codex") {
+        # codex keeps MCP servers in config.toml; `codex mcp` can't run when that file won't parse
+        # (a drifted-version entry with an invalid transport), deadlocking re-wiring. Text-strip
+        # the managed blocks first so codex can always load.
+        $cfg = Join-Path $HOME ".codex\config.toml"
+        if (Test-Path $cfg) {
+            $c = Get-Content $cfg -Raw
+            $c = [regex]::Replace($c, '(?m)^\[mcp_servers\.(?:nexus|courier|docgen|calendar)(?:\.[^\]]*)?\][^\r\n]*\r?\n(?:(?!^\[)[^\r\n]*\r?\n?)*', '')
+            $c = [regex]::Replace($c, '(\r?\n){3,}', "`n`n")
+            Set-Content -Path $cfg -Value $c -NoNewline
+        }
+    } else {
+        $scope = if ($Cli -eq "claude") { @("--scope=user") } else { @("--scope", "user") }
+        foreach ($name in @("nexus", "courier", "docgen", "calendar")) { & $cmd.Source mcp remove @scope $name 2>$null | Out-Null }
+    }
+    Register-HubMcp $Cli $cmd.Source "nexus"    "host"
+    Register-HubMcp $Cli $cmd.Source "courier"  "client" $CourierRemoteUrl "COURIER_BEARER"
+    Register-HubMcp $Cli $cmd.Source "docgen"   "host"
+    Register-HubMcp $Cli $cmd.Source "calendar" "host"
+    Write-Ok "$Cli`: global MCP wired (nexus + courier + docgen + calendar)"
 }

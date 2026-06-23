@@ -459,78 +459,26 @@ EOF
         fi
     fi
 
-    # Global wiring: all four servers in EVERY project, for Claude, Codex, and
-    # Gemini. Idempotent (remove-then-add); no-ops if the CLI is absent.
-    # This is how courier/nexus/docgen/calendar reach SBIC/lab/etc WITHOUT being written
-    # into those repos.
-    # Courier is per-ROLE, not per-OS (ADR-0002). is_mail_host / register_courier_mcp /
-    # provision_courier_client_token are defined in manifest.sh (sourced at the top) so
-    # setup AND sync share ONE copy of the host-vs-client decision. is_mail_host keys on the
-    # STABLE macOS LocalHostName (not `hostname`, which is "MacBookPro" here); the host
+    # Global wiring: all four servers in EVERY project, for Claude, Codex, and Gemini.
+    # Idempotent (remove-then-add); no-ops if the CLI is absent. This is how
+    # courier/nexus/docgen/calendar reach SBIC/lab/etc WITHOUT being written into those repos.
+    # Hubs are wired per-ROLE through the shared register_all_hub_mcp / register_hub_mcp in
+    # manifest.sh (sourced at the top), so setup AND sync share ONE copy of the host-vs-client
+    # decision and check-hub-wiring (INV-5) can prove no script wires a hub directly. is_mail_host
+    # keys on the STABLE macOS LocalHostName (not `hostname`, "MacBookPro" here); the host
     # bootstrap below re-asserts it and fails loud rather than silently wiring a client.
-    register_global_mcp() {
-        local cli="$1"
-        command -v "$cli" >/dev/null 2>&1 || { warn "$cli not found - skipping its global MCP wiring"; return; }
-        local name
-        case "$cli" in
-            claude)
-                for name in nexus courier docgen calendar; do "$cli" mcp remove --scope=user "$name" >/dev/null 2>&1; done
-                "$cli" mcp add --scope=user nexus -- node "$NEXUS_SERVER" >/dev/null
-                register_courier_mcp "$cli"
-                "$cli" mcp add --scope=user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
-                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
-                    -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
-                "$cli" mcp add --scope=user calendar --env "PYTHONPATH=$CALENDAR_SRC" \
-                    -- uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
-                ;;
-            codex)
-                # codex keeps MCP servers in config.toml; `codex mcp remove` can't run when
-                # that file won't parse (a drifted-version entry with an invalid transport),
-                # which deadlocks re-wiring. Text-strip the managed blocks first so codex can
-                # always load, then re-add them below (self-heal, like the perm-profile fix).
-                perl -0pi -e '
-                    s/^\[mcp_servers\.(?:nexus|courier|docgen|calendar)(?:\.[^\]]*)?\][^\n]*\n(?:(?!^\[)[^\n]*\n?)*//mg;
-                    s/\n{3,}/\n\n/g;
-                ' "$HOME/.codex/config.toml" 2>/dev/null || true
-                "$cli" mcp add nexus -- node "$NEXUS_SERVER" >/dev/null
-                register_courier_mcp "$cli"
-                "$cli" mcp add docgen --env "PYTHONPATH=$DOCGEN_SRC" \
-                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
-                    -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
-                "$cli" mcp add calendar --env "PYTHONPATH=$CALENDAR_SRC" \
-                    -- uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
-                ;;
-            gemini)
-                for name in nexus courier docgen calendar; do "$cli" mcp remove --scope user "$name" >/dev/null 2>&1; done
-                "$cli" mcp add --scope user nexus node "$NEXUS_SERVER" >/dev/null
-                register_courier_mcp "$cli"
-                "$cli" mcp add --scope user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
-                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
-                    uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
-                "$cli" mcp add --scope user calendar --env "PYTHONPATH=$CALENDAR_SRC" \
-                    uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
-                ;;
-            *)
-                warn "$cli: unsupported MCP CLI"
-                return
-                ;;
-        esac
-        ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
-    }
     # CLIENT machines: get the token on disk before wiring the http courier entries.
     is_mail_host || provision_courier_client_token
-    register_global_mcp claude
-    register_global_mcp codex
-    register_global_mcp gemini
+    register_all_hub_mcp claude
+    register_all_hub_mcp codex
+    register_all_hub_mcp gemini
 
-    # MAIL HOST: stand up / refresh the courier HTTP service that clients connect to.
-    # Idempotent + re-runnable on its own (token rotation, plist change, mini migration).
+    # MAIL HOST: stand up / refresh the HTTP service(s) that clients connect to - one per hub in
+    # hubs.json (courier today). Idempotent + re-runnable on its own (token rotation, plist
+    # change, mini migration).
     if is_mail_host; then
-        if [ -x "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" ]; then
-            step "Courier host bootstrap (this machine is the mail host: $MAIL_HOST)"
-            "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" \
-                || warn "courier host bootstrap reported an issue - see output above"
-        fi
+        step "Hub host bootstrap (this machine is the mail host: $MAIL_HOST)"
+        bootstrap_all_hubs "$DOTFILES_DIR/hubs.json" "$DOTFILES_DIR/scripts/hub-host-bootstrap.sh"
     else
         # Fail-LOUD (ADR-0002 review): a macOS box with local mail state but a name that
         # doesn't match MAIL_HOST is probably the host after a rename - don't silently

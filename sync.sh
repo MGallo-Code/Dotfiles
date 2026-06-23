@@ -677,66 +677,27 @@ else
 fi
 
 if [ -f "$NEXUS_SERVER" ]; then
-    register_global_mcp() {
-        local cli="$1"
-        command -v "$cli" >/dev/null 2>&1 || { warn "$cli not found - skipping its global MCP wiring"; return; }
-        local name
-        case "$cli" in
-            claude)
-                for name in nexus courier docgen calendar; do "$cli" mcp remove --scope=user "$name" >/dev/null 2>&1; done
-                "$cli" mcp add --scope=user nexus -- node "$NEXUS_SERVER" >/dev/null
-                register_courier_mcp "$cli"
-                "$cli" mcp add --scope=user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
-                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
-                    -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
-                "$cli" mcp add --scope=user calendar --env "PYTHONPATH=$CALENDAR_SRC" \
-                    -- uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
-                ;;
-            codex)
-                # codex keeps MCP servers in config.toml; `codex mcp remove` can't run when
-                # that file won't parse (a drifted-version entry with an invalid transport),
-                # which deadlocks re-wiring. Text-strip the managed blocks first so codex can
-                # always load, then re-add them below (self-heal, like the perm-profile fix).
-                perl -0pi -e '
-                    s/^\[mcp_servers\.(?:nexus|courier|docgen|calendar)(?:\.[^\]]*)?\][^\n]*\n(?:(?!^\[)[^\n]*\n?)*//mg;
-                    s/\n{3,}/\n\n/g;
-                ' "$HOME/.codex/config.toml" 2>/dev/null || true
-                "$cli" mcp add nexus -- node "$NEXUS_SERVER" >/dev/null
-                register_courier_mcp "$cli"
-                "$cli" mcp add docgen --env "PYTHONPATH=$DOCGEN_SRC" \
-                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
-                    -- uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
-                "$cli" mcp add calendar --env "PYTHONPATH=$CALENDAR_SRC" \
-                    -- uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
-                ;;
-            gemini)
-                for name in nexus courier docgen calendar; do "$cli" mcp remove --scope user "$name" >/dev/null 2>&1; done
-                "$cli" mcp add --scope user nexus node "$NEXUS_SERVER" >/dev/null
-                register_courier_mcp "$cli"
-                "$cli" mcp add --scope user docgen --env "PYTHONPATH=$DOCGEN_SRC" \
-                    --env "PLAYWRIGHT_BROWSERS_PATH=$DOCGEN_BROWSERS" \
-                    uv run --project "$DOCGEN_PATH" --no-sync python -m docgen.server >/dev/null
-                "$cli" mcp add --scope user calendar --env "PYTHONPATH=$CALENDAR_SRC" \
-                    uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.server >/dev/null
-                ;;
-            *)
-                warn "$cli: unsupported MCP CLI"
-                return
-                ;;
-        esac
-        ok "$cli: global MCP wired (nexus + courier + docgen + calendar)"
-    }
-    # CLIENT machines: ensure the token is on disk before wiring the http courier entries.
+    # Hubs are wired per-ROLE through register_all_hub_mcp / register_hub_mcp (manifest.sh,
+    # sourced at the top) - ONE copy shared with setup.sh; check-hub-wiring (INV-5) proves no
+    # script wires a hub directly. CLIENT machines: token on disk before the http courier entry.
     is_mail_host || provision_courier_client_token
-    register_global_mcp claude
-    register_global_mcp codex
-    register_global_mcp gemini
+    register_all_hub_mcp claude
+    register_all_hub_mcp codex
+    register_all_hub_mcp gemini
 
-    # MAIL HOST: refresh the courier HTTP service clients connect to (idempotent repair).
-    if is_mail_host && [ -x "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" ]; then
-        echo -e "\n${GREEN}==>${NC} Courier host bootstrap ($MAIL_HOST)"
-        "$DOTFILES_DIR/scripts/courier-host-bootstrap.sh" \
-            || warn "courier host bootstrap reported an issue - see output above"
+    # Host-side INV-4 (HUB_BEARER_HOST_SCAN): a gemini http add can MATERIALIZE the bearer into
+    # ~/.gemini/settings.json (WSL); the wiring re-locks it 0600, this flags any literal for ROTATION.
+    # Advisory (configs not in git). (parity-checked: scripts/ci/check-parity.py)
+    if command -v python3 >/dev/null 2>&1 && [ -f "$DOTFILES_DIR/scripts/ci/check-hub-wiring.py" ]; then
+        python3 "$DOTFILES_DIR/scripts/ci/check-hub-wiring.py" --host \
+            || warn "hub bearer host-scan flagged an exposure (see above) - rotate the token"
+    fi
+
+    # MAIL HOST: refresh the HTTP service(s) clients connect to - one per hub in hubs.json
+    # (courier today). Idempotent repair.
+    if is_mail_host; then
+        echo -e "\n${GREEN}==>${NC} Hub host bootstrap ($MAIL_HOST)"
+        bootstrap_all_hubs "$DOTFILES_DIR/hubs.json" "$DOTFILES_DIR/scripts/hub-host-bootstrap.sh"
     fi
 
     check_calendar_health() {

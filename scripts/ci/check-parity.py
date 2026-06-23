@@ -19,6 +19,7 @@ Three lists:
 Exit 0: all FEATURES at parity.  Exit 1: a FEATURE regressed (one side lost it).
 Exit 2: fail-closed (a paired file is missing, or an internal error).
 """
+import json
 import os
 import re
 import subprocess
@@ -73,25 +74,28 @@ FEATURES = [
         "sh": ("manifest.sh", r"ARCHIVED_PROJECT_SKILLS"),
         "ps1": ("manifest.ps1", r"ArchivedProjectSkills"),
     },
+    # The four managed MCP servers are named in the shared register_all_hub_mcp / Register-AllHubMcp
+    # in manifest.{sh,ps1}, where the wiring was consolidated (remote-hubs Phase A). These rows key
+    # on manifest (not setup) so they stay green after the setup/sync wiring was gutted.
     {
         "name": "MCP server: nexus",
-        "sh": ("setup.sh", r"nexus"),
-        "ps1": ("setup.ps1", r"nexus"),
+        "sh": ("manifest.sh", r"\bnexus\b"),
+        "ps1": ("manifest.ps1", r"\bnexus\b"),
     },
     {
         "name": "MCP server: courier",
-        "sh": ("setup.sh", r"courier"),
-        "ps1": ("setup.ps1", r"courier"),
+        "sh": ("manifest.sh", r"\bcourier\b"),
+        "ps1": ("manifest.ps1", r"\bcourier\b"),
     },
     {
         "name": "MCP server: docgen",
-        "sh": ("setup.sh", r"docgen"),
-        "ps1": ("setup.ps1", r"docgen"),
+        "sh": ("manifest.sh", r"\bdocgen\b"),
+        "ps1": ("manifest.ps1", r"\bdocgen\b"),
     },
     {
         "name": "MCP server: calendar",
-        "sh": ("setup.sh", r"calendar"),
-        "ps1": ("setup.ps1", r"calendar"),
+        "sh": ("manifest.sh", r"\bcalendar\b"),
+        "ps1": ("manifest.ps1", r"\bcalendar\b"),
     },
     # --- Ported in this change; they FAIL until the .ps1 side lands (a built-in
     #     revert-test for the port). ---
@@ -126,24 +130,46 @@ FEATURES = [
     # --- courier remote per-OS wiring + cross-agent skills/commands/allowlist
     #     (ADR-0002 + handoff). Each is a paired sh/ps1 behavior. ---
     {
-        # The role-aware courier wiring is defined ONCE in manifest.{sh,ps1} and CALLED by
-        # both setup and sync. This feature checks the SETUP call site...
-        "name": "courier per-role MCP wiring in setup (host stdio / client http)",
-        "sh": ("setup.sh", r"register_courier_mcp"),
-        "ps1": ("setup.ps1", r"Register-CourierMcp"),
+        # The role-aware hub wiring is defined ONCE in manifest.{sh,ps1} (register_hub_mcp +
+        # register_all_hub_mcp / Register-HubMcp + Register-AllHubMcp) and CALLED by both setup and
+        # sync. This row checks the shared PRIMITIVE exists on both OSes (Phase A consolidation).
+        "name": "hub per-role MCP wiring primitive (shared fn in manifest)",
+        "sh": ("manifest.sh", r"register_hub_mcp"),
+        "ps1": ("manifest.ps1", r"Register-HubMcp"),
+    },
+    {
+        # ...this checks the SETUP call site routes through the shared fn...
+        "name": "hub per-role MCP wiring in setup (host stdio / client http)",
+        "sh": ("setup.sh", r"register_all_hub_mcp"),
+        "ps1": ("setup.ps1", r"Register-AllHubMcp"),
     },
     {
         # ...and THIS one checks the SYNC call site. The ADR-0002 review caught sync owning
         # a separate copy that hardcoded stdio courier, silently clobbering the client's
         # http wiring on every run. This is the mechanical guard against that regression.
-        "name": "courier per-role MCP wiring in sync (no stdio regression)",
-        "sh": ("sync.sh", r"register_courier_mcp"),
-        "ps1": ("sync.ps1", r"Register-CourierMcp"),
+        "name": "hub per-role MCP wiring in sync (no stdio regression)",
+        "sh": ("sync.sh", r"register_all_hub_mcp"),
+        "ps1": ("sync.ps1", r"Register-AllHubMcp"),
     },
     {
-        "name": "courier host bootstrap script (idempotent repair path)",
-        "sh": ("scripts/courier-host-bootstrap.sh", r"COURIER-HOST-BOOTSTRAP"),
-        "ps1": ("scripts/courier-host-bootstrap.ps1", r"COURIER-HOST-BOOTSTRAP"),
+        "name": "hub host bootstrap script (idempotent repair path)",
+        "sh": ("scripts/hub-host-bootstrap.sh", r"HUB-HOST-BOOTSTRAP"),
+        "ps1": ("scripts/hub-host-bootstrap.ps1", r"HUB-HOST-BOOTSTRAP"),
+    },
+    {
+        # INV-4 defense: re-lock ~/.gemini/settings.json right after a gemini http add (gemini can
+        # MATERIALIZE the bearer into it - verified on WSL). chmod 600 (sh) vs icacls (ps1): different
+        # mechanism, same behavior - so the row keys on the helper name, not the perms verb.
+        "name": "gemini settings re-locked after http wiring (chmod 600 / icacls)",
+        "sh": ("manifest.sh", r"gemini_relock_settings"),
+        "ps1": ("manifest.ps1", r"Lock-GeminiSettings"),
+    },
+    {
+        # INV-4 host-side complement: sync runs the generated-config bearer scan (flags a materialized
+        # literal token for rotation; configs are machine-local, never in CI) on both OSes.
+        "name": "hub bearer host-scan run in sync (generated-config INV-4)",
+        "sh": ("sync.sh", r"HUB_BEARER_HOST_SCAN"),
+        "ps1": ("sync.ps1", r"HUB_BEARER_HOST_SCAN"),
     },
     {
         # The shared courier functions (incl. the ${COURIER_BEARER} env-var indirection)
@@ -332,6 +358,30 @@ def main():
         if sv != pv:
             failures.append((f"shared value {label} differs across manifests",
                              f"manifest.sh={sv!r} vs manifest.ps1={pv!r}"))
+
+    # hubs.json is the single registry for per-hub config (serve_path/mcp_path/token_file/run_cmd
+    # live ONLY there - not duplicated as manifest constants). The one per-hub value also mirrored as
+    # a manifest literal is courier's port (manifest builds COURIER_REMOTE_URL from it), so assert the
+    # registry and the manifest agree and can't drift. FAIL CLOSED on a missing OR unparseable
+    # registry: post-Phase-A hubs.json is a required tracked file, and a silent "missing -> skip" is
+    # the exact gap that let an untracked registry pass green in CI.
+    hubs_path = os.path.join(root, "hubs.json")
+    if not os.path.exists(hubs_path):
+        sys.stderr.write("check-parity: hubs.json registry missing - failing closed (required tracked file; stage/commit it)\n")
+        return 2
+    try:
+        with open(hubs_path, encoding="utf-8") as f:
+            hubs = json.load(f)
+    except Exception as e:
+        sys.stderr.write(f"check-parity: hubs.json unparseable ({e}) - failing closed\n")
+        return 2
+    courier = next((h for h in hubs if h.get("name") == "courier"), None)
+    if courier is not None:
+        mport = re.search(r'COURIER_HTTP_PORT="([^"]+)"', msh or "")
+        mport_v = mport.group(1) if mport else None
+        if mport_v is not None and str(courier.get("port")) != str(mport_v):
+            failures.append(("hubs.json courier.port differs from manifest COURIER_HTTP_PORT",
+                             f"hubs.json={courier.get('port')!r} vs manifest.sh={mport_v!r}"))
 
     print(f"check-parity: checked {len(FEATURES)} feature(s) + {len(SHARED_VALUES)} shared value(s), "
           f"{len(PARITY_EXEMPT)} exempt, {len(PARITY_PENDING)} pending")

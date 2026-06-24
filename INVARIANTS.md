@@ -30,6 +30,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-7 | Every Claude command source has a generated Codex prompt AND Gemini command, and each generated dir carries an invocation index, so the same commands are usable (and discoverable) in all three agents. | `gen-agent-commands.py` (one shared generator, called by both sync scripts) emits the mirror + a `README.md` index. | `gen-agent-commands.py --verify` run during `sync` on both OSes (a missing mirror fails the check); parity-gated by the `COMMAND_MIRROR_VERIFY` marker. | local-green (pending merge) | 1 |
 | INV-8 | A temporary git worktree does not masquerade as a canonical workspace root: every linked worktree lives under `~/Documents/Worktrees/` or is explicitly allowlisted; none sits as a bare top-level sibling of the project roots in `~/Documents`. | The canonical home `~/Documents/Worktrees` + the `ALLOWLIST` in the checker; the linked-worktree test is a `.git` FILE vs DIR. | `scripts/ci/check-worktrees.py` (ADVISORY - warns, never fails; run by hand or during `sync`) | advisor-only | 1 |
 | INV-9 | No bash `local`/`declare`/`typeset` statement references a variable assigned EARLIER in the SAME statement: under `set -u` the just-declared local is not yet visible while the rest of the statement's RHS is expanded, so the reference is UNBOUND and the script aborts. The dependent assignment is split onto its own `local` line. | One-assignment-per-dependent-`local` in every `*.sh`; the highest-stakes surface is `sync.sh` (runs under `set -uo pipefail`). | `scripts/ci/check-local-selfref.py` (static scan of tracked `*.sh`: pre-commit + CI) | CI-green | 1 |
+| INV-10 | A fresh/headless CLIENT's `setup.sh`/`sync.sh` (incl. `--client`) wiring path runs to **exit 0** AND leaves a FUNCTIONAL client: no step aborts the whole run on an EXPECTED non-zero (a `mcp remove` of an unregistered server, a headless `pbcopy`/`open`, a failed-optional install), and the per-hub `${*_BEARER}` are exported for the shell the agent launches from while every role-aware hub is wired http+`${*_BEARER}` for EACH agent CLI (claude/codex/gemini) — never a literal token, never a leftover stdio entry on a client. | The guards in setup/sync + the shared manifest wiring fns: `\|\| true` on the mcp-remove loop, the `command -v`/`[ -t 0 ]` gates, `ensure_client_bearer_exports`, and `register_all_hub_mcp` http+`${*_BEARER}`. | `scripts/ci/check-fresh-client-setup.sh` (hermetic: throwaway `$HOME` + stub agent CLIs whose unregistered `mcp remove` returns rc1; runs the real shared wiring fns `setup.sh`/`sync.sh` call — `provision_all_client_tokens` + `register_all_hub_mcp` for claude/codex/gemini — under genuine errexit, pre- AND post-cutover, + a revert-test; CI. It exercises the wiring fns, not the whole setup.sh/sync.sh scripts.). ps1 is `PARITY_EXEMPT` (Linux-client gate). | local-green (pending CI) | 4 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -211,3 +212,25 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   green-in-CI + pre-commit enforcer.
 - **Escape hatch**: none needed - the dependent assignment always belongs on its own `local`
   line; there is no legitimate same-statement back-reference under `set -u`.
+
+### INV-10 - a fresh/headless client setup is abort-free + leaves a functional client
+- **Surfaces**: `setup.sh`/`sync.sh` (the `--client` path) + the shared `manifest.sh` wiring fns
+  (`register_all_hub_mcp`, `provision_all_client_tokens`, `ensure_client_bearer_exports`). Only the
+  bash side (Linux/WSL clients); Windows is `PARITY_EXEMPT` (a clean-Windows run is not cheaply CI-able).
+- **Recurrence (recur=4)**: this class bit SILENTLY 4-5x across remote-hubs A-C, each a `set -e` abort
+  or a non-functional client, none with a mechanical enforcer: (1) the `mcp remove` loop aborting a
+  fresh client before any hub was wired (rc1 on an unregistered server - commit 0dbbaf1-era); (2) a
+  headless `pbcopy`/`open` aborting under `set -e`; (3) an OpenSSH/npm optional install aborting the
+  run; (4) the per-hub `${*_BEARER}` sitting on disk but never exported for a bash-launched (WSL)
+  client, so every hub stayed 401 (commit 9eae2fc). Each passed `bash -n` + looked fine in review; only
+  a real fresh-client run surfaced them.
+- **Gate design**: `check-fresh-client-setup.sh` is HERMETIC - a throwaway `$HOME` + a stub-CLI dir on
+  `PATH` whose `claude`/`codex`/`gemini` model the REAL exit codes (an unregistered `mcp remove`
+  returns rc1, the actual abort trigger; `mcp add` records its argv). It runs the real manifest wiring
+  fns exactly as setup/sync do (under `set -euo pipefail`, non-TTY stdin) and asserts: exit 0; the
+  `~/.bashrc` bearer-export block with every `${*_BEARER}`; courier/calendar wired http with the
+  `${*_BEARER}` REF (never a literal token); and nexus stdio (pre-cutover) / http (post-cutover, the
+  `NEXUS_REMOTED` flip). A `--revert-test` mode proves the guard is load-bearing: the UNGUARDED remove
+  loop aborts under `set -e`, the guarded `register_all_hub_mcp` does not.
+- **Escape hatch**: none (true invariant). A genuinely OS-specific abort site is `command -v`/`[ -t 0 ]`
+  guarded at the source, not exempted from the gate.

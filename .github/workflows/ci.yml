@@ -93,3 +93,32 @@ jobs:
           python-version: "3.12"
       - name: check-skill-gate-corpus
         run: bash scripts/ci/check-skill-gate-corpus.sh
+
+  fresh-client-setup:
+    # INV-10: a fresh/headless CLIENT wires to exit 0 AND a functional client (no set -e abort on an
+    # EXPECTED non-zero; bearers exported; hubs wired http+${*_BEARER}, never stdio/literal). Hermetic:
+    # a throwaway $HOME + stub agent CLIs whose `mcp remove` of an unregistered server returns rc1 (the
+    # real abort trigger). Runs the real manifest.sh wiring fns the way setup.sh/sync.sh do. Exercises
+    # both the pre-cutover (nexus stdio) and post-cutover (nexus http) wiring, plus the revert-test.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: INV-10 fresh-client wiring (pre-cutover)
+        run: bash scripts/ci/check-fresh-client-setup.sh
+      - name: INV-10 fresh-client wiring (post-cutover sim)
+        run: GATE_NEXUS_REMOTED=true bash scripts/ci/check-fresh-client-setup.sh
+      - name: INV-10 revert-test (the guard is load-bearing)
+        run: bash scripts/ci/check-fresh-client-setup.sh --revert-test
+
+  hub-bootstrap-failclosed:
+    # manifest.sh bootstrap_all_hubs host-side FAIL-CLOSED contract (the F01 cross-check surface; the
+    # INV-10 client gate never exercises it): a nexus bootstrap failure is FATAL (rc=1 -> setup.sh --host
+    # aborts), courier/calendar failures warn-only, a malformed/non-object registry fails closed, and the
+    # NEXUS_REMOTED staging gate skips nexus pre-cutover. Hermetic (stub bootstrap + fixture registries).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hub-bootstrap fail-closed gate
+        run: bash scripts/ci/check-hub-bootstrap-failclosed.sh
+      - name: hub-bootstrap revert-test (the fail-closed gate is load-bearing)
+        run: bash scripts/ci/check-hub-bootstrap-failclosed.sh --revert-test

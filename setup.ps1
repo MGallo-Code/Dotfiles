@@ -411,7 +411,11 @@ if (-not $sshExe) {
     Write-Warn "No ssh client found - skipping SSH test"
 }
 else {
-    $sshTest = & $sshExe -T git@github 2>&1 | Out-String
+    # `ssh -T git@github` exits non-zero with its banner on stderr (GitHub gives no shell). Under this
+    # script's ErrorActionPreference=Stop that non-zero/stderr becomes a terminating NativeCommandError
+    # and ABORTS setup before the MCP wiring. Capture with EAP=Continue so the banner is read as text -
+    # parity with setup.sh, which pipes the same stderr to grep and never aborts.
+    $sshTest = & { $ErrorActionPreference = 'Continue'; & $sshExe -T git@github 2>&1 | Out-String }
     if ($sshTest -match "successfully authenticated") {
         Write-Ok "GitHub SSH access works"
 

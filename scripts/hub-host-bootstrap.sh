@@ -102,6 +102,26 @@ else
     fi
 fi
 
+# --- 1b. Native node modules: rebuild against the SERVING node (ABI must match) ----------
+# A node hub (nexus) links a native module (better-sqlite3) compiled for a specific Node ABI. The
+# LaunchAgent runs under the plist PATH below (/opt/homebrew/bin), so a stray `npm`/`npm test` under a
+# DIFFERENT node (e.g. nvm) silently leaves the native module built for the wrong ABI: the server then
+# connects + authenticates fine but every DB call throws NODE_MODULE_VERSION mismatch. Rebuild against
+# the serving node here so each deploy/re-bootstrap self-heals the ABI. Python (uv) hubs: no-op (skipped).
+if [ -n "$DRY" ]; then
+    warn "DRY RUN: skipping native-module rebuild"
+elif printf '%s\n' "${PROG_ARGS[@]}" | grep -qx node; then
+    PKG_JS="$(printf '%s\n' "${PROG_ARGS[@]}" | grep -E '\.js$' | head -1)"
+    PKG_DIR="$(cd "$(dirname "$PKG_JS")/.." 2>/dev/null && pwd || true)"
+    if [ -n "$PKG_DIR" ] && [ -f "$PKG_DIR/package.json" ]; then
+        if ( cd "$PKG_DIR" && PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" npm rebuild >/dev/null 2>&1 ); then
+            ok "rebuilt $NAME native node modules for the serving node ($(/opt/homebrew/bin/node -v 2>/dev/null))"
+        else
+            warn "$NAME native-module rebuild failed - server may throw NODE_MODULE_VERSION on DB calls; fix: (cd $PKG_DIR && npm rebuild)"
+        fi
+    fi
+fi
+
 # --- 2. LaunchAgent plist (regenerated every run) ----------------------------
 # NOTE: interpolated paths land directly in XML <string> values, so they must be XML-safe
 # (no & < >). Hub paths/args are home/venv/EA paths + flags; guard if that ever changes.

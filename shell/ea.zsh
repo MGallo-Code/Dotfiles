@@ -58,10 +58,14 @@ compdef _ws_agent_completion ea wiki sbic sysupdate
 # reference it as ${<HUB>_BEARER} in their http header; codex reads it via --bearer-token-env-var.
 # Sourced from the one mode-600 file per hub (never on a command line). On the MCP host these are
 # harmless/redundant (host hubs are stdio, no token). NOTE: these paths must track manifest.sh
-# COURIER_TOKEN_FILE / CALENDAR_TOKEN_FILE (ea.zsh can't source the manifest cleanly; keep in sync if
-# a token location ever moves).
+# COURIER_TOKEN_FILE / CALENDAR_TOKEN_FILE / NEXUS_TOKEN_FILE (ea.zsh can't source the manifest
+# cleanly; keep in sync if a token location ever moves). The NEXUS line is intentionally NOT gated on
+# NEXUS_REMOTED (unlike the bash side's ~/.bashrc export): it is INERT pre-cutover because no box has
+# ~/.config/nexus/auth-token until the cutover provisions it, so the export simply no-ops - the zsh
+# runtime env stays identical to today without a flag check (cross-check: the asymmetry is harmless).
 [ -r "$HOME/.config/courier/auth-token" ]  && export COURIER_BEARER="$(< "$HOME/.config/courier/auth-token")"
 [ -r "$HOME/.config/calendar/auth-token" ] && export CALENDAR_BEARER="$(< "$HOME/.config/calendar/auth-token")"
+[ -r "$HOME/.config/nexus/auth-token" ]    && export NEXUS_BEARER="$(< "$HOME/.config/nexus/auth-token")"
 
 # Drop into practice workspace with venv active
 practice() {

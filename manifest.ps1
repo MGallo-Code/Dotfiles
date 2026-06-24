@@ -86,6 +86,18 @@ $CourierTokenFile = "$HOME\.config\courier\auth-token"
 $CalendarRemoteUrl = "https://$McpHost.$Tailnet/calendar/mcp"
 $CalendarTokenFile = "$HOME\.config\calendar\auth-token"
 
+# nexus (live personal data; remoted in remote-hubs Phase D): role-aware exactly like courier/calendar;
+# Windows is always its CLIENT. Its OWN per-hub bearer (${NEXUS_BEARER}) + token file, NEVER shared.
+# Port + serve/mcp paths are sole-sourced in hubs.json. (parity-checked: scripts/ci/check-parity.py)
+$NexusRemoteUrl = "https://$McpHost.$Tailnet/nexus/mcp"
+$NexusTokenFile = "$HOME\.config\nexus\auth-token"
+# CUTOVER GATE (remote-hubs Phase D §0): until the coordinated nexus migration runs, nexus stays
+# stdio so the live local-stdio agent + still-tracked nexus.db keep working. The Phase-D cutover flips
+# this to $true (here AND in manifest.sh's NEXUS_REMOTED) in ONE coordinated step, AFTER the host seeds
+# the authoritative nexus.db and serves it over HTTP - that flip turns every client into a thin
+# http+bearer nexus client. Do NOT flip it before the drain (handoff §4).
+$NexusRemoted = $false
+
 # ── Custom global skills (tracked in EA), linked into all 3 agents ────
 $GlobalSkillsDir = "$HOME\Documents\EA\claude-config\global-skills"
 
@@ -170,6 +182,9 @@ function Initialize-HubClientToken {
 function Initialize-AllClientTokens {
     Initialize-HubClientToken "courier"  $CourierTokenFile  "COURIER_BEARER"
     Initialize-HubClientToken "calendar" $CalendarTokenFile "CALENDAR_BEARER"
+    # nexus only once it is remoted (Phase-D cutover): before the flip the host is not serving nexus
+    # over HTTP, so prompting a client for a nexus bearer it cannot get yet would only confuse.
+    if ($NexusRemoted) { Initialize-HubClientToken "nexus" $NexusTokenFile "NEXUS_BEARER" }
 }
 
 # ── Per-ROLE hub MCP wiring (mirror of manifest.sh register_hub_mcp / register_all_hub_mcp) ──
@@ -260,7 +275,14 @@ function Register-AllHubMcp {
         $scope = if ($Cli -eq "claude") { @("--scope=user") } else { @("--scope", "user") }
         foreach ($name in @("nexus", "courier", "docgen", "calendar")) { & $cmd.Source mcp remove @scope $name 2>$null | Out-Null }
     }
-    Register-HubMcp $Cli $cmd.Source "nexus"    "host"
+    # nexus: role-aware ONLY after the Phase-D cutover ($NexusRemoted). Until then it stays stdio so
+    # the live local-stdio agent + the still-tracked nexus.db keep working (handoff §0). Windows is
+    # always a client, so the flip wires it as an http+bearer client (its own per-hub token).
+    if ($NexusRemoted) {
+        Register-HubMcp $Cli $cmd.Source "nexus" "client" $NexusRemoteUrl "NEXUS_BEARER"
+    } else {
+        Register-HubMcp $Cli $cmd.Source "nexus" "host"
+    }
     Register-HubMcp $Cli $cmd.Source "docgen"   "host"
     # Windows is always a client: courier + calendar over http+bearer (each its own per-hub token).
     Register-HubMcp $Cli $cmd.Source "courier"  "client" $CourierRemoteUrl  "COURIER_BEARER"

@@ -154,6 +154,21 @@ COURIER_TOKEN_FILE="~/.config/courier/auth-token"
 CALENDAR_REMOTE_URL="https://${MCP_HOST}.${TAILNET}/calendar/mcp"
 CALENDAR_TOKEN_FILE="~/.config/calendar/auth-token"
 
+# nexus (live personal data: tasks/contacts/time/invoices/email-metadata; remoted in remote-hubs
+# Phase D). Role-aware like courier/calendar - host stdio on the MCP host, http+bearer client
+# elsewhere, fronted by `tailscale serve --set-path /nexus`. Its OWN per-hub bearer (${NEXUS_BEARER})
+# + mode-600 token file - NEVER shared. Port + serve/mcp paths are sole-sourced in hubs.json (no
+# NEXUS_HTTP_PORT manifest constant, mirroring calendar). iMessage tools stay host-local (they read
+# the macOS chat.db on whichever box runs the server).
+NEXUS_REMOTE_URL="https://${MCP_HOST}.${TAILNET}/nexus/mcp"
+NEXUS_TOKEN_FILE="~/.config/nexus/auth-token"
+# CUTOVER GATE (remote-hubs Phase D §0): until the coordinated nexus migration runs, nexus stays
+# stdio on EVERY box so the live local-stdio agent + the still-tracked nexus.db keep working. The
+# Phase-D cutover flips this to "true" (here AND in manifest.ps1) IN ONE coordinated step, AFTER the
+# host seeds the authoritative nexus.db and serves it over HTTP - that single flip turns every
+# non-host box into a thin http+bearer nexus client. Do NOT flip it before the drain (handoff §4).
+NEXUS_REMOTED="false"
+
 # ── Custom global skills (tracked in EA) ─────────────────────────────
 # Custom skills authored in EA (calendar, contact, dev-update, forge), linked into all 3
 # agents alongside the vendor agent-skills, into the SAME AGENT_SKILLS_TARGETS dirs.
@@ -310,8 +325,16 @@ register_all_hub_mcp() {
         # ignore-if-absent), matching the codex branch's tolerant `perl ... || true` above.
         for name in nexus courier docgen calendar; do "$cli" mcp remove $scope_flag "$name" >/dev/null 2>&1 || true; done
     fi
-    register_hub_mcp "$cli" nexus host
     register_hub_mcp "$cli" docgen host
+    # nexus: role-aware ONLY after the Phase-D cutover (NEXUS_REMOTED=true). Until then it stays
+    # stdio on EVERY box (host AND client) so the live local-stdio agent + the still-tracked
+    # nexus.db keep working (handoff §0). The cutover flips NEXUS_REMOTED, turning every non-host
+    # box into a thin http+bearer client in one coordinated step.
+    if [ "$NEXUS_REMOTED" = "true" ] && ! is_mcp_host; then
+        register_hub_mcp "$cli" nexus client "$NEXUS_REMOTE_URL" NEXUS_BEARER
+    else
+        register_hub_mcp "$cli" nexus host
+    fi
     # Role-aware HTTP-served hubs (hubs.json): host stdio on the MCP host, http+bearer client
     # elsewhere. Each carries its OWN per-hub bearer + mode-600 token, never shared. courier (Phase A)
     # + calendar (Phase C). A Linux/WSL client (is_mcp_host false) wires both as http clients.
@@ -331,22 +354,92 @@ register_all_hub_mcp() {
 # host without them degrades to a warn, never a hard abort under `set -e`.
 bootstrap_all_hubs() {
     local hubs_json="$1" bootstrap="$2"
-    if [ ! -f "$hubs_json" ]; then warn "hub bootstrap: $hubs_json not found - skipping"; return 0; fi
-    if ! command -v jq >/dev/null 2>&1; then warn "hub bootstrap: jq not found - skipping"; return 0; fi
-    if [ ! -x "$bootstrap" ]; then warn "hub bootstrap: $bootstrap not executable - skipping"; return 0; fi
-    local hub name port run token serve mcp
-    jq -c '.[]' "$hubs_json" | while IFS= read -r hub; do
+    # A missing prerequisite (registry/jq/bootstrap) means nexus CANNOT be served. Pre-cutover that is a
+    # harmless skip (return 0); but POST-cutover (NEXUS_REMOTED=true) it must FAIL CLOSED (return 1) - else
+    # `setup.sh --host` "succeeds" having never served the cutover hub, the same silent-no-op the nexus_seen
+    # guard closes for a parseable-but-nexus-less registry (cross-check: these early returns bypassed it).
+    local remoted="${NEXUS_REMOTED:-false}"
+    if [ ! -f "$hubs_json" ]; then
+        if [ "$remoted" = "true" ]; then warn "hub bootstrap: $hubs_json missing AND NEXUS_REMOTED=true - refusing host serve (fail closed)"; return 1; fi
+        warn "hub bootstrap: $hubs_json not found - skipping"; return 0
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        if [ "$remoted" = "true" ]; then warn "hub bootstrap: jq not found AND NEXUS_REMOTED=true - refusing host serve (fail closed)"; return 1; fi
+        warn "hub bootstrap: jq not found - skipping"; return 0
+    fi
+    if [ ! -x "$bootstrap" ]; then
+        if [ "$remoted" = "true" ]; then warn "hub bootstrap: $bootstrap not executable AND NEXUS_REMOTED=true - refusing host serve (fail closed)"; return 1; fi
+        warn "hub bootstrap: $bootstrap not executable - skipping"; return 0
+    fi
+    # Parse the registry UP FRONT and FAIL CLOSED on a parse error. The loop iterates a here-string (so rc
+    # escapes the function - the old `jq | while` ran the body in a SUBSHELL and LOST rc). But a process
+    # substitution's / capture's parse failure is NOT covered by pipefail, so without this an unparseable
+    # hubs.json would yield an empty loop + rc=0 = a SILENT host no-op ("served nothing, reported success").
+    # Capturing the parse lets a jq failure return non-zero - the same fail-closed posture as a nexus
+    # bootstrap failure (cross-check: the process-sub fix made rc escape but swallowed a registry parse fail).
+    # Assert the registry is a JSON ARRAY first. `jq -c '.[]'` also iterates a top-level OBJECT's VALUES
+    # (rc=0), so an accidentally object-shaped registry ({"nexus":{...}} or {"hubs":[...]}) would parse
+    # "fine" and silently serve nothing/garbage instead of failing closed (cross-check). A scalar/null/
+    # syntax-error already fails the `.[]` capture below; this catches the non-array-object case too.
+    if ! jq -e 'type == "array"' "$hubs_json" >/dev/null 2>&1; then
+        warn "hub bootstrap: $hubs_json is not a JSON array - refusing host serve (fail closed)"
+        return 1
+    fi
+    local hubs_lines
+    hubs_lines="$(jq -c '.[]' "$hubs_json")" \
+        || { warn "hub bootstrap: $hubs_json is not parseable as a JSON array - refusing host serve (fail closed)"; return 1; }
+    local hub name port run token serve mcp rc=0 nexus_seen=0
+    while IFS= read -r hub; do
         [ -n "$hub" ] || continue
+        # Skip a non-object array element (a hand-edit could leave a stray string/number). `jq -r '.name'`
+        # on a non-object errors rc5 and, in this current-shell loop under setup.sh's `set -e`, would abort
+        # mid-loop with an opaque message (cross-check). Validate the shape, warn, and continue instead.
+        printf '%s' "$hub" | jq -e 'type == "object"' >/dev/null 2>&1 \
+            || { warn "hub bootstrap: skipping a non-object registry entry"; continue; }
         name="$(printf '%s' "$hub"  | jq -r '.name')"
+        # Explicit `if` for clarity. (A `[ "$name" = nexus ] && nexus_seen=1` would ALSO be set-e-safe here:
+        # the left operand of `&&` is exempt from errexit, so a false test does NOT abort - the `if` just
+        # reads unambiguously. Verified empirically.)
+        if [ "$name" = "nexus" ]; then nexus_seen=1; fi   # the registry HAS a nexus entry (served or staging-skipped)
         port="$(printf '%s' "$hub"  | jq -r '.port')"
         run="$(printf '%s' "$hub"   | jq -r '.run_cmd')"
         token="$(printf '%s' "$hub" | jq -r '.token_file')"
         serve="$(printf '%s' "$hub" | jq -r '.serve_path')"
         mcp="$(printf '%s' "$hub"   | jq -r '.mcp_path')"
-        "$bootstrap" "$name" "$port" "$run" "$token" "$serve" "$mcp" \
-            || warn "hub host bootstrap ($name) reported an issue - see output above"
-    done
-    return 0
+        # Phase-D STAGING GATE: nexus is in hubs.json (so check-hub-wiring allows ${NEXUS_BEARER} and the
+        # registry is complete) but must NOT be SERVED on the host until the coordinated cutover. Without
+        # this, the next host `sync` would stand up com.ea.nexus-http + `tailscale serve /nexus` against
+        # the live nexus.db BEFORE the drain - a silent tailnet exposure + a second host writer that could
+        # seed a competing authoritative DB (cross-check: data-loss panel finding 1). Gate the SERVING on
+        # NEXUS_REMOTED, exactly like the client wiring; the flip turns both on together.
+        if [ "$name" = "nexus" ] && [ "${NEXUS_REMOTED:-false}" != "true" ]; then
+            warn "hub bootstrap: nexus not yet remoted (NEXUS_REMOTED=false) - skipping host serve until the Phase-D cutover"
+            continue
+        fi
+        if ! "$bootstrap" "$name" "$port" "$run" "$token" "$serve" "$mcp"; then
+            if [ "$name" = "nexus" ]; then
+                # nexus is the data-migration hub: a failed bootstrap (the loopback OR the public PROP-2
+                # self-test exits 1) must FAIL CLOSED, not warn-and-continue. The non-zero rc escapes the
+                # function (here-string loop runs in THIS shell). setup.sh (`set -euo pipefail`, bare call)
+                # ABORTS `setup.sh --host` on it; sync.sh (`set -uo`, no -e) honors it via an explicit
+                # `|| warn` at its call site - so the fail-closed gate holds on BOTH (cross-check: this warn
+                # had demoted the gate, and the rc was originally fail-OPEN in sync).
+                warn "hub host bootstrap (nexus) FAILED - refusing to continue the host cutover (see output above)"
+                rc=1
+            else
+                warn "hub host bootstrap ($name) reported an issue - see output above"
+            fi
+        fi
+    done <<< "$hubs_lines"
+    # Post-cutover, the registry MUST contain the hub we cut over to. An array that is empty or missing the
+    # nexus entry otherwise serves the other hubs and returns rc=0 - a silent "succeeded without serving
+    # nexus" (clients then 401) that the nexus-fatal branch never catches because nexus was never attempted
+    # (cross-check). Fail closed iff remoted + nexus absent. (Pre-cutover, nexus-absent is not required.)
+    if [ "${NEXUS_REMOTED:-false}" = "true" ] && [ "$nexus_seen" != "1" ]; then
+        warn "hub bootstrap: NEXUS_REMOTED=true but no 'nexus' entry in $hubs_json - refusing host serve (registry is missing the cutover hub)"
+        rc=1
+    fi
+    return "$rc"
 }
 
 # CLIENT-only: ensure ONE hub's mode-600 bearer file exists (prompt-paste once - ADR-0002 token
@@ -382,18 +475,40 @@ provision_hub_client_token() {
 # is the bash analog of the Windows User-env-set in Initialize-HubClientToken. Idempotent (marker-gated);
 # appends to an EXISTING ~/.bashrc only (a zsh client has none -> skip, ea.zsh covers it). The exports run
 # in interactive shells (where claude is launched), matching the zsh side. Token paths mirror ea.zsh.
+#
+# PER-HUB idempotent (NOT all-or-nothing on the marker): a client set up in Phase A-C already has the
+# marker block with ONLY courier+calendar, so a marker-gated early-return would never add the later
+# NEXUS_BEARER line -> nexus 401s post-cutover (the exact 9eae2fc bug-class, flagged by the cross-check
+# panel). So: ensure the header marker exists once, then ensure EACH hub's export line exists, appending
+# only the missing ones. Adding a future hub here automatically backfills existing clients.
 ensure_client_bearer_exports() {
     local rc="$HOME/.bashrc"
     local marker="# dotfiles: hub bearer tokens"
     [ -e "$rc" ] || return 0
-    grep -qF "$marker" "$rc" 2>/dev/null && return 0
-    {
-        echo ""
-        echo "$marker (WSL/bash clients: ea.zsh is zsh-only, so export the per-hub bearers here too)"
-        echo '[ -r "$HOME/.config/courier/auth-token" ]  && export COURIER_BEARER="$(cat "$HOME/.config/courier/auth-token")"'
-        echo '[ -r "$HOME/.config/calendar/auth-token" ] && export CALENDAR_BEARER="$(cat "$HOME/.config/calendar/auth-token")"'
-    } >> "$rc"
-    ok "wired per-hub bearer exports into ~/.bashrc (open a new shell to pick them up)"
+    grep -qF "$marker" "$rc" 2>/dev/null || {
+        printf '\n%s (WSL/bash clients: ea.zsh is zsh-only, so export the per-hub bearers here too)\n' \
+            "$marker" >> "$rc"
+    }
+    # nexus's export joins only once it is remoted, so a pre-cutover client's ~/.bashrc is byte-identical
+    # to today (the NEXUS line is inert anyway - it only exports if the token file exists - but gating it
+    # keeps the "flag false == identical to today" claim literally true; the cross-vendor cross-check
+    # flagged the unconditional append). The per-hub idempotency below backfills the NEXUS line on the
+    # next setup/sync after the flip.
+    local hubs="COURIER CALENDAR"
+    [ "${NEXUS_REMOTED:-false}" = "true" ] && hubs="$hubs NEXUS"
+    local added=0 var line
+    for var in $hubs; do
+        # Idempotency keyed on an ACTUAL export line (not any mention): a bare `grep "${var}_BEARER"`
+        # also matched a COMMENT or unrelated occurrence and then SKIPPED writing the real export, leaving
+        # that hub 401 (cross-check: the 9eea2fc bug-class, reintroduced). Anchor to a non-comment
+        # `export <VAR>_BEARER=` so only a genuine export line suppresses the append.
+        grep -qE "^[[:space:]]*[^#]*export ${var}_BEARER=" "$rc" 2>/dev/null && continue
+        line='[ -r "$HOME/.config/'"$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]')"'/auth-token" ] && export '"${var}_BEARER"'="$(cat "$HOME/.config/'"$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]')"'/auth-token")"'
+        printf '%s\n' "$line" >> "$rc"
+        added=1
+    done
+    [ "$added" = "1" ] && ok "wired per-hub bearer exports into ~/.bashrc (open a new shell to pick them up)"
+    return 0
 }
 
 # CLIENT-only: provision EVERY role-aware hub's bearer token in one pass (one paste per hub), then make
@@ -401,5 +516,10 @@ ensure_client_bearer_exports() {
 provision_all_client_tokens() {
     provision_hub_client_token courier  "$COURIER_TOKEN_FILE"  COURIER_BEARER
     provision_hub_client_token calendar "$CALENDAR_TOKEN_FILE" CALENDAR_BEARER
+    # nexus only once it is remoted (Phase-D cutover): before the flip the host isn't serving nexus
+    # over HTTP, so prompting a client for a nexus bearer it can't get yet would only confuse. The
+    # ~/.bashrc export line (ensure_client_bearer_exports) is always written but no-ops until the
+    # token file exists, so a post-cutover client re-run just needs the token pasted.
+    [ "$NEXUS_REMOTED" = "true" ] && provision_hub_client_token nexus "$NEXUS_TOKEN_FILE" NEXUS_BEARER
     ensure_client_bearer_exports
 }

@@ -195,6 +195,28 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"CALENDAR_BEARER"),
     },
     {
+        # nexus (remote-hubs Phase D) is role-aware behind the NEXUS_REMOTED / $NexusRemoted cutover
+        # gate: its ${NEXUS_BEARER} env-var indirection + http client wiring live in manifest.{sh,ps1}
+        # on both OSes (never inlined). The gate itself must exist on both sides so the cutover flip is
+        # symmetric.
+        "name": "nexus token never on a command line (env-var ref)",
+        "sh": ("manifest.sh", r"NEXUS_BEARER"),
+        "ps1": ("manifest.ps1", r"NEXUS_BEARER"),
+    },
+    {
+        "name": "nexus cutover gate present (Phase-D one-flip remoting)",
+        "sh": ("manifest.sh", r"NEXUS_REMOTED"),
+        "ps1": ("manifest.ps1", r"NexusRemoted"),
+    },
+    {
+        # The load-bearing post-cutover behavior: the generated project .mcp.json drops the stdio nexus
+        # entry once remoted (global-only). Both setup generators must gate it on the cutover flag, or
+        # one OS keeps re-seeding a stale stdio nexus surface. (Cross-check: this drop had no parity row.)
+        "name": "nexus dropped from generated .mcp.json when remoted",
+        "sh": ("setup.sh", r"NEXUS_REMOTED"),
+        "ps1": ("setup.ps1", r"NexusRemoted"),
+    },
+    {
         # Highest-stakes semantic divergence the ADR-0002 review flagged: the secret
         # file's permissions. chmod 600 (sh) has no Windows equivalent, so the ps1 side
         # MUST lock it with an ACL (icacls) instead - different mechanism, same behavior.
@@ -300,6 +322,15 @@ PARITY_EXEMPT = [
         "name": "notify-when-done hook registration",
         "reason": "Claude Code notify hook is macOS-only by design (see "
                   "global-rules/notify-when-done.md: 'Claude Code on macOS only')."
+    },
+    {
+        # remote-hubs Phase D / INV-10: the fresh-client abort-free gate exercises bash setup/sync in a
+        # Linux container. The behavior IS mirrored on Windows (setup.ps1 client wiring), but a
+        # clean-Windows run is not cheaply CI-able here, so the ENFORCER is Linux-only.
+        "name": "fresh-client setup gate (INV-10 enforcer)",
+        "reason": "check-fresh-client-setup.sh runs the bash client wiring in a Linux container; a "
+                  "clean-Windows setup.ps1 run is not cheaply CI-able. The Windows client wiring itself "
+                  "stays at parity via the Register-AllHubMcp / Initialize-AllClientTokens feature rows."
     },
     {
         # remote-hubs Phase B: the host/client ROLE GUARD is mirrored (ROLE_HOST_GUARD feature row),

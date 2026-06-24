@@ -499,10 +499,33 @@ if [[ "$MODE" == "--full" ]]; then
         warn "uv not found - skipping courier/docgen/calendar dep sync"
     fi
 
-    # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos (nexus + docgen;
-    # NOT courier - see header note).
+    # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos (docgen always; nexus only
+    # UNTIL the Phase-D cutover - NOT courier, see header note). Once nexus is remoted
+    # (NEXUS_REMOTED=true) it is GLOBAL-ONLY: host stdio / client http+bearer, wired by
+    # register_all_hub_mcp. It must NOT survive as a project stdio entry - the post-cutover
+    # assertion FAILS on any stdio nexus in ~/Documents/**/.mcp.json. docgen is not remoted, so it
+    # stays. The docgen block is duplicated across the two variants on purpose (clarity over DRY for
+    # a generated config).
     if [ -f "$NEXUS_SERVER" ]; then
-        MCP_JSON=$(cat <<EOF
+        if [ "$NEXUS_REMOTED" = "true" ]; then
+            MCP_JSON=$(cat <<EOF
+{
+  "mcpServers": {
+    "docgen": {
+      "command": "uv",
+      "args": ["run", "--project", "$DOCGEN_PATH", "--no-sync", "python", "-m", "docgen.server"],
+      "env": {
+        "PYTHONPATH": "$DOCGEN_SRC",
+        "PLAYWRIGHT_BROWSERS_PATH": "$DOCGEN_BROWSERS"
+      }
+    }
+  }
+}
+EOF
+)
+            MCP_DESC="docgen; nexus is global-only post-Phase-D"
+        else
+            MCP_JSON=$(cat <<EOF
 {
   "mcpServers": {
     "nexus": {
@@ -521,11 +544,13 @@ if [[ "$MODE" == "--full" ]]; then
 }
 EOF
 )
+            MCP_DESC="nexus + docgen"
+        fi
         echo "$MCP_JSON" > "$EA_PATH/.mcp.json"
-        ok "EA .mcp.json generated (nexus + docgen)"
+        ok "EA .mcp.json generated ($MCP_DESC)"
         if [ -d "$ITW_PATH" ]; then
             echo "$MCP_JSON" > "$ITW_PATH/.mcp.json"
-            ok "IT-Worker .mcp.json generated (nexus + docgen)"
+            ok "IT-Worker .mcp.json generated ($MCP_DESC)"
         fi
     fi
 

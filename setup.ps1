@@ -566,28 +566,31 @@ if ($Mode -eq "full") {
     if (Test-Path $NexusServer) {
         # Generate private project .mcp.json for EA and IT-Worker with machine-specific paths.
         # Courier is intentionally global-only so email does not flow through shared repo config.
-        $McpJson = @{
-            mcpServers = @{
-                nexus = @{
-                    command = "node"
-                    args = @($NexusServer)
-                }
-                docgen = @{
-                    command = "uv"
-                    args = @("run", "--project", $DocgenPath, "--no-sync", "python", "-m", "docgen.server")
-                    env = @{
-                        PYTHONPATH = $DocgenSrc
-                        PLAYWRIGHT_BROWSERS_PATH = $DocgenBrowsers
-                    }
+        # nexus is in the project file ONLY until the Phase-D cutover ($NexusRemoted): once remoted it
+        # is GLOBAL-ONLY (client http+bearer via Register-AllHubMcp) and must NOT survive as a project
+        # stdio entry - the post-cutover assertion fails on any stdio nexus in ~/Documents/**/.mcp.json.
+        # docgen is not remoted, so it stays.
+        $mcpServers = @{
+            docgen = @{
+                command = "uv"
+                args = @("run", "--project", $DocgenPath, "--no-sync", "python", "-m", "docgen.server")
+                env = @{
+                    PYTHONPATH = $DocgenSrc
+                    PLAYWRIGHT_BROWSERS_PATH = $DocgenBrowsers
                 }
             }
-        } | ConvertTo-Json -Depth 6
+        }
+        if (-not $NexusRemoted) {
+            $mcpServers["nexus"] = @{ command = "node"; args = @($NexusServer) }
+        }
+        $McpJson = @{ mcpServers = $mcpServers } | ConvertTo-Json -Depth 6
+        $McpDesc = if ($NexusRemoted) { "docgen; nexus is global-only post-Phase-D" } else { "nexus + docgen" }
         Set-Content -Path "$EaPath\.mcp.json" -Value $McpJson
-        Write-Ok "EA .mcp.json generated (nexus + docgen)"
+        Write-Ok "EA .mcp.json generated ($McpDesc)"
 
         if (Test-Path $ItwPath) {
             Set-Content -Path "$ItwPath\.mcp.json" -Value $McpJson
-            Write-Ok "IT-Worker .mcp.json generated (nexus + docgen)"
+            Write-Ok "IT-Worker .mcp.json generated ($McpDesc)"
         }
     }
 

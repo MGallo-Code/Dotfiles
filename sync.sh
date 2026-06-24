@@ -245,10 +245,34 @@ sync_repo() {
 
     if [ -n "$DIRTY_STATUS" ]; then
         # The live nexus DB is intentionally tracked but churns every sync (the
-        # WAL checkpoint rewrites it). When it is the SOLE change, auto-commit it
-        # and fall through to the normal push path - anything else needs review.
-        if [ "$(printf '%s\n' "$DIRTY_STATUS" | wc -l | tr -d ' ')" = "1" ] \
-           && printf '%s' "$DIRTY_STATUS" | grep -q 'nexus/nexus\.db$'; then
+        # WAL checkpoint rewrites it). When a MODIFICATION of it is the SOLE change,
+        # auto-commit it and fall through to the normal push path - anything else needs review.
+        # ONLY a modification (` M`/`M `/`MM`) is the legit churn: a DELETION (` D`/`D `), addition, or
+        # rename of nexus.db is NEVER auto-committed (cross-check: the Phase-D cutover's `mv nexus.db
+        # nexus.db.pre-cutover` leaves a tracked-deletion as a single dirty line, which the old
+        # `grep nexus/nexus.db$` would have staged + pushed as a deletion of the LIVE serving DB = data
+        # loss). Match BOTH unstaged ` M` and staged `M `/`MM` so a manually-`git add`ed churn still
+        # auto-commits (cross-check: `^[ M]M` missed the staged `M ` form and would have aborted the push).
+        local db_status db_integrity
+        db_status="$(printf '%s\n' "$DIRTY_STATUS" | wc -l | tr -d ' ')"
+        if [ "$db_status" = "1" ] \
+           && printf '%s' "$DIRTY_STATUS" | grep -qE '^( M|M |MM) nexus/nexus\.db$'; then
+            # Never auto-commit (and push) a CORRUPT or UNVERIFIABLE db: a truncated/corrupt nexus.db is
+            # still ` M` and must NOT propagate to origin + every client. FAIL CLOSED if sqlite3 is absent
+            # too (cross-check: defaulting integrity to "ok" when sqlite3 was missing was fail-OPEN and
+            # contradicted "a corrupt db is never auto-pushed" - the data-safe choice is to leave it for
+            # manual review). pre-cutover only; this whole auto-commit block is removed at step 6.
+            if ! command -v sqlite3 >/dev/null 2>&1; then
+                warn "$name: sqlite3 not found - cannot verify nexus.db integrity; NOT auto-committing (install sqlite3, or commit by hand after verifying)"
+                DIRTY+=("$name")
+                return
+            fi
+            db_integrity="$(sqlite3 nexus/nexus.db 'PRAGMA integrity_check;' 2>/dev/null || echo "check-failed")"
+            if [ "$db_integrity" != "ok" ]; then
+                warn "$name: nexus.db failed integrity_check ('$db_integrity') - NOT auto-committing a corrupt DB; needs manual review"
+                DIRTY+=("$name")
+                return
+            fi
             git add nexus/nexus.db
             git commit -q -m "Update nexus.db"
             ok "$name: auto-committed nexus.db (live DB churn)"
@@ -685,6 +709,17 @@ if [ -f "$NEXUS_SERVER" ]; then
     register_all_hub_mcp codex
     register_all_hub_mcp gemini
 
+    # POST-cutover client self-check (cross-check): `sync` re-wires the GLOBAL agent configs but does NOT
+    # regenerate project `.mcp.json`, so a sync-only client could keep a stale STDIO nexus there (reading
+    # its own frozen nexus.db = split-brain). Surface it on the routine command - NON-FATAL (a warn, sync
+    # must still complete), and only POST-cutover on a CLIENT (pre-cutover stdio nexus is correct, and the
+    # host legitimately keeps a role-gated stdio nexus). The fix is `setup.sh --full --client`, not `sync`.
+    if [ "${NEXUS_REMOTED:-false}" = "true" ] && ! is_mcp_host \
+            && [ -x "$DOTFILES_DIR/scripts/assert-no-client-stdio-nexus.sh" ]; then
+        bash "$DOTFILES_DIR/scripts/assert-no-client-stdio-nexus.sh" \
+            || warn "a stale stdio nexus survives on this client (see above) - re-run 'setup.sh --full --client', not just 'sync'"
+    fi
+
     # Host-side INV-4 (HUB_BEARER_HOST_SCAN): a gemini http add can MATERIALIZE the bearer into
     # ~/.gemini/settings.json (WSL); the wiring re-locks it 0600, this flags any literal for ROTATION.
     # Advisory (configs not in git). (parity-checked: scripts/ci/check-parity.py)
@@ -697,7 +732,13 @@ if [ -f "$NEXUS_SERVER" ]; then
     # (courier today). Idempotent repair.
     if is_mcp_host; then
         echo -e "\n${GREEN}==>${NC} Hub host bootstrap ($MCP_HOST)"
-        bootstrap_all_hubs "$DOTFILES_DIR/hubs.json" "$DOTFILES_DIR/scripts/hub-host-bootstrap.sh"
+        # sync.sh runs `set -uo pipefail` (NO -e), so honor the rc explicitly: bootstrap_all_hubs returns
+        # non-zero on a nexus bootstrap failure (loopback/PROP-2 self-test). A bare `|| warn` is VISIBLE but
+        # not load-bearing - a post-cutover routine host sync would still EXIT 0 while nexus is mis-served
+        # (cross-check). So record the failure and make sync exit non-zero at the end (after its other work),
+        # mirroring the SKILL_TARGET_FAIL discipline - the host re-bootstrap IS an operational gate.
+        bootstrap_all_hubs "$DOTFILES_DIR/hubs.json" "$DOTFILES_DIR/scripts/hub-host-bootstrap.sh" \
+            || { warn "hub host bootstrap reported a FAILURE (nexus is fatal; see above) - the tunnel may be mis-served"; HUB_BOOTSTRAP_FAIL=1; }
     fi
 
     check_calendar_health() {
@@ -840,5 +881,13 @@ echo ""
 # the link tree is not in the expected state. Sync still completed its other work first.
 if [ "${SKILL_TARGET_FAIL:-0}" = 1 ]; then
     err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+fi
+
+# A host hub bootstrap failure (nexus is fatal) makes sync exit non-zero so the failure is not silent -
+# the host re-bootstrap is an operational gate, not just an advisory warn (cross-check). Sync still
+# completed its other work first.
+if [ "${HUB_BOOTSTRAP_FAIL:-0}" = 1 ]; then
+    err "sync: host hub bootstrap FAILED (nexus mis-served over the tunnel - see above) - investigate before relying on it"
     exit 1
 fi

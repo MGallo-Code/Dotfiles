@@ -209,11 +209,59 @@ tmpcfg="$(mktemp)"; chmod 600 "$tmpcfg"
 printf 'header = "Authorization: Bearer %s"\n' "$(cat "$TOKEN_FILE")" > "$tmpcfg"
 code_auth="$(curl -s -o /dev/null -w '%{http_code}' -K "$tmpcfg" "$PROBE_URL" 2>/dev/null)" || code_auth=000
 rm -f "$tmpcfg"
-if [ "$code_noauth" = "401" ] && [ "$code_auth" != "401" ] && [ "$code_auth" != "000" ]; then
-    ok "self-test: no-token -> 401, with-token -> $code_auth (fail-closed gate verified)"
+# with-token must indicate the request REACHED THE APP (auth + Host + path OK + a working server): a
+# 2xx or a benign non-SSE 4xx (405/406/400/415), i.e. 200 <= code < 500 AND not 401 (auth) / 403/421
+# (Host-allowlist: TS SDK 403, FastMCP 421) / 404 (wrong mount/path). A 3xx redirect or a 5xx (the server
+# threw - createNexusServer/getDb/handler) must NOT pass: the `>= 200 && < 500` band rejects 3xx/5xx/000,
+# so a broken-but-authenticated backend can't be reported healthy (cross-check). The 404 rejection is
+# DEFENSIVE here: the LOOPBACK probe hits 127.0.0.1:$PORT$MCP_PATH directly (no strip), so the path is
+# always MCP_PATH; the strip/mount 404 is the SECTION-6 PUBLIC probe's job to catch.
+if [ "$code_noauth" = "401" ] && [ "$code_auth" -ge 200 ] && [ "$code_auth" -lt 500 ] \
+        && { [ "$code_auth" -lt 300 ] || [ "$code_auth" -ge 400 ]; } \
+        && [ "$code_auth" != "401" ] && [ "$code_auth" != "403" ] \
+        && [ "$code_auth" != "421" ] && [ "$code_auth" != "404" ]; then
+    ok "self-test: no-token -> 401, with-token -> $code_auth (fail-closed loopback gate verified)"
 else
-    err "self-test FAILED: no-token=$code_noauth (want 401), with-token=$code_auth (want not 401/000)."
-    err "$NAME may still be starting - check $LOG and re-run."
+    err "self-test FAILED: no-token=$code_noauth (want 401), with-token=$code_auth (want 2xx/benign-4xx; not 401/403/421/404, not 3xx/5xx/000)."
+    err "$NAME may still be starting (or a Host-allowlist/path mismatch, or a server error) - check $LOG and re-run."
+    exit 1
+fi
+
+# --- 6. PUBLIC-tunnel self-test (PROP-2) — verify the FULL serve/strip/Host path, not just loopback --
+# The loopback probe above can't see a serve/--set-path/Host-allowlist mismatch: the calendar
+# `--set-path` STRIP bug surfaced only at manual deploy because bootstrap probed 127.0.0.1 ONLY. So
+# ALSO probe the PUBLIC URL the client actually uses (https://<host><serve_path>/mcp) through
+# `tailscale serve`: no-token -> 401, with-token -> not-401. This fails the BOOTSTRAP closed on any
+# serve/mount/strip/Host-allowlist drift (e.g. NEXUS_HTTP_ALLOWED_HOSTS missing the MagicDNS FQDN, which
+# the TS SDK matches EXACTLY). Retry for a real status: MagicDNS/TLS can lag a beat after serve.
+PUBLIC_URL="https://$ALLOWED_HOST$SERVE_PATH$MCP_PATH"
+pub_noauth=000
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pub_noauth="$(curl -s -o /dev/null -w '%{http_code}' "$PUBLIC_URL" 2>/dev/null)" || pub_noauth=000
+    [ "$pub_noauth" != "000" ] && break
+    sleep 1
+done
+tmpcfg="$(mktemp)"; chmod 600 "$tmpcfg"
+printf 'header = "Authorization: Bearer %s"\n' "$(cat "$TOKEN_FILE")" > "$tmpcfg"
+pub_auth="$(curl -s -o /dev/null -w '%{http_code}' -K "$tmpcfg" "$PUBLIC_URL" 2>/dev/null)" || pub_auth=000
+rm -f "$tmpcfg"
+# CRITICAL: the authed request must indicate it REACHED THE APP - a 2xx or benign non-SSE 4xx, i.e.
+# 200 <= code < 500 AND not 401/403/421/404. A Host-allowlist / --set-path mismatch yields 403 (TS SDK) /
+# 421 (FastMCP) / 404 (wrong mount: backend sees /nexus/mcp not /mcp) - all must be rejected or the probe
+# fails OPEN on the very drift it exists to catch (the calendar `--set-path` strip class). The `>= 200 &&
+# < 500` band ALSO rejects a 3xx redirect and a 5xx (the backend threw) / 000 (refused), so a broken or
+# misrouted tunnel can't pass (cross-check: the probe accepted authed 404 AND 500 as success). A correct
+# tunnel returns 200 (or a non-SSE 4xx like 405/406), never 3xx/403/421/404/5xx.
+if [ "$pub_noauth" = "401" ] && [ "$pub_auth" -ge 200 ] && [ "$pub_auth" -lt 500 ] \
+        && { [ "$pub_auth" -lt 300 ] || [ "$pub_auth" -ge 400 ]; } \
+        && [ "$pub_auth" != "401" ] && [ "$pub_auth" != "403" ] \
+        && [ "$pub_auth" != "421" ] && [ "$pub_auth" != "404" ]; then
+    ok "public self-test: $PUBLIC_URL no-token -> 401, with-token -> $pub_auth (tunnel path verified)"
+else
+    err "PUBLIC self-test FAILED for $PUBLIC_URL: no-token=$pub_noauth (want 401), with-token=$pub_auth (want 2xx/benign-4xx; not 3xx/401/403/421/404/5xx/000)."
+    err "A serve/--set-path/mount/Host-allowlist mismatch (403/421) or MagicDNS/HTTPS not enabled - the"
+    err "tunnel URL clients use is NOT correctly fronting 127.0.0.1:$PORT$MCP_PATH. Check 'tailscale serve"
+    err "status' and ${PREFIX}_HTTP_ALLOWED_HOSTS=$ALLOWED_HOST, then re-run."
     exit 1
 fi
 echo "==> hub host bootstrap complete: $NAME"

@@ -14,5 +14,13 @@
     "mcp_path": "/mcp",
     "token_file": "~/.config/calendar/auth-token",
     "run_cmd": "/usr/bin/env EA_CALENDAR_FORCE_FILE=1 PYTHONPATH=$HOME/Documents/EA/calendar/src:$HOME/Documents/EA/ea_mcp_remote/src $HOME/Documents/EA/calendar/.venv/bin/python -u -m ea_calendar.server"
+  },
+  {
+    "name": "nexus",
+    "port": 8767,
+    "serve_path": "/nexus",
+    "mcp_path": "/mcp",
+    "token_file": "~/.config/nexus/auth-token",
+    "run_cmd": "/usr/bin/env node $HOME/Documents/EA/nexus/dist/server.js"
   }
 ]

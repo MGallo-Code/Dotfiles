@@ -96,7 +96,7 @@ $NexusTokenFile = "$HOME\.config\nexus\auth-token"
 # this to $true (here AND in manifest.sh's NEXUS_REMOTED) in ONE coordinated step, AFTER the host seeds
 # the authoritative nexus.db and serves it over HTTP - that flip turns every client into a thin
 # http+bearer nexus client. Do NOT flip it before the drain (handoff §4).
-$NexusRemoted = $false
+$NexusRemoted = $true
 
 # ── Custom global skills (tracked in EA), linked into all 3 agents ────
 $GlobalSkillsDir = "$HOME\Documents\EA\claude-config\global-skills"

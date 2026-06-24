@@ -167,7 +167,7 @@ NEXUS_TOKEN_FILE="~/.config/nexus/auth-token"
 # Phase-D cutover flips this to "true" (here AND in manifest.ps1) IN ONE coordinated step, AFTER the
 # host seeds the authoritative nexus.db and serves it over HTTP - that single flip turns every
 # non-host box into a thin http+bearer nexus client. Do NOT flip it before the drain (handoff §4).
-NEXUS_REMOTED="false"
+NEXUS_REMOTED="true"
 
 # ── Custom global skills (tracked in EA) ─────────────────────────────
 # Custom skills authored in EA (calendar, contact, dev-update, forge), linked into all 3

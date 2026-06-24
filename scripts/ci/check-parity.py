@@ -209,14 +209,6 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"NexusRemoted"),
     },
     {
-        # The load-bearing post-cutover behavior: the generated project .mcp.json drops the stdio nexus
-        # entry once remoted (global-only). Both setup generators must gate it on the cutover flag, or
-        # one OS keeps re-seeding a stale stdio nexus surface. (Cross-check: this drop had no parity row.)
-        "name": "nexus dropped from generated .mcp.json when remoted",
-        "sh": ("setup.sh", r"NEXUS_REMOTED"),
-        "ps1": ("setup.ps1", r"NexusRemoted"),
-    },
-    {
         # Highest-stakes semantic divergence the ADR-0002 review flagged: the secret
         # file's permissions. chmod 600 (sh) has no Windows equivalent, so the ps1 side
         # MUST lock it with an ACL (icacls) instead - different mechanism, same behavior.

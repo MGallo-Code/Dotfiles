@@ -568,12 +568,10 @@ if ($Mode -eq "full") {
     }
 
     if (Test-Path $NexusServer) {
-        # Generate private project .mcp.json for EA and IT-Worker with machine-specific paths.
-        # Courier is intentionally global-only so email does not flow through shared repo config.
-        # nexus is in the project file ONLY until the Phase-D cutover ($NexusRemoted): once remoted it
-        # is GLOBAL-ONLY (client http+bearer via Register-AllHubMcp) and must NOT survive as a project
-        # stdio entry - the post-cutover assertion fails on any stdio nexus in ~/Documents/**/.mcp.json.
-        # docgen is not remoted, so it stays.
+        # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos: docgen ONLY. nexus, like
+        # courier, is wired GLOBALLY ONLY (host stdio / client http+bearer via Register-AllHubMcp)
+        # and is NEVER written into any project .mcp.json - a project stdio nexus would let a client
+        # read its own stale nexus.db (split-brain), forbidden on every box. docgen is not remoted.
         $mcpServers = @{
             docgen = @{
                 command = "uv"
@@ -584,11 +582,8 @@ if ($Mode -eq "full") {
                 }
             }
         }
-        if (-not $NexusRemoted) {
-            $mcpServers["nexus"] = @{ command = "node"; args = @($NexusServer) }
-        }
         $McpJson = @{ mcpServers = $mcpServers } | ConvertTo-Json -Depth 6
-        $McpDesc = if ($NexusRemoted) { "docgen; nexus is global-only post-Phase-D" } else { "nexus + docgen" }
+        $McpDesc = "docgen; nexus is global-only (never in project .mcp.json, like courier)"
         Set-Content -Path "$EaPath\.mcp.json" -Value $McpJson
         Write-Ok "EA .mcp.json generated ($McpDesc)"
 

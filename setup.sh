@@ -499,16 +499,13 @@ if [[ "$MODE" == "--full" ]]; then
         warn "uv not found - skipping courier/docgen/calendar dep sync"
     fi
 
-    # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos (docgen always; nexus only
-    # UNTIL the Phase-D cutover - NOT courier, see header note). Once nexus is remoted
-    # (NEXUS_REMOTED=true) it is GLOBAL-ONLY: host stdio / client http+bearer, wired by
-    # register_all_hub_mcp. It must NOT survive as a project stdio entry - the post-cutover
-    # assertion FAILS on any stdio nexus in ~/Documents/**/.mcp.json. docgen is not remoted, so it
-    # stays. The docgen block is duplicated across the two variants on purpose (clarity over DRY for
-    # a generated config).
+    # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos: docgen ONLY. nexus, like
+    # courier, is wired GLOBALLY ONLY (host stdio / client http+bearer via register_all_hub_mcp)
+    # and is NEVER written into any project .mcp.json - a project stdio nexus would let a client
+    # read its own stale nexus.db (split-brain), and assert-no-client-stdio-nexus.sh forbids it on
+    # every box. docgen is not remoted, so it is the only project-scoped server.
     if [ -f "$NEXUS_SERVER" ]; then
-        if [ "$NEXUS_REMOTED" = "true" ]; then
-            MCP_JSON=$(cat <<EOF
+        MCP_JSON=$(cat <<EOF
 {
   "mcpServers": {
     "docgen": {
@@ -523,29 +520,7 @@ if [[ "$MODE" == "--full" ]]; then
 }
 EOF
 )
-            MCP_DESC="docgen; nexus is global-only post-Phase-D"
-        else
-            MCP_JSON=$(cat <<EOF
-{
-  "mcpServers": {
-    "nexus": {
-      "command": "node",
-      "args": ["$NEXUS_SERVER"]
-    },
-    "docgen": {
-      "command": "uv",
-      "args": ["run", "--project", "$DOCGEN_PATH", "--no-sync", "python", "-m", "docgen.server"],
-      "env": {
-        "PYTHONPATH": "$DOCGEN_SRC",
-        "PLAYWRIGHT_BROWSERS_PATH": "$DOCGEN_BROWSERS"
-      }
-    }
-  }
-}
-EOF
-)
-            MCP_DESC="nexus + docgen"
-        fi
+        MCP_DESC="docgen; nexus is global-only (never in project .mcp.json, like courier)"
         echo "$MCP_JSON" > "$EA_PATH/.mcp.json"
         ok "EA .mcp.json generated ($MCP_DESC)"
         if [ -d "$ITW_PATH" ]; then

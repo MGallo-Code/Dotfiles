@@ -102,7 +102,10 @@ run_wiring_rc() {
         # shellcheck source=/dev/null
         source "$manifest"
         is_mcp_host() { return 1; }                         # force CLIENT role regardless of this box
-        [ "${GATE_NEXUS_REMOTED:-}" = "true" ] && NEXUS_REMOTED="true"
+        # HERMETIC: force the cutover flag to EXACTLY the gate var, overriding the just-sourced manifest
+        # value. Both the pre-cutover (stdio) and post-cutover (http) wiring must be testable regardless
+        # of where the live manifest currently sits - else flipping the manifest breaks this gate.
+        NEXUS_REMOTED="${GATE_NEXUS_REMOTED:-false}"
         provision_all_client_tokens
         register_all_hub_mcp claude
         register_all_hub_mcp codex

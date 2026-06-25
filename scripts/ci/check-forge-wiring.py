@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -46,14 +45,10 @@ TRACKER_FIELDS = {
 }
 
 
-def repo_root() -> Path:
-    out = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return Path(out.stdout.strip())
+def dotfiles_root() -> Path:
+    # This script is also run late in `sync`, after earlier repo checks may have
+    # changed cwd. Anchor on this file, not on the caller's current directory.
+    return Path(__file__).resolve().parents[2]
 
 
 def expand(path: str) -> Path:
@@ -250,7 +245,7 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
 
-    root = repo_root()
+    root = dotfiles_root()
     ea_config = expand(os.environ.get("EA_CLAUDE_CONFIG", "~/Documents/EA/claude-config"))
     findings: list[str] = []
 

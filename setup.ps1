@@ -172,12 +172,13 @@ matcher = "^Bash`$"
     # agent-state dirs (~/.codex/.claude/.gemini, GB of tmp/logs/caches). A ~135GB workspace made
     # gemini roam junk and confabulate it into reviews. Mirrors the claude sysupdate set (EA +
     # agent-skills) + control-plane roots. Assigned (not appended) so a re-run prunes stale junk.
+    $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
     $geminiWorkspaceRoots = @(
         "$HOME\Documents\EA",
         "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
-        "$HOME\.config\nvim"
-    )
+        $nvimRoot
+    ) | Where-Object { Test-Path $_ } | ForEach-Object { (Resolve-Path $_).Path }
     if (-not $settings.Contains("context") -or $null -eq $settings["context"]) {
         $settings["context"] = [ordered]@{}
     }
@@ -646,7 +647,8 @@ if ($Mode -eq "full") {
                 $trust[(Resolve-Path $repo.Target).Path] = "TRUST_FOLDER"
             }
         }
-        foreach ($root in @("$HOME\Documents", "$HOME\Downloads", "$HOME\.dotfiles", "$HOME\.codex", "$HOME\.claude", "$HOME\.gemini", "$HOME\.config\nvim")) {
+        $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
+        foreach ($root in @("$HOME\Documents", "$HOME\Downloads", "$HOME\.dotfiles", "$HOME\.codex", "$HOME\.claude", "$HOME\.gemini", $nvimRoot)) {
             if (Test-Path $root) {
                 $trust[(Resolve-Path $root).Path] = "TRUST_FOLDER"
             }

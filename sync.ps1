@@ -140,12 +140,13 @@ matcher = "^Bash`$"
     # Keep Gemini focused on source/control-plane roots. Do not append broad parents or
     # agent-state dirs; that caused reviews to roam caches, downloads, and stale generated
     # content after sync.
+    $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
     $geminiWorkspaceRoots = @(
         "$HOME\Documents\EA",
         "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
-        "$HOME\.config\nvim"
-    )
+        $nvimRoot
+    ) | Where-Object { Test-Path $_ } | ForEach-Object { (Resolve-Path $_).Path }
     if (-not $settings.Contains("context") -or $null -eq $settings["context"]) {
         $settings["context"] = [ordered]@{}
     }
@@ -835,7 +836,8 @@ if (Test-Path $NexusServer) {
                 $trust[(Resolve-Path $repo.Target).Path] = "TRUST_FOLDER"
             }
         }
-        foreach ($root in @("$HOME\Documents", "$HOME\Downloads", "$HOME\.dotfiles", "$HOME\.codex", "$HOME\.claude", "$HOME\.gemini", "$HOME\.config\nvim")) {
+        $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
+        foreach ($root in @("$HOME\Documents", "$HOME\Downloads", "$HOME\.dotfiles", "$HOME\.codex", "$HOME\.claude", "$HOME\.gemini", $nvimRoot)) {
             if (Test-Path $root) {
                 $trust[(Resolve-Path $root).Path] = "TRUST_FOLDER"
             }

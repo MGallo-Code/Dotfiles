@@ -653,6 +653,7 @@ ensure_claude_pretooluse_hook() {
 }
 ensure_claude_pretooluse_hook "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
 ensure_claude_pretooluse_hook "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
+ensure_agent_defaults
 
 if command -v python3 >/dev/null 2>&1; then
     python3 "$DOTFILES_DIR/scripts/ci/check-forge-wiring.py" --machine || {
@@ -779,7 +780,6 @@ if [ -f "$NEXUS_SERVER" ]; then
 else
     warn "MCP wiring skipped - Nexus server not built at $NEXUS_SERVER"
 fi
-ensure_agent_defaults
 ensure_gemini_cross_check_setup
 
 # ── Summary ──────────────────────────────────────────────────────────

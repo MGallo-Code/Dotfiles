@@ -716,6 +716,7 @@ function Ensure-ClaudePreToolUseHook {
 }
 Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
 Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
+Set-AgentDefaults
 if ($pyCmd) {
     & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-forge-wiring.py") --machine
     if ($LASTEXITCODE -ne 0) {
@@ -848,7 +849,6 @@ if (Test-Path $NexusServer) {
 else {
     Write-Warn "MCP wiring skipped - Nexus server not built at $NexusServer"
 }
-Set-AgentDefaults
 Ensure-GeminiCrossCheckSetup
 
 # ── Summary ──────────────────────────────────────────────────────────

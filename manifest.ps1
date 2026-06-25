@@ -71,7 +71,7 @@ $AgentSkillsTargets = @(
 # (no macOS login keychain), so this box is always a client; $McpHost only supplies the client URL
 # here. (Was $MailHost when courier was the only remoted hub; generalized in remote-hubs Phase B.)
 # (parity-checked: scripts/ci/check-parity.py)
-$McpHost = "michaels-macbook-pro"
+$McpHost = "mikes-mac-mini"
 $Tailnet = "tail7a0764.ts.net"
 $CourierHttpPort = "8765"
 $CourierRemoteUrl = "https://$McpHost.$Tailnet/mcp"

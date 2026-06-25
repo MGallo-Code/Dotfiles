@@ -144,30 +144,29 @@ EOF
     ensure_codex_permission_profile
     ok "Codex: defaults set (xhigh reasoning + Michael workspace permissions)"
 
-    # Stacked-push guard for Codex (PreToolUse), mirroring the Claude hook: the
-    # SAME script + protocol (reads .tool_input.command, emits hookSpecificOutput
-    # .permissionDecision "ask") so a stacked `git push` pauses for confirmation
-    # and never auto-approves. Registration is machine-local in config.toml; the
-    # script is the one the Claude guard already deploys to ~/.claude/hooks. Trust
-    # it once via the Codex `/hooks` TUI. Idempotent via a marker comment.
-    local codex_guard_marker="# dotfiles: flat-PR stacked-push guard"
-    local codex_guard="$HOME/.claude/hooks/warn-stacked-git-push.sh"
-    if ! grep -qF "$codex_guard_marker" "$codex_config"; then
+    # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
+    # Claude global-hooks symlink. Trust once via the Codex `/hooks` TUI. Idempotent by marker.
+    ensure_codex_pretooluse_hook() {
+        local marker="$1" command="$2" label="$3"
+        if ! grep -qF "$marker" "$codex_config"; then
         cat >> "$codex_config" <<EOF
 
-$codex_guard_marker
+$marker
 [[hooks.PreToolUse]]
 matcher = "^Bash\$"
 
   [[hooks.PreToolUse.hooks]]
   type = "command"
-  command = "$codex_guard"
+  command = "$command"
   timeout = 30
 EOF
-        ok "Codex: wired stacked-push guard (run /hooks once to trust it)"
-    else
-        ok "Codex stacked-push guard already wired"
-    fi
+            ok "Codex: wired $label (run /hooks once to trust it)"
+        else
+            ok "Codex $label already wired"
+        fi
+    }
+    ensure_codex_pretooluse_hook "# dotfiles: flat-PR stacked-push guard" "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
+    ensure_codex_pretooluse_hook "# dotfiles: Forge action guard" "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
 
     local gemini_settings="$HOME/.gemini/settings.json"
     mkdir -p "$HOME/.gemini"
@@ -621,10 +620,14 @@ if [[ "$MODE" == "--full" ]]; then
 
         if [ -L "$target_path" ] && [ "$(readlink "$target_path")" = "$source_path" ]; then
             ok "$target_path already linked correctly"
-        elif [ -e "$target_path" ] || [ -L "$target_path" ]; then
-            rm -rf "$target_path"
+        elif [ -L "$target_path" ]; then
+            rm -f "$target_path"
             ln -s "$source_path" "$target_path"
             ok "Replaced $target_path with symlink -> $source_path"
+        elif [ -e "$target_path" ]; then
+            warn "$target_path exists but is not the expected symlink - skipping to avoid deleting local content"
+        elif [ ! -e "$source_path" ]; then
+            warn "$target_path source missing at $source_path"
         else
             mkdir -p "$(dirname "$target_path")"
             ln -s "$source_path" "$target_path"
@@ -662,28 +665,36 @@ if [[ "$MODE" == "--full" ]]; then
         warn "notify hook: no jq or no settings.json - wire manually (see global-hooks/README.md)"
     fi
 
-    # Wire the stacked-push guard hook into settings.json. Same rationale as the
-    # notify hook above: the SCRIPT rides the global-hooks symlink, the PreToolUse
-    # REGISTRATION is machine-local in settings.json, so merge it idempotently.
-    # Uses permissionDecision:"ask" (confirm-guard), never auto-approves a push.
-    guard_cmd="$HOME/.claude/hooks/warn-stacked-git-push.sh"
-    if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then
-        if jq -e '.hooks.PreToolUse' "$settings" >/dev/null 2>&1; then
-            ok "stacked-push guard already wired in settings.json"
-        else
-            tmp="$(mktemp)"
-            if jq --arg cmd "$guard_cmd" \
-                '.hooks.PreToolUse = [{matcher:"Bash", hooks:[{type:"command", command:$cmd}]}]' \
-                "$settings" > "$tmp" && [ -s "$tmp" ]; then
+    # Wire PreToolUse guards into settings.json. Same rationale as the notify hook above:
+    # scripts ride the global-hooks symlink; registration is machine-local, so merge each
+    # specific command idempotently instead of treating any PreToolUse entry as sufficient.
+    ensure_claude_pretooluse_hook() {
+        local hook_cmd="$1" label="$2" tmp
+        if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then
+            if jq -e --arg cmd "$hook_cmd" 'any(.hooks.PreToolUse[]?.hooks[]?; .command == $cmd)' "$settings" >/dev/null 2>&1; then
+                ok "$label already wired in settings.json"
+                return
+            fi
+            tmp="$settings.tmp.$$"
+            if jq --arg cmd "$hook_cmd" '
+                .hooks = (.hooks // {})
+              | .hooks.PreToolUse = (
+                  ((.hooks.PreToolUse // []) | if type == "array" then . else [] end) as $pre
+                  | $pre + [{matcher:"Bash", hooks:[{type:"command", command:$cmd}]}]
+                )' "$settings" > "$tmp" && [ -s "$tmp" ]; then
                 cp "$settings" "$settings.bak"
                 mv "$tmp" "$settings"
-                ok "Wired stacked-push guard into settings.json"
+                ok "Wired $label into settings.json"
             else
                 rm -f "$tmp"
-                warn "stacked-push guard: jq merge failed, settings.json left untouched"
+                warn "$label: jq merge failed, settings.json left untouched"
             fi
+        else
+            warn "$label: no jq or no settings.json - wire manually"
         fi
-    fi
+    }
+    ensure_claude_pretooluse_hook "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
+    ensure_claude_pretooluse_hook "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
 
     # Wire repo-local git hooks (coding-mastermind pre-commit gate) for managed repos
     # that ship a tracked .githooks/ dir. core.hooksPath is per-clone LOCAL config, so

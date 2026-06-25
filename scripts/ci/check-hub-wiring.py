@@ -94,11 +94,12 @@ GENERATED_CONFIGS = ["~/.gemini/settings.json", "~/.claude.json", "~/.codex/conf
 def host_scan():
     """Host-side INV-4 complement: detect a LITERAL bearer materialized into a generated agent config.
 
-    gemini materializes the ${<HUB>_BEARER} reference into ~/.gemini/settings.json at add-time on
-    WSL/Linux (the real token lands at-rest in plaintext); claude/codex store the reference. The wiring
-    (register_hub_mcp / Register-HubMcp) re-locks the gemini file 0600, but a materialized token still
-    needs ROTATION. This scan flags any literal (redacted) + any loose perms. Detection only - the
-    wiring owns the chmod. Host-side: configs are not in git, so this is NOT a CI gate.
+    gemini may materialize the ${<HUB>_BEARER} reference into ~/.gemini/settings.json at add-time on
+    WSL/Linux (the real token can land at-rest in plaintext); claude/codex store the reference. The
+    wiring (register_hub_mcp / Register-HubMcp) scrubs known hub headers back to env refs and re-locks
+    the gemini file 0600. This scan flags any literal (redacted) + any loose perms that still slip
+    through. Detection only - the wiring owns the scrub/chmod. Host-side: configs are not in git, so
+    this is NOT a CI gate.
     """
     import stat
     literals, loose = [], []

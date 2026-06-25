@@ -42,3 +42,8 @@ fi
 if [ -f "$ROOT/scripts/ci/check-local-selfref.py" ]; then
   "$PY" "$ROOT/scripts/ci/check-local-selfref.py"
 fi
+
+# INV-11: Forge tracker/checker/guard wiring stays present.
+if [ -f "$ROOT/scripts/ci/check-forge-wiring.py" ]; then
+  "$PY" "$ROOT/scripts/ci/check-forge-wiring.py"
+fi

@@ -35,6 +35,9 @@ $Symlinks = @(
     # Mirror of manifest.sh: global-agents -> ~/.claude/agents (Claude subagent defs).
     # Claude-only; codex/gemini have no subagent concept. (parity-checked: scripts/ci/check-parity.py)
     @{ Source = "$HOME\Documents\EA\claude-config\global-agents"; Target = "$HOME\.claude\agents" }
+    # Mirror of manifest.sh: global-commands -> ~/.claude/commands. Codex/Gemini get generated
+    # mirrors from the same source; Claude gets the source directory directly.
+    @{ Source = "$HOME\Documents\EA\claude-config\global-commands"; Target = "$HOME\.claude\commands" }
 )
 
 # Codex and Gemini each load ONE global instruction file. Mirror of manifest.sh:
@@ -126,6 +129,7 @@ $CommandSources = @(
 $Directories = @(
     "$HOME\Documents\Learning"
     "$HOME\Documents\Jobs"
+    "$HOME\Documents\Agent-Forge"
 )
 
 # ── Per-ROLE hub client token (shared by setup.ps1 AND sync.ps1) ──────
@@ -214,16 +218,42 @@ function Add-HubStdioMcp {
 # SINGLE-QUOTE concatenation so the literal ${<TokenEnv>} REFERENCE (not its value) reaches the
 # CLI, which stores the ref and resolves it at runtime (dotfiles INV-4). Single-quote concat
 # avoids the backtick-escape fragility of an interpolated string.
-# INV-4 defense: re-lock ~/.gemini/settings.json to the current user after a gemini http add, because
-# gemini may MATERIALIZE the bearer reference into the file (verified on WSL/Linux). Unlike the courier
+# INV-4 defense: Gemini may materialize bearer values into ~/.gemini/settings.json. Normalize known
+# managed hub headers back to env refs before locking the file. The cross-platform backstop is
+# check-hub-wiring.py --host, which DETECTS any materialized literal token that still appears.
+function Set-GeminiBearerRefs {
+    $gset = Join-Path $HOME ".gemini\settings.json"
+    if (-not (Test-Path $gset)) { return }
+    try {
+        $settings = Get-Content $gset -Raw | ConvertFrom-Json
+    }
+    catch {
+        return
+    }
+    if (-not $settings.mcpServers) { return }
+    $map = @{
+        courier = "COURIER_BEARER"
+        nexus = "NEXUS_BEARER"
+        calendar = "CALENDAR_BEARER"
+    }
+    foreach ($name in $map.Keys) {
+        $server = $settings.mcpServers.$name
+        if ($server -and $server.headers -and ($server.headers.PSObject.Properties.Name -contains "Authorization")) {
+            $server.headers.Authorization = 'Bearer ${' + $map[$name] + '}'
+        }
+    }
+    $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $gset
+}
+
+# Re-lock ~/.gemini/settings.json to the current user after a gemini http add. Unlike the courier
 # token file - which WE create inside an already-locked dir, so it is clean by construction and needs no
 # reset - settings.json is created by GEMINI and may carry a pre-existing EXPLICIT ACE. So `icacls
 # /reset` FIRST strips any explicit ACE (back to inherited), THEN /inheritance:r removes inherited and
-# /grant:r grants owner-only: a FULL owner lock, not best-effort. The cross-platform backstop is
-# check-hub-wiring.py --host, which DETECTS a materialized literal token (not perms-gated) for ROTATION.
+# /grant:r grants owner-only: a FULL owner lock, not best-effort.
 function Lock-GeminiSettings {
     $gset = Join-Path $HOME ".gemini\settings.json"
     if (Test-Path $gset) {
+        Set-GeminiBearerRefs
         $sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
         icacls $gset /reset | Out-Null
         icacls $gset /inheritance:r /grant:r "*${sid}:F" | Out-Null

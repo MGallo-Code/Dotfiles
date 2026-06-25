@@ -10,6 +10,15 @@
 keeps it. For a `*.sh` change: did the `*.ps1` side get the same behavior (INV-2)?
 "none" is valid if the surfaces match no registry row.>
 
+## Forge
+
+- Forge: `N/A | <slug> | READY`
+- Tracker: `~/Documents/Agent-Forge/<slug>/tracker.json`
+- Plan cross-check: `<N/A | clean streak / evidence>`
+- Build verification: `<N/A | clean streak / evidence>`
+- Visual verification: `<N/A | not required | evidence>`
+- Explicit PR approval: `<who approved opening this PR>`
+
 ## Definition of Done
 
 - [ ] Does what the issue/spec said; scope did not silently grow.

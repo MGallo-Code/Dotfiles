@@ -83,30 +83,31 @@ $markerEnd
     Set-Content -Path $codexConfig -Value $content -NoNewline
     Write-Ok "Codex: defaults set (xhigh reasoning + Michael workspace permissions)"
 
-    # Stacked-push guard for Codex (PreToolUse), parity mirror of the bash block:
-    # same script + protocol as the Claude PreToolUse guard, invoked via bash.
-    # Registration is machine-local in config.toml; trust once via Codex /hooks.
-    # Idempotent via a marker comment.
-    $codexGuardMarker = "# dotfiles: flat-PR stacked-push guard"
-    $codexGuard = "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`""
-    $codexExisting = if (Test-Path $codexConfig) { Get-Content $codexConfig -Raw } else { "" }
-    if ($codexExisting -notlike "*$codexGuardMarker*") {
+    # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
+    # Claude global-hooks symlink and run via bash on Windows. Trust once via Codex /hooks.
+    function Ensure-CodexPreToolUseHook {
+        param([string]$Marker, [string]$Command, [string]$Label)
+        $codexExisting = if (Test-Path $codexConfig) { Get-Content $codexConfig -Raw } else { "" }
+        if ($codexExisting -notlike "*$Marker*") {
         $codexGuardBlock = @"
 
-$codexGuardMarker
+$Marker
 [[hooks.PreToolUse]]
 matcher = "^Bash`$"
 
   [[hooks.PreToolUse.hooks]]
   type = "command"
-  command = '$codexGuard'
+  command = '$Command'
   timeout = 30
 "@
         Add-Content -Path $codexConfig -Value $codexGuardBlock
-        Write-Ok "Codex: wired stacked-push guard (run /hooks once to trust it)"
-    } else {
-        Write-Ok "Codex stacked-push guard already wired"
+            Write-Ok "Codex: wired $Label (run /hooks once to trust it)"
+        } else {
+            Write-Ok "Codex $Label already wired"
+        }
     }
+    Ensure-CodexPreToolUseHook "# dotfiles: flat-PR stacked-push guard" "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
+    Ensure-CodexPreToolUseHook "# dotfiles: Forge action guard" "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
 
     $geminiDir = Join-Path $HOME ".gemini"
     $geminiSettings = Join-Path $geminiDir "settings.json"
@@ -136,13 +137,13 @@ matcher = "^Bash`$"
         $settings["general"] = $general
     }
     $general["defaultApprovalMode"] = "auto_edit"
+    # Keep Gemini focused on source/control-plane roots. Do not append broad parents or
+    # agent-state dirs; that caused reviews to roam caches, downloads, and stale generated
+    # content after sync.
     $geminiWorkspaceRoots = @(
-        "$HOME\Documents",
-        "$HOME\Downloads",
+        "$HOME\Documents\EA",
+        "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
-        "$HOME\.codex",
-        "$HOME\.claude",
-        "$HOME\.gemini",
         "$HOME\.config\nvim"
     )
     if (-not $settings.Contains("context") -or $null -eq $settings["context"]) {
@@ -157,14 +158,7 @@ matcher = "^Bash`$"
         $context = $newContext
         $settings["context"] = $context
     }
-    $includeDirs = @()
-    if ($context.Contains("includeDirectories") -and $null -ne $context["includeDirectories"]) {
-        $includeDirs = @($context["includeDirectories"])
-    }
-    foreach ($root in $geminiWorkspaceRoots) {
-        if ($includeDirs -notcontains $root) { $includeDirs += $root }
-    }
-    $context["includeDirectories"] = $includeDirs
+    $context["includeDirectories"] = $geminiWorkspaceRoots
     if (-not $settings.Contains("tools") -or $null -eq $settings["tools"]) {
         $settings["tools"] = [ordered]@{}
     }
@@ -177,14 +171,7 @@ matcher = "^Bash`$"
         $tools = $newTools
         $settings["tools"] = $tools
     }
-    $sandboxAllowedPaths = @()
-    if ($tools.Contains("sandboxAllowedPaths") -and $null -ne $tools["sandboxAllowedPaths"]) {
-        $sandboxAllowedPaths = @($tools["sandboxAllowedPaths"])
-    }
-    foreach ($root in $geminiWorkspaceRoots) {
-        if ($sandboxAllowedPaths -notcontains $root) { $sandboxAllowedPaths += $root }
-    }
-    $tools["sandboxAllowedPaths"] = $sandboxAllowedPaths
+    $tools["sandboxAllowedPaths"] = $geminiWorkspaceRoots
     $tools["sandboxNetworkAccess"] = $true
     if (-not $settings.Contains("security") -or $null -eq $settings["security"]) {
         $settings["security"] = [ordered]@{}
@@ -693,6 +680,50 @@ foreach ($link in $Symlinks) {
     }
 }
 
+# Wire PreToolUse guards into the per-machine Claude settings.json. Scripts ride the
+# global-hooks symlink; registration is machine-local, so routine sync repairs it.
+$settingsPath = "$HOME\.claude\settings.json"
+function Ensure-ClaudePreToolUseHook {
+    param([string]$Command, [string]$Label)
+    if (-not (Test-Path $settingsPath)) {
+        Write-Warn "${Label}: no settings.json - wire manually"
+        return
+    }
+    $cfg = Get-Content $settingsPath -Raw | ConvertFrom-Json
+    $existing = @()
+    if ($cfg.hooks -and $cfg.hooks.PreToolUse) {
+        foreach ($entry in @($cfg.hooks.PreToolUse)) {
+            foreach ($hook in @($entry.hooks)) {
+                if ($hook.command) { $existing += $hook.command }
+            }
+        }
+    }
+    if ($existing -contains $Command) {
+        Write-Ok "$Label already wired in settings.json"
+        return
+    }
+
+    Copy-Item $settingsPath "$settingsPath.bak" -Force
+    if (-not $cfg.hooks) {
+        Add-Member -InputObject $cfg -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    $preExisting = @()
+    if ($cfg.hooks.PreToolUse) { $preExisting = @($cfg.hooks.PreToolUse) }
+    $preEntry = [pscustomobject]@{ matcher = "Bash"; hooks = @([pscustomobject]@{ type = "command"; command = $Command }) }
+    Add-Member -InputObject $cfg.hooks -NotePropertyName PreToolUse -NotePropertyValue @($preExisting + $preEntry) -Force
+    $cfg | ConvertTo-Json -Depth 12 | Set-Content -Path $settingsPath
+    Write-Ok "Wired $Label into settings.json"
+}
+Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
+Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
+if ($pyCmd) {
+    & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-forge-wiring.py") --machine
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "check-forge-wiring --machine: Forge command/checker/hook wiring incomplete (above)"
+        $ForgeWiringFail = $true
+    }
+}
+
 # ── Rebuild Nexus if EA was updated ──────────────────────────────────
 $NexusPath = "$HOME\Documents\EA\nexus"
 if (Test-Path "$NexusPath\package.json") {
@@ -919,5 +950,10 @@ Write-Host ""
 # (parity with sync.sh). Sync still completed its other work first.
 if ($SkillTargetFail) {
     Write-Err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+}
+
+if ($ForgeWiringFail) {
+    Write-Err "sync: Forge wiring machine check FAILED (see above) - run a full sync or investigate"
     exit 1
 }

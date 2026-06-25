@@ -43,6 +43,10 @@ SYMLINKS=(
   # only ever lands in ~/.claude). Previously hand-linked by EA/claude-config/link.sh (now
   # retired); managed here so the wiring is reproducible. (parity: manifest.ps1 + INV-2 token)
   "~/Documents/EA/claude-config/global-agents|~/.claude/agents"
+  # global-commands -> ~/.claude/commands: Claude slash-command sources. Codex/Gemini get generated
+  # mirrors from the SAME source via gen-agent-commands.py; Claude gets the source directory directly.
+  # This makes commands like /forge available without relying on a skill being remembered.
+  "~/Documents/EA/claude-config/global-commands|~/.claude/commands"
 )
 
 # Combined global rules for single-file agent tools.
@@ -208,6 +212,7 @@ COMMAND_SOURCES=(
 DIRECTORIES=(
   "~/Documents/Learning"
   "~/Documents/Jobs"
+  "~/Documents/Agent-Forge"
 )
 
 # Shell command files (relative to dotfiles repo root)
@@ -266,11 +271,9 @@ _hub_stdio_add() {
 # referenced ONLY as the ${<token_env>} env var in the wiring SOURCE, never a literal token (dotfiles
 # INV-4). The inline `\${$token_env}` expands to e.g. ${COURIER_BEARER} in the argv. claude/codex
 # store that REFERENCE and resolve it at launch (codex via --bearer-token-env-var). gemini is the
-# exception: on WSL/Linux it MATERIALIZES the reference into ~/.gemini/settings.json at add-time (the
-# COURIER_BEARER value is in the env there, so the real token lands at-rest in the config; on macOS
-# this box stores the ref, so it is platform-dependent). So after the gemini add we re-lock that file
-# 0600 (the materialized token is never group/world-readable), and check-hub-wiring.py --host
-# (host-side) flags any literal so the token can be ROTATED. See gemini_relock_settings.
+# exception: on WSL/Linux it can MATERIALIZE the reference into ~/.gemini/settings.json at add-time.
+# So after the gemini add we scrub known hub headers back to env refs, re-lock that file 0600, and
+# keep check-hub-wiring.py --host as the backstop for any literal that still appears.
 _hub_http_add() {
     local cli="$1" name="$2" url="$3" token_env="$4"
     case "$cli" in
@@ -281,11 +284,37 @@ _hub_http_add() {
     esac
 }
 
-# INV-4 defense: re-lock ~/.gemini/settings.json to 0600 right after a gemini http add, because gemini
-# may materialize the bearer REFERENCE into the file (verified on WSL). Idempotent + EOF/`set -e`-safe.
+# INV-4 defense: Gemini may materialize bearer values into ~/.gemini/settings.json. Normalize known
+# managed hub headers back to env refs before locking the file. JSON-aware; no token values are printed.
+gemini_scrub_settings_bearer_refs() {
+    local gs="$HOME/.gemini/settings.json"
+    [ -f "$gs" ] || return 0
+    command -v python3 >/dev/null 2>&1 || { warn "gemini settings: python3 not found - cannot scrub bearer refs"; return 0; }
+    python3 -c '
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+servers = data.get("mcpServers", {})
+for name, var in {"courier": "COURIER_BEARER", "nexus": "NEXUS_BEARER", "calendar": "CALENDAR_BEARER"}.items():
+    headers = servers.get(name, {}).get("headers")
+    if isinstance(headers, dict) and "Authorization" in headers:
+        headers["Authorization"] = f"Bearer ${{{var}}}"
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+' "$gs" || warn "gemini settings: failed to scrub bearer refs"
+}
+
+# Re-lock ~/.gemini/settings.json to 0600 right after a gemini http add. Idempotent + EOF/`set -e`-safe.
 gemini_relock_settings() {
     local gs="$HOME/.gemini/settings.json"
-    [ -f "$gs" ] && chmod 600 "$gs" 2>/dev/null || true
+    [ -f "$gs" ] || return 0
+    gemini_scrub_settings_bearer_refs
+    chmod 600 "$gs" 2>/dev/null || true
 }
 
 # Wire ONE hub for THIS machine's role, for one CLI (the per-hub primitive; folds the old

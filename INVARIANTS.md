@@ -27,10 +27,11 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-4 | No managed hub's bearer token is ever inlined into agent MCP wiring: the only token reference in a hub `mcp add` is an env var - `${<HUB>_BEARER}` (or the manifest's generic `${$token_env}` indirection) via claude/gemini `--header`/`-H`, or `--bearer-token-env-var <HUB>_BEARER` (codex); a literal token never reaches argv or a CLI's stored config. Distinct from INV-1 (the token lives OUTSIDE git, in `~/.config/<hub>/auth-token`, so the secret-scan never sees it). | The `Authorization: Bearer` references inside `register_hub_mcp`/`Register-HubMcp` (manifest), which only ever name an env var. | `scripts/ci/check-hub-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
 | INV-5 | Every managed hub is wired per-ROLE only through the shared functions: the host-vs-client decision AND every hub `mcp add` live once in `manifest.{sh,ps1}` (`register_hub_mcp`/`register_all_hub_mcp` and `Register-HubMcp`/`Register-AllHubMcp`); no `setup`/`sync` script wires a hub directly. | `register_hub_mcp`/`register_all_hub_mcp` (+ the `Register-*` ps1 mirror) in manifest; setup/sync only CALL them. | `scripts/ci/check-hub-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
 | INV-6 | Generated agent affordances derive only from ACTIVE roots AND match their sources exactly: an archived root (`ARCHIVED_REPOS` / `ARCHIVED_PROJECT_SKILLS`) never appears in an active list; after a regen every active source skill HAS its generated link in each intended target (no missing link), no generated link dangles, and no two sources collide on a name in one target. User-authored real skill dirs are never touched. | The manifest active/archived split + `regen_agent_skills_links` (link + `clean_stale_skill_symlinks` prune on every regen) + the post-regen `--machine` assertion. | `scripts/ci/check-skill-targets.py` (manifest mode: pre-commit + CI; `--machine` completeness/dangling/collision during `sync`, BLOCKING on both OSes) | CI-green | 2 |
-| INV-7 | Every Claude command source has a generated Codex prompt AND Gemini command, and each generated dir carries an invocation index, so the same commands are usable (and discoverable) in all three agents. | `gen-agent-commands.py` (one shared generator, called by both sync scripts) emits the mirror + a `README.md` index. | `gen-agent-commands.py --verify` run during `sync` on both OSes (a missing mirror fails the check); parity-gated by the `COMMAND_MIRROR_VERIFY` marker. | local-green (pending merge) | 1 |
+| INV-7 | Every shared Claude command source is usable in all three agents: Claude sees the source directory at `~/.claude/commands`, Codex gets a generated prompt, Gemini gets a generated TOML command, and generated dirs carry an invocation index. | `manifest.{sh,ps1}` wires `global-commands -> ~/.claude/commands`; `gen-agent-commands.py` emits Codex/Gemini mirrors + `README.md` indexes. | `gen-agent-commands.py --verify` run during `sync` on both OSes (a missing mirror fails the check); parity-gated by `COMMAND_MIRROR_VERIFY` and the `~/.claude/commands dir wired` parity row. | local-green (pending merge) | 2 |
 | INV-8 | A temporary git worktree does not masquerade as a canonical workspace root: every linked worktree lives under `~/Documents/Worktrees/` or is explicitly allowlisted; none sits as a bare top-level sibling of the project roots in `~/Documents`. | The canonical home `~/Documents/Worktrees` + the `ALLOWLIST` in the checker; the linked-worktree test is a `.git` FILE vs DIR. | `scripts/ci/check-worktrees.py` (ADVISORY - warns, never fails; run by hand or during `sync`) | advisor-only | 1 |
 | INV-9 | No bash `local`/`declare`/`typeset` statement references a variable assigned EARLIER in the SAME statement: under `set -u` the just-declared local is not yet visible while the rest of the statement's RHS is expanded, so the reference is UNBOUND and the script aborts. The dependent assignment is split onto its own `local` line. | One-assignment-per-dependent-`local` in every `*.sh`; the highest-stakes surface is `sync.sh` (runs under `set -uo pipefail`). | `scripts/ci/check-local-selfref.py` (static scan of tracked `*.sh`: pre-commit + CI) | CI-green | 1 |
 | INV-10 | A fresh/headless CLIENT's `setup.sh`/`sync.sh` (incl. `--client`) wiring path runs to **exit 0** AND leaves a FUNCTIONAL client: no step aborts the whole run on an EXPECTED non-zero (a `mcp remove` of an unregistered server, a headless `pbcopy`/`open`, a failed-optional install), and the per-hub `${*_BEARER}` are exported for the shell the agent launches from while every role-aware hub is wired http+`${*_BEARER}` for EACH agent CLI (claude/codex/gemini) — never a literal token, never a leftover stdio entry on a client. | The guards in setup/sync + the shared manifest wiring fns: `\|\| true` on the mcp-remove loop, the `command -v`/`[ -t 0 ]` gates, `ensure_client_bearer_exports`, and `register_all_hub_mcp` http+`${*_BEARER}`. | `scripts/ci/check-fresh-client-setup.sh` (hermetic: throwaway `$HOME` + stub agent CLIs whose unregistered `mcp remove` returns rc1; runs the real shared wiring fns `setup.sh`/`sync.sh` call — `provision_all_client_tokens` + `register_all_hub_mcp` for claude/codex/gemini — under genuine errexit, pre- AND post-cutover, + a revert-test; CI. It exercises the wiring fns, not the whole setup.sh/sync.sh scripts.). ps1 is `PARITY_EXEMPT` (Linux-client gate). | local-green (pending CI) | 4 |
+| INV-11 | Forge work cannot be claimed ready or pushed/PR'd from memory alone: tracker state lives in a shared writable artifact dir, readiness is checked by `check-state.py`, Claude/Codex action hooks pause commit/push/PR commands when the active tracker is incomplete/blocked/invalid, and PRs expose Forge status visibly. | `~/Documents/Agent-Forge/<slug>/tracker.json` + `scripts/forge/check-state.py` + `forge-guard.sh` registered by setup/sync for Claude/Codex + `.github/PULL_REQUEST_TEMPLATE.md`. | `scripts/ci/check-forge-wiring.py` (pre-commit + CI repo wiring; `--machine` during sync verifies generated commands + live Claude/Codex hook registration) plus `check-state.py` fixture checks during development. | local-green (pending merge) | 2 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -121,17 +122,17 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   `# hub-wiring-allow`.)
 - **Gate design**: `check-hub-wiring.py` is a COVERAGE scan over the whole script set,
   so a literal token introduced on ANY surface is caught, not just the one known site.
-- **Generated-config exposure (host-side complement)**: gemini MATERIALIZES the
+- **Generated-config exposure (host-side complement)**: gemini may MATERIALIZE the
   `${<HUB>_BEARER}` reference into `~/.gemini/settings.json` at add-time on **WSL/Linux** (the
-  real token value is in the env there, so it lands at-rest in plaintext; on macOS this box
+  real token value is in the env there, so it can land at-rest in plaintext; on macOS this box
   stores the ref - the behavior is platform-dependent). claude/codex store the reference. Two
-  defenses: (1) `register_hub_mcp`/`Register-HubMcp` re-lock that file 0600 (sh `chmod 600`
-  `gemini_relock_settings` / ps1 `icacls` `Lock-GeminiSettings`) right after the gemini add, so a
-  materialized token is never group/world-readable; (2) `check-hub-wiring.py --host` (run during
-  `sync` on both OSes) scans the generated configs (`~/.gemini/settings.json`, `~/.claude.json`,
-  `~/.codex/config.toml`) for a literal bearer and flags it for ROTATION. Host-side only: those
-  configs are machine-local, never in git, so this is NOT a CI gate (the CI scan covers the
-  tracked script set; this covers the generated configs).
+  defenses: (1) `register_hub_mcp`/`Register-HubMcp` scrub known hub headers back to env refs
+  and re-lock that file 0600 (sh `gemini_scrub_settings_bearer_refs` + `chmod 600`; ps1
+  `Set-GeminiBearerRefs` + `icacls`) right after the gemini add; (2) `check-hub-wiring.py --host`
+  (run during `sync` on both OSes) scans the generated configs (`~/.gemini/settings.json`,
+  `~/.claude.json`, `~/.codex/config.toml`) for any literal bearer that still slipped through.
+  Host-side only: those configs are machine-local, never in git, so this is NOT a CI gate (the
+  CI scan covers the tracked script set; this covers the generated configs).
 - **Recurrence (recur=1)**: caught in review before it ever shipped; promoted to a gate
   because it is security-critical and cross-cutting (2 OSes x 3 CLIs).
 - **Escape hatch**: append `# hub-wiring-allow` to an audited line.
@@ -191,6 +192,48 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   `.dotfiles-skill-source`, or a user-authored skill) fails `-L` and is never touched.
 - **Escape hatch**: none needed - a dangling generated link is always dead; a real dir is
   never a candidate.
+
+### INV-7 - shared slash commands are available in all agents
+- **Surfaces**: `~/Documents/EA/claude-config/global-commands/*.md`, repo/project command
+  sources in `COMMAND_SOURCES` / `$CommandSources`, `~/.claude/commands`,
+  `~/.codex/prompts`, and `~/.gemini/commands`.
+- **Recurrence (recur=2)**: (1) cross-agent command mirrors existed for Codex/Gemini, but
+  generated dirs lacked an invocation index, so commands were technically present but hard to
+  discover. Root fix: `gen-agent-commands.py` writes a `README.md` index. (2) Forge existed as a
+  global skill but not as a shared command, and `~/.claude/commands` was not wired from the
+  command source dir. Root fix: add `global-commands -> ~/.claude/commands`, add `/forge` as a
+  source command, and keep Codex/Gemini mirrors generated from the same source.
+- **Gate design**: `gen-agent-commands.py --verify` checks every source command has the Codex
+  and Gemini generated output after sync. `check-parity.py` now also checks that the Claude
+  source command directory is wired on both OSes, so Claude does not lag behind its generated
+  peers.
+- **Escape hatch**: none. If a command should not be global, keep it out of
+  `global-commands` or namespace it through project command sources.
+
+### INV-11 - Forge readiness is checked from state, not memory
+- **Surfaces**: `~/Documents/Agent-Forge/<slug>/tracker.json`,
+  `scripts/forge/check-state.py`, `~/Documents/EA/claude-config/global-hooks/forge-guard.sh`,
+  Claude `~/.claude/settings.json` PreToolUse registration, Codex `~/.codex/config.toml`
+  PreToolUse registration, and the generated `/forge` command mirrors.
+- **Recurrence (recur=2)**: (1) Forge plan/build verification was easy to skip because the
+  state lived in prose and chat context. Root fix: a machine-readable tracker and checker with
+  `READY`/`INCOMPLETE`/`BLOCKED`/`INVALID` exits. (2) The first neutral tracker path,
+  `~/.agent-forge`, was outside this sandbox's writable roots, so sandboxed agents could not
+  reliably create state there. Root fix: move the default artifact home to
+  `~/Documents/Agent-Forge`, which is already inside the shared workspace and is ensured by
+  setup/sync.
+- **Gate design**: `check-state.py` validates tracker schema and readiness. `forge-guard.sh`
+  finds the active tracker for the current repo (or `FORGE_TRACKER`) and asks before
+  `git commit`, `git push`, `gh pr create`, or `gh pr merge` unless the checker returns
+  `READY`. The PR template carries Forge status, tracker, cross-check, build verification,
+  visual verification, and explicit PR approval fields. `check-forge-wiring.py` guards the
+  dotfiles-owned wiring surfaces in pre-commit and CI, checks EA source files when that tree is
+  present, and `--machine` verifies generated Codex/Gemini command mirrors plus live Claude/Codex
+  hook registrations during `sync`.
+- **Current gap**: the hook's JSON-output sample matrix is still a development check rather
+  than a CI fixture. Add fixture mode to `check-forge-wiring.py` if this regresses once.
+- **Escape hatch**: explicit human confirmation at the hook prompt, recorded in the tracker as
+  `explicit_human_override` when it is a real Forge override.
 
 ### INV-9 - no `local` references a same-statement variable (set -u footgun)
 - **Surfaces**: every tracked `*.sh`; highest-risk is `sync.sh` (runs under `set -uo pipefail`

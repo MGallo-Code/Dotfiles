@@ -113,6 +113,14 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"global-agents"),
     },
     {
+        # Claude reads slash-command sources directly from ~/.claude/commands, while Codex/Gemini
+        # get generated mirrors from the same source. If this dir is not wired, commands like
+        # /forge exist in generated targets but not in Claude itself.
+        "name": "~/.claude/commands dir wired (Claude slash commands)",
+        "sh": ("manifest.sh", r"global-commands\|~/.claude/commands"),
+        "ps1": ("manifest.ps1", r"global-commands.*\.claude\\commands"),
+    },
+    {
         "name": "repo git-hooks wired (core.hooksPath)",
         "sh": ("setup.sh", r"hooksPath"),
         "ps1": ("setup.ps1", r"hooksPath"),
@@ -123,9 +131,31 @@ FEATURES = [
         "ps1": ("setup.ps1", r"warn-stacked|stacked-push"),
     },
     {
+        "name": "Forge action guard registered in setup",
+        "sh": ("setup.sh", r"forge-guard"),
+        "ps1": ("setup.ps1", r"forge-guard"),
+    },
+    {
+        "name": "Forge action guard repaired in sync",
+        "sh": ("sync.sh", r"forge-guard"),
+        "ps1": ("sync.ps1", r"forge-guard"),
+    },
+    {
         "name": "combined agent-rules generated (full ruleset, not a subset)",
         "sh": ("setup.sh", r"regen_combined_agent_rules"),
         "ps1": ("setup.ps1", r"Regen-CombinedAgentRules"),
+    },
+    {
+        # Keep Gemini focused on real source/control-plane roots; broad parents and agent-state
+        # dirs made cross-checks roam caches/downloads and confabulate irrelevant files.
+        "name": "gemini workspace roots narrowed in setup",
+        "sh": ("setup.sh", r"Documents/agent-skills"),
+        "ps1": ("setup.ps1", r"Documents\\agent-skills"),
+    },
+    {
+        "name": "gemini workspace roots narrowed in sync",
+        "sh": ("sync.sh", r"Documents/agent-skills"),
+        "ps1": ("sync.ps1", r"Documents\\agent-skills"),
     },
     # --- courier remote per-OS wiring + cross-agent skills/commands/allowlist
     #     (ADR-0002 + handoff). Each is a paired sh/ps1 behavior. ---
@@ -166,12 +196,12 @@ FEATURES = [
         "ps1": ("setup.ps1", r"ROLE_HOST_GUARD"),
     },
     {
-        # INV-4 defense: re-lock ~/.gemini/settings.json right after a gemini http add (gemini can
-        # MATERIALIZE the bearer into it - verified on WSL). chmod 600 (sh) vs icacls (ps1): different
-        # mechanism, same behavior - so the row keys on the helper name, not the perms verb.
-        "name": "gemini settings re-locked after http wiring (chmod 600 / icacls)",
-        "sh": ("manifest.sh", r"gemini_relock_settings"),
-        "ps1": ("manifest.ps1", r"Lock-GeminiSettings"),
+        # INV-4 defense: after a gemini http add, scrub known hub headers back to env refs and
+        # re-lock ~/.gemini/settings.json. chmod 600 (sh) vs icacls (ps1): different permission
+        # mechanism, same behavior - key on the scrub helper.
+        "name": "gemini settings scrubbed/re-locked after http wiring",
+        "sh": ("manifest.sh", r"gemini_scrub_settings_bearer_refs"),
+        "ps1": ("manifest.ps1", r"Set-GeminiBearerRefs"),
     },
     {
         # INV-4 host-side complement: sync runs the generated-config bearer scan (flags a materialized
@@ -245,6 +275,11 @@ FEATURES = [
         "name": "command mirror verified (source cmd -> codex prompt + gemini cmd)",
         "sh": ("sync.sh", r"COMMAND_MIRROR_VERIFY"),
         "ps1": ("sync.ps1", r"COMMAND_MIRROR_VERIFY"),
+    },
+    {
+        "name": "Forge state artifact directory ensured",
+        "sh": ("manifest.sh", r"Documents/Agent-Forge"),
+        "ps1": ("manifest.ps1", r"Documents\\Agent-Forge"),
     },
     {
         # INV-6: sync runs the --machine check after pruning, so a dangling generated skill

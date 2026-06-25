@@ -90,30 +90,29 @@ EOF
     ensure_codex_permission_profile
     ok "Codex: defaults set (xhigh reasoning + Michael workspace permissions)"
 
-    # Stacked-push guard for Codex (PreToolUse), mirroring the Claude hook: the
-    # SAME script + protocol (reads .tool_input.command, emits hookSpecificOutput
-    # .permissionDecision "ask") so a stacked `git push` pauses for confirmation
-    # and never auto-approves. Registration is machine-local in config.toml; the
-    # script is the one the Claude guard already deploys to ~/.claude/hooks. Trust
-    # it once via the Codex `/hooks` TUI. Idempotent via a marker comment.
-    local codex_guard_marker="# dotfiles: flat-PR stacked-push guard"
-    local codex_guard="$HOME/.claude/hooks/warn-stacked-git-push.sh"
-    if ! grep -qF "$codex_guard_marker" "$codex_config"; then
+    # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
+    # Claude global-hooks symlink. Trust once via the Codex `/hooks` TUI. Idempotent by marker.
+    ensure_codex_pretooluse_hook() {
+        local marker="$1" command="$2" label="$3"
+        if ! grep -qF "$marker" "$codex_config"; then
         cat >> "$codex_config" <<EOF
 
-$codex_guard_marker
+$marker
 [[hooks.PreToolUse]]
 matcher = "^Bash\$"
 
   [[hooks.PreToolUse.hooks]]
   type = "command"
-  command = "$codex_guard"
+  command = "$command"
   timeout = 30
 EOF
-        ok "Codex: wired stacked-push guard (run /hooks once to trust it)"
-    else
-        ok "Codex stacked-push guard already wired"
-    fi
+            ok "Codex: wired $label (run /hooks once to trust it)"
+        else
+            ok "Codex $label already wired"
+        fi
+    }
+    ensure_codex_pretooluse_hook "# dotfiles: flat-PR stacked-push guard" "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
+    ensure_codex_pretooluse_hook "# dotfiles: Forge action guard" "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
 
     local gemini_settings="$HOME/.gemini/settings.json"
     mkdir -p "$HOME/.gemini"
@@ -136,37 +135,25 @@ if not isinstance(general, dict):
     general = {}
     data["general"] = general
 general["defaultApprovalMode"] = "auto_edit"
+# Keep Gemini focused on source/control-plane roots. Do not append broad parents or
+# agent-state dirs; that caused reviews to roam caches, downloads, and stale generated
+# content after sync.
 gemini_workspace_roots = [
-    os.path.expanduser("~/Documents"),
-    os.path.expanduser("~/Downloads"),
+    os.path.expanduser("~/Documents/EA"),
+    os.path.expanduser("~/Documents/agent-skills"),
     os.path.expanduser("~/.dotfiles"),
-    os.path.expanduser("~/.codex"),
-    os.path.expanduser("~/.claude"),
-    os.path.expanduser("~/.gemini"),
     os.path.expanduser("~/.config/nvim"),
 ]
 context = data.setdefault("context", {})
 if not isinstance(context, dict):
     context = {}
     data["context"] = context
-include_dirs = context.setdefault("includeDirectories", [])
-if not isinstance(include_dirs, list):
-    include_dirs = []
-for root in gemini_workspace_roots:
-    if root not in include_dirs:
-        include_dirs.append(root)
-context["includeDirectories"] = include_dirs
+context["includeDirectories"] = gemini_workspace_roots
 tools = data.setdefault("tools", {})
 if not isinstance(tools, dict):
     tools = {}
     data["tools"] = tools
-sandbox_paths = tools.setdefault("sandboxAllowedPaths", [])
-if not isinstance(sandbox_paths, list):
-    sandbox_paths = []
-for root in gemini_workspace_roots:
-    if root not in sandbox_paths:
-        sandbox_paths.append(root)
-tools["sandboxAllowedPaths"] = sandbox_paths
+tools["sandboxAllowedPaths"] = gemini_workspace_roots
 tools["sandboxNetworkAccess"] = True
 security = data.setdefault("security", {})
 if not isinstance(security, dict):
@@ -635,28 +622,43 @@ else
     warn "python3 not found - skipping cross-agent command + allowlist generation"
 fi
 
-# Wire the stacked-push guard's settings.json REGISTRATION. The SCRIPT rides the
-# global-hooks symlink (handled above); the PreToolUse registration is per-machine
-# (settings.json is machine-local, not symlinked), so merge it here idempotently so
-# a routine `sync` keeps it wired on every machine. Uses permissionDecision:"ask"
-# (confirm-guard) — it never auto-approves a push.
+# Wire PreToolUse guards into settings.json. Scripts ride the global-hooks symlink
+# (handled above); registration is per-machine, so merge each specific command
+# idempotently and let routine `sync` repair missing guard registrations.
 settings="$HOME/.claude/settings.json"
-if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then
-    if jq -e '.hooks.PreToolUse' "$settings" >/dev/null 2>&1; then
-        ok "stacked-push guard already wired in settings.json"
-    else
-        tmp="$(mktemp)"
-        if jq --arg cmd "$HOME/.claude/hooks/warn-stacked-git-push.sh" \
-            '.hooks.PreToolUse = [{matcher:"Bash", hooks:[{type:"command", command:$cmd}]}]' \
-            "$settings" > "$tmp" && [ -s "$tmp" ]; then
+ensure_claude_pretooluse_hook() {
+    local hook_cmd="$1" label="$2" tmp
+    if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then
+        if jq -e --arg cmd "$hook_cmd" 'any(.hooks.PreToolUse[]?.hooks[]?; .command == $cmd)' "$settings" >/dev/null 2>&1; then
+            ok "$label already wired in settings.json"
+            return
+        fi
+        tmp="$settings.tmp.$$"
+        if jq --arg cmd "$hook_cmd" '
+            .hooks = (.hooks // {})
+          | .hooks.PreToolUse = (
+              ((.hooks.PreToolUse // []) | if type == "array" then . else [] end) as $pre
+              | $pre + [{matcher:"Bash", hooks:[{type:"command", command:$cmd}]}]
+            )' "$settings" > "$tmp" && [ -s "$tmp" ]; then
             cp "$settings" "$settings.bak"
             mv "$tmp" "$settings"
-            ok "wired stacked-push guard into settings.json"
+            ok "wired $label into settings.json"
         else
             rm -f "$tmp"
-            warn "stacked-push guard: jq merge failed, settings.json left untouched"
+            warn "$label: jq merge failed, settings.json left untouched"
         fi
+    else
+        warn "$label: no jq or no settings.json - wire manually"
     fi
+}
+ensure_claude_pretooluse_hook "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
+ensure_claude_pretooluse_hook "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
+
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$DOTFILES_DIR/scripts/ci/check-forge-wiring.py" --machine || {
+        err "check-forge-wiring --machine: Forge command/checker/hook wiring incomplete (above)"
+        FORGE_WIRING_FAIL=1
+    }
 fi
 
 # ── Nvim-adjacent configs (delegated) ────────────────────────────────
@@ -881,6 +883,11 @@ echo ""
 # the link tree is not in the expected state. Sync still completed its other work first.
 if [ "${SKILL_TARGET_FAIL:-0}" = 1 ]; then
     err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+fi
+
+if [ "${FORGE_WIRING_FAIL:-0}" = 1 ]; then
+    err "sync: Forge wiring machine check FAILED (see above) - run a full sync or investigate"
     exit 1
 fi
 

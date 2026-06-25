@@ -82,6 +82,19 @@ jobs:
       - name: check-local-selfref
         run: python scripts/ci/check-local-selfref.py
 
+  forge-wiring:
+    # INV-11: Forge tracker/checker/guard wiring stays present. This CI job checks
+    # dotfiles-owned surfaces; local sync/pre-commit also check EA source/generation
+    # when that workspace exists.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-forge-wiring
+        run: python scripts/ci/check-forge-wiring.py
+
   skill-gate-corpus:
     # INV-3: the agent-skills security gate still rejects a known-bad upstream diff. Runs the
     # REAL gate_skill_diff (sourced from sync.sh) over a fixed malicious+good corpus.

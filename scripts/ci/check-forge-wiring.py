@@ -78,6 +78,12 @@ def require_contains(path: Path, needles: Iterable[str], findings: list[str]) ->
         require(needle in text, f"{path}: missing {needle!r}", findings)
 
 
+def require_executable(path: Path, msg: str, findings: list[str]) -> None:
+    if os.name == "nt":
+        return
+    require(path.stat().st_mode & 0o111 != 0, msg, findings)
+
+
 def check_dotfiles(root: Path, findings: list[str]) -> None:
     checker = root / "scripts/forge/check-state.py"
     require_contains(checker, [
@@ -88,8 +94,7 @@ def check_dotfiles(root: Path, findings: list[str]) -> None:
         "Documents/Agent-Forge",
     ], findings)
     if checker.is_file():
-        require(checker.stat().st_mode & 0o111 != 0,
-                "scripts/forge/check-state.py must be executable", findings)
+        require_executable(checker, "scripts/forge/check-state.py must be executable", findings)
 
     require_contains(root / "manifest.sh", [
         "global-commands|~/.claude/commands",
@@ -174,7 +179,7 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
     ], findings)
     hook = ea_config / "global-hooks/forge-guard.sh"
     if hook.exists():
-        require(hook.stat().st_mode & 0o111 != 0, f"{hook} must be executable", findings)
+        require_executable(hook, f"{hook} must be executable", findings)
     require_contains(ea_config / "global-hooks/README.md", ["forge-guard.sh", "check-state.py"], findings)
 
     tracker = ea_config / "global-skills/forge/templates/tracker.json"

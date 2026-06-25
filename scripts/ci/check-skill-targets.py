@@ -34,6 +34,7 @@ Exit 0: clean.  Exit 1: a violation.  Exit 2: fail-closed (manifest unreadable).
 """
 import os
 import re
+import stat
 import sys
 from collections import defaultdict
 
@@ -86,10 +87,21 @@ def source_skill_names(src_dir):
 
 def is_linked(target_dir, entry_name):
     """True if target_dir/entry_name is a satisfied generated link: a symlink that
-    resolves, OR a materialized gemini real-dir carrying .dotfiles-skill-source."""
+    resolves, a Windows directory junction, OR a materialized gemini real-dir
+    carrying .dotfiles-skill-source."""
     p = os.path.join(target_dir, entry_name)
     if os.path.islink(p):
         return os.path.exists(p)
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction and isjunction(p):
+        return os.path.exists(p)
+    try:
+        attrs = getattr(os.lstat(p), "st_file_attributes", 0)
+    except OSError:
+        attrs = 0
+    reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    if attrs & reparse_point:
+        return os.path.isdir(p)
     if os.path.isdir(p) and os.path.isfile(os.path.join(p, ".dotfiles-skill-source")):
         return True
     return False

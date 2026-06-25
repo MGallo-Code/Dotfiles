@@ -136,7 +136,7 @@ AGENT_SKILLS_TARGETS=(
 # ("Michaels-MacBook-Pro" -> lowercased). Host self-detection (is_mcp_host) normalizes
 # LocalHostName and compares to this; setup + hub-host-bootstrap then assert host capability and
 # FAIL LOUD rather than silently wiring a host as a client (ADR-0002 review finding).
-MCP_HOST="michaels-macbook-pro"
+MCP_HOST="mikes-mac-mini"
 TAILNET="tail7a0764.ts.net"
 COURIER_HTTP_PORT="8765"
 # courier client URL: TLS terminated by `tailscale serve` on the host, stable MagicDNS name.

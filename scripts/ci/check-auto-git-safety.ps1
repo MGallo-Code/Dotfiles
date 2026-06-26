@@ -21,6 +21,19 @@ function Write-GitHubError {
     Write-Host "::error title=auto-git PowerShell safety::$(Escape-GitHubActionsMessage $Message)"
 }
 
+function Invoke-ScriptHostQuiet {
+    param([string]$ScriptPath)
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $ScriptPath 1>$null 2>$null
+        return $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+}
+
 trap {
     $line = if ($_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "unknown" }
     $message = "Unhandled error at line ${line}: $($_.Exception.Message)"
@@ -115,8 +128,8 @@ function Run-AutoGit {
         $env:AUTO_GIT_NO_SELF_SNAPSHOT = "1"
         $env:AUTO_GIT_REPO_LIST_FILE = $ListFile
         $env:DOTFILES_GIT_SYNC_LOCK_DIR = $LockPath
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $AutoPs1 1>$null 2>$null
-        if ($LASTEXITCODE -ne 0) { throw "auto-git.ps1 exited $LASTEXITCODE" }
+        $exitCode = Invoke-ScriptHostQuiet $AutoPs1
+        if ($exitCode -ne 0) { throw "auto-git.ps1 exited $exitCode" }
     }
     finally {
         $env:AUTO_GIT_NO_SELF_SNAPSHOT = $oldNoSnapshot
@@ -136,8 +149,8 @@ function Run-AutoGitAsDotfiles {
         $env:DOTFILES_DIR_OVERRIDE = $DotfilesDir
         $env:AUTO_GIT_REPO_LIST_FILE = $null
         $env:DOTFILES_GIT_SYNC_LOCK_DIR = $null
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $AutoPs1 1>$null 2>$null
-        if ($LASTEXITCODE -ne 0) { throw "auto-git.ps1 exited $LASTEXITCODE" }
+        $exitCode = Invoke-ScriptHostQuiet $AutoPs1
+        if ($exitCode -ne 0) { throw "auto-git.ps1 exited $exitCode" }
     }
     finally {
         $env:AUTO_GIT_NO_SELF_SNAPSHOT = $oldNoSnapshot
@@ -171,8 +184,8 @@ function Invoke-Bootstrap {
     try {
         $env:GIT_AUTOSYNC_TEST_TASK_NAME = $TaskName
         $env:GIT_AUTOSYNC_TEST_NO_START = "1"
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $ScriptPath 1>$null 2>$null
-        if ($LASTEXITCODE -ne 0) { throw "bootstrap exited $LASTEXITCODE" }
+        $exitCode = Invoke-ScriptHostQuiet $ScriptPath
+        if ($exitCode -ne 0) { throw "bootstrap exited $exitCode" }
     }
     finally {
         $env:GIT_AUTOSYNC_TEST_TASK_NAME = $oldTask
@@ -185,8 +198,8 @@ function Invoke-BootstrapXml {
     $oldXml = $env:GIT_AUTOSYNC_TEST_XML_OUT
     try {
         $env:GIT_AUTOSYNC_TEST_XML_OUT = $XmlOut
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $ScriptPath 1>$null 2>$null
-        if ($LASTEXITCODE -ne 0) { throw "bootstrap XML generation exited $LASTEXITCODE" }
+        $exitCode = Invoke-ScriptHostQuiet $ScriptPath
+        if ($exitCode -ne 0) { throw "bootstrap XML generation exited $exitCode" }
     }
     finally {
         $env:GIT_AUTOSYNC_TEST_XML_OUT = $oldXml
@@ -234,8 +247,9 @@ function Test-NoForbiddenPowerShellAutoGitOps {
         }
         $commandText = "$($command.Extent.Text)"
         $isDirectGit = ($name -and ($name -ieq "git" -or $name -ieq "git.exe"))
+        $isGitWrapper = ($name -and ($name -ieq "GitOut" -or $name -ieq "GitQuiet"))
         $isVariableGit = ((-not $name) -and ($firstText -match '(?i)^\$.*git.*$'))
-        if ($isDirectGit -or $isVariableGit) {
+        if ($isDirectGit -or $isGitWrapper -or $isVariableGit) {
             foreach ($arg in $args) {
                 if ($forbidden -contains "$arg".ToLowerInvariant()) { return $false }
             }
@@ -243,7 +257,7 @@ function Test-NoForbiddenPowerShellAutoGitOps {
             $mergeIndex = [Array]::IndexOf($lowerArgs, "merge")
             if ($mergeIndex -ge 0) {
                 $isAllowedPinnedMerge = $false
-                if ($isDirectGit -and $lowerArgs.Count -ge ($mergeIndex + 3)) {
+                if (($isDirectGit -or $isGitWrapper) -and $lowerArgs.Count -ge ($mergeIndex + 3)) {
                     $isAllowedPinnedMerge = (
                         ($lowerArgs[$mergeIndex + 1] -eq "--ff-only") -and
                         ($lowerArgs[$mergeIndex + 2] -eq '$remoterev')

@@ -9,13 +9,53 @@ function Write-Ok   { param($msg) Write-Host "[ok] $msg" -ForegroundColor Green 
 function Write-Warn { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
 function Write-Err  { param($msg) Write-Host "[error] $msg" -ForegroundColor Red }
 
+$script:GitExitCode = 0
+
+function GitOut {
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & git @args 2>$null
+        $script:GitExitCode = $LASTEXITCODE
+        return $output
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+}
+
+function GitQuiet {
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & git @args 1>$null 2>$null
+        return $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+}
+
+function Invoke-QuietCommand {
+    param([scriptblock]$Command)
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $Command 1>$null 2>$null
+        return $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+}
+
 . (Join-Path $DotfilesDir "scripts\git-sync-lock.ps1")
 
 function Resolve-GitPath {
     param([string]$Repo, [string]$Marker)
-    $path = (& git -C $Repo rev-parse --path-format=absolute --git-path $Marker 2>$null)
+    $path = (GitOut -C $Repo rev-parse --path-format=absolute --git-path $Marker)
     if (-not $path) {
-        $path = (& git -C $Repo rev-parse --git-path $Marker 2>$null)
+        $path = (GitOut -C $Repo rev-parse --git-path $Marker)
     }
     if (-not $path) { return "" }
     if ([System.IO.Path]::IsPathRooted($path)) { return $path }
@@ -46,9 +86,9 @@ function Test-GitOperationInProgress {
         if (Test-GitPathExists $Repo $marker) { return $true }
     }
     foreach ($gitDirFlag in @("--git-dir", "--git-common-dir")) {
-        $dir = (& git -C $Repo rev-parse --path-format=absolute $gitDirFlag 2>$null)
+        $dir = (GitOut -C $Repo rev-parse --path-format=absolute $gitDirFlag)
         if (-not $dir) {
-            $dir = (& git -C $Repo rev-parse $gitDirFlag 2>$null)
+            $dir = (GitOut -C $Repo rev-parse $gitDirFlag)
             if ($dir -and -not [System.IO.Path]::IsPathRooted($dir)) { $dir = Join-Path $Repo $dir }
         }
         if ($dir -and (Test-Path $dir)) {
@@ -63,14 +103,14 @@ function Test-GitOperationInProgress {
 
 function Test-RepoDirtyOrUnreadable {
     param([string]$Repo)
-    $status = (& git -C $Repo status --porcelain=v1 --untracked-files=all 2>$null)
-    if ($LASTEXITCODE -ne 0) { return $true }
+    $status = (GitOut -C $Repo status --porcelain=v1 --untracked-files=all)
+    if ($script:GitExitCode -ne 0) { return $true }
     return [bool]$status
 }
 
 function Get-RemoteDefaultBranch {
     param([string]$Repo, [string]$Remote)
-    $lines = (& git -C $Repo ls-remote --symref $Remote HEAD 2>$null)
+    $lines = (GitOut -C $Repo ls-remote --symref $Remote HEAD)
     foreach ($line in $lines) {
         if ($line -match '^ref:\s+refs/heads/([^\s]+)\s+HEAD') { return $Matches[1] }
     }
@@ -79,7 +119,7 @@ function Get-RemoteDefaultBranch {
 
 function Get-RemoteRefOid {
     param([string]$Repo, [string]$Remote, [string]$MergeRef)
-    $lines = (& git -C $Repo ls-remote $Remote $MergeRef 2>$null)
+    $lines = (GitOut -C $Repo ls-remote $Remote $MergeRef)
     foreach ($line in $lines) {
         $parts = "$line" -split '\s+'
         if (($parts.Count -ge 2) -and ($parts[1] -eq $MergeRef)) { return $parts[0] }
@@ -89,12 +129,12 @@ function Get-RemoteRefOid {
 
 function Test-IncomingIgnoredCollision {
     param([string]$Repo, [string]$LocalRev, [string]$RemoteRev)
-    $paths = @(& git -C $Repo diff --name-only --diff-filter=ACMRT $LocalRev $RemoteRev -- 2>$null)
+    $paths = @(GitOut -C $Repo diff --name-only --diff-filter=ACMRT $LocalRev $RemoteRev --)
     foreach ($path in $paths) {
         if (-not $path) { continue }
         $check = $path
         while ($check) {
-            $ignored = @(& git -C $Repo ls-files --others --ignored --exclude-standard -- $check 2>$null)
+            $ignored = @(GitOut -C $Repo ls-files --others --ignored --exclude-standard -- $check)
             if ($ignored.Count -gt 0) { return $true }
             if ($check -notmatch "/") { break }
             $check = $check -replace '/[^/]+$', ''
@@ -113,7 +153,7 @@ function Invoke-TestBeforeMutateHook {
         [string]$MergeRef
     )
     if ($env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK -and (Test-Path $env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK)) {
-        & $env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK $Repo $Mode $Branch $LocalRev $RemoteRev $MergeRef 1>$null 2>$null
+        Invoke-QuietCommand { & $env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK $Repo $Mode $Branch $LocalRev $RemoteRev $MergeRef } | Out-Null
     }
 }
 
@@ -135,19 +175,19 @@ function Test-RepoStateStillSafe {
         Write-Warn "$Name`: git operation appeared before mutation - skipped"
         return $false
     }
-    $currentBranch = (& git -C $Repo symbolic-ref --short HEAD 2>$null)
+    $currentBranch = (GitOut -C $Repo symbolic-ref --short HEAD)
     if ($currentBranch -ne $Branch) {
         Write-Warn "$Name`: branch changed before mutation - skipped"
         return $false
     }
-    $currentRemote = (& git -C $Repo config "branch.$Branch.remote" 2>$null)
-    $currentMergeRef = (& git -C $Repo config "branch.$Branch.merge" 2>$null)
+    $currentRemote = (GitOut -C $Repo config "branch.$Branch.remote")
+    $currentMergeRef = (GitOut -C $Repo config "branch.$Branch.merge")
     if (($currentRemote -ne $Remote) -or ($currentMergeRef -ne $MergeRef)) {
         Write-Warn "$Name`: upstream config changed before mutation - skipped"
         return $false
     }
-    $currentLocalRev = (& git -C $Repo rev-parse "@" 2>$null)
-    $currentRemoteRev = (& git -C $Repo rev-parse '@{u}' 2>$null)
+    $currentLocalRev = (GitOut -C $Repo rev-parse "@")
+    $currentRemoteRev = (GitOut -C $Repo rev-parse '@{u}')
     if (($currentLocalRev -ne $LocalRev) -or ($currentRemoteRev -ne $RemoteRev)) {
         Write-Warn "$Name`: ref state changed before mutation - skipped"
         return $false
@@ -189,8 +229,7 @@ function Test-RemoteRefStillSafe {
 function Sync-AutoGitRepo {
     param([string]$Repo)
     $name = Split-Path $Repo -Leaf
-    & git -C $Repo rev-parse --is-inside-work-tree 1>$null 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    if ((GitQuiet -C $Repo rev-parse --is-inside-work-tree) -ne 0) {
         Write-Warn "$name`: missing or not a git worktree - skipped"
         return
     }
@@ -203,21 +242,20 @@ function Sync-AutoGitRepo {
         return
     }
 
-    $branch = (& git -C $Repo symbolic-ref --short HEAD 2>$null)
+    $branch = (GitOut -C $Repo symbolic-ref --short HEAD)
     if (-not $branch) {
         Write-Warn "$name`: detached HEAD - skipped"
         return
     }
-    $upstream = (& git -C $Repo rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null)
-    $remote = (& git -C $Repo config "branch.$branch.remote" 2>$null)
-    $mergeRef = (& git -C $Repo config "branch.$branch.merge" 2>$null)
+    $upstream = (GitOut -C $Repo rev-parse --abbrev-ref --symbolic-full-name '@{u}')
+    $remote = (GitOut -C $Repo config "branch.$branch.remote")
+    $mergeRef = (GitOut -C $Repo config "branch.$branch.merge")
     if ((-not $upstream) -or (-not $remote) -or (-not $mergeRef)) {
         Write-Warn "$name`: no configured upstream - skipped"
         return
     }
 
-    & git -C $Repo fetch $remote 1>$null 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    if ((GitQuiet -C $Repo fetch $remote) -ne 0) {
         Write-Err "$name`: fetch failed - skipped"
         return
     }
@@ -230,9 +268,9 @@ function Sync-AutoGitRepo {
         return
     }
 
-    $localRev = (& git -C $Repo rev-parse "@" 2>$null)
-    $remoteRev = (& git -C $Repo rev-parse '@{u}' 2>$null)
-    $baseRev = (& git -C $Repo merge-base "@" '@{u}' 2>$null)
+    $localRev = (GitOut -C $Repo rev-parse "@")
+    $remoteRev = (GitOut -C $Repo rev-parse '@{u}')
+    $baseRev = (GitOut -C $Repo merge-base "@" '@{u}')
     if ((-not $localRev) -or (-not $remoteRev) -or (-not $baseRev)) {
         Write-Warn "$name`: cannot classify history - skipped"
         return
@@ -250,8 +288,7 @@ function Sync-AutoGitRepo {
         }
         if (-not (Test-RepoStateStillSafe $Repo $name $branch $remote $mergeRef $localRev $remoteRev)) { return }
         if (-not (Test-RemoteRefStillSafe $Repo $name $remote $mergeRef $remoteRev)) { return }
-        & git -C $Repo merge --ff-only $remoteRev 1>$null 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        if ((GitQuiet -C $Repo merge --ff-only $remoteRev) -eq 0) {
             Write-Ok "$name`: pulled updates"
         }
         else {
@@ -276,8 +313,7 @@ function Sync-AutoGitRepo {
         if (-not (Test-RepoStateStillSafe $Repo $name $branch $remote $mergeRef $localRev $remoteRev)) { return }
         if (-not (Test-RemoteDefaultBranchStillSafe $Repo $name $remote $defaultBranch)) { return }
         if (-not (Test-RemoteRefStillSafe $Repo $name $remote $mergeRef $remoteRev)) { return }
-        & git -C $Repo push "--force-with-lease=${mergeRef}:$remoteRev" $remote "${localRev}:$mergeRef" 1>$null 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        if ((GitQuiet -C $Repo push "--force-with-lease=${mergeRef}:$remoteRev" $remote "${localRev}:$mergeRef") -eq 0) {
             Write-Ok "$name`: pushed committed work"
         }
         else {

@@ -11,6 +11,24 @@ $ScriptHost = if ($env:AUTO_GIT_PSHOST) { $env:AUTO_GIT_PSHOST } else { "pwsh" }
 $script:Pass = 0
 $script:Fail = 0
 
+function Escape-GitHubActionsMessage {
+    param([string]$Message)
+    return (($Message -replace '%', '%25') -replace "`r", '%0D') -replace "`n", '%0A'
+}
+
+function Write-GitHubError {
+    param([string]$Message)
+    Write-Host "::error title=auto-git PowerShell safety::$(Escape-GitHubActionsMessage $Message)"
+}
+
+trap {
+    $line = if ($_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "unknown" }
+    $message = "Unhandled error at line ${line}: $($_.Exception.Message)"
+    Write-Host "  ERROR - $message" -ForegroundColor Red
+    Write-GitHubError $message
+    exit 1
+}
+
 $env:GIT_CONFIG_NOSYSTEM = "1"
 $env:GIT_CONFIG_GLOBAL = Join-Path $TestTmpParent "global.gitconfig"
 $env:GIT_CONFIG_XDG = Join-Path $TestTmpParent "xdg.gitconfig"
@@ -19,7 +37,7 @@ New-Item -ItemType Directory -Path $TestTmpParent -Force | Out-Null
 New-Item -ItemType Directory -Path $env:XDG_CONFIG_HOME -Force | Out-Null
 
 function Ok { param([string]$Label) Write-Host "  ok - $Label"; $script:Pass++ }
-function Bad { param([string]$Label) Write-Host "  FAIL - $Label" -ForegroundColor Red; $script:Fail++ }
+function Bad { param([string]$Label) Write-Host "  FAIL - $Label" -ForegroundColor Red; Write-GitHubError $Label; $script:Fail++ }
 function Assert {
     param([string]$Label, [scriptblock]$Check)
     try {
@@ -27,6 +45,7 @@ function Assert {
     }
     catch {
         Write-Host "  ERROR - $Label`: $($_.Exception.Message)" -ForegroundColor Red
+        Write-GitHubError "$Label`: $($_.Exception.Message)"
         $script:Fail++
     }
 }

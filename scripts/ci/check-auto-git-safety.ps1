@@ -35,6 +35,7 @@ $env:GIT_CONFIG_XDG = Join-Path $TestTmpParent "xdg.gitconfig"
 $env:XDG_CONFIG_HOME = Join-Path $TestTmpParent "xdg"
 New-Item -ItemType Directory -Path $TestTmpParent -Force | Out-Null
 New-Item -ItemType Directory -Path $env:XDG_CONFIG_HOME -Force | Out-Null
+$GitExe = (Get-Command git -CommandType Application -ErrorAction Stop).Source
 
 function Ok { param([string]$Label) Write-Host "  ok - $Label"; $script:Pass++ }
 function Bad { param([string]$Label) Write-Host "  FAIL - $Label" -ForegroundColor Red; Write-GitHubError $Label; $script:Fail++ }
@@ -51,12 +52,12 @@ function Assert {
 }
 
 function Git {
-    & git @args
+    & $GitExe @args
     if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed ($LASTEXITCODE)" }
 }
 
 function GitOut {
-    $out = & git @args 2>$null
+    $out = & $GitExe @args 2>$null
     if ($LASTEXITCODE -ne 0) { return "" }
     return (($out | Out-String).Trim())
 }
@@ -148,7 +149,7 @@ function Run-AutoGitAsDotfiles {
 
 function Remote-Contains {
     param([string]$RemoteGitDir, [string]$Ref, [string]$Text)
-    $out = & git "--git-dir=$RemoteGitDir" show "$Ref`:file.txt" 2>$null
+    $out = & $GitExe "--git-dir=$RemoteGitDir" show "$Ref`:file.txt" 2>$null
     return (($out | Out-String) -match [regex]::Escape($Text))
 }
 

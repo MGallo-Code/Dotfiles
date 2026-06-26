@@ -600,6 +600,11 @@ function Sync-SkillsRepo {
 # no-op in production. (parity with sync.sh's BASH_SOURCE source-guard.)
 if ($MyInvocation.InvocationName -eq '.') { return }
 
+# GIT_SYNC_SHARED_LOCK: serialize manual sync with auto-git timers.
+. (Join-Path $DotfilesDir "scripts\git-sync-lock.ps1")
+if (-not (Acquire-GitSyncLock "manual-sync")) { exit 0 }
+try {
+
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
 $NexusDb = "$HOME\Documents\EA\nexus\nexus.db"
 if ((Test-Path $NexusDb) -and (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
@@ -953,6 +958,10 @@ Write-Host ""
 if ($SkillTargetFail) {
     Write-Err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
     exit 1
+}
+}
+finally {
+    Release-GitSyncLock
 }
 
 if ($ForgeWiringFail) {

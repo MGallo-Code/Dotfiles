@@ -33,7 +33,7 @@ PASS=0; FAIL=0; PS1RAN=0
 
 # Fully isolate temp git from the user's global config (hooks, signing, templates).
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-REPO="$(mktemp -d)" || { echo "check-skill-gate-corpus: mktemp -d failed - failing closed" >&2; exit 2; }
+REPO="$(mktemp -d "${TMPDIR:-/tmp}/skill-gate.XXXXXX")" || { echo "check-skill-gate-corpus: mktemp -d failed - failing closed" >&2; exit 2; }
 # Guard HARD before any git mutation: an empty/missing $REPO plus `cd ""` (which returns 0 and
 # STAYS in the current dir in bash) would run the per-case `git reset --hard` / `git clean -qfdx`
 # against the REAL checkout. set -e is not on, so these explicit `|| exit 2` guards are load-bearing.

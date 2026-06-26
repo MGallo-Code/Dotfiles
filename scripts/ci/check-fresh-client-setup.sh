@@ -33,7 +33,7 @@ pass=0; fail=0
 chk()  { if eval "$2"; then echo -e "  ${GREEN}\xe2\x9c\x93${NC} $1"; pass=$((pass+1)); else echo -e "  ${RED}\xe2\x9c\x97${NC} $1"; fail=$((fail+1)); fi; }
 
 # ── Throwaway sandbox: a fresh $HOME + a stub-CLI dir on the front of PATH ────────────────────────
-SANDBOX="$(mktemp -d)"
+SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/fresh-client.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 export HOME="$SANDBOX/home"
 mkdir -p "$HOME"

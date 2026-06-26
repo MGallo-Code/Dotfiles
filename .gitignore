@@ -32,6 +32,9 @@ __pycache__/
 # --- Playwright MCP debug artifacts (console logs + page snapshots; machine-local) ---
 .playwright-mcp/
 
+# --- Local CI fixture scratch space ---
+.auto-git-test-tmp/
+
 # --- Override the global gitignore: track the per-repo agent constitution here ---
 # (~/.gitignore_global ignores CLAUDE.md everywhere; this repo commits it, kept
 #  byte-identical to AGENTS.md by the pre-commit cmp check.)

@@ -65,13 +65,29 @@ function Assert {
 }
 
 function Git {
-    & $GitExe @args
-    if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed ($LASTEXITCODE)" }
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $GitExe @args
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+    if ($exitCode -ne 0) { throw "git $($args -join ' ') failed ($exitCode)" }
 }
 
 function GitOut {
-    $out = & $GitExe @args 2>$null
-    if ($LASTEXITCODE -ne 0) { return "" }
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $out = & $GitExe @args 2>$null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+    if ($exitCode -ne 0) { return "" }
     return (($out | Out-String).Trim())
 }
 
@@ -162,7 +178,14 @@ function Run-AutoGitAsDotfiles {
 
 function Remote-Contains {
     param([string]$RemoteGitDir, [string]$Ref, [string]$Text)
-    $out = & $GitExe "--git-dir=$RemoteGitDir" show "$Ref`:file.txt" 2>$null
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $out = & $GitExe "--git-dir=$RemoteGitDir" show "$Ref`:file.txt" 2>$null
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
     return (($out | Out-String) -match [regex]::Escape($Text))
 }
 

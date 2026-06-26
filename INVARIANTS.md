@@ -32,6 +32,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-9 | No bash `local`/`declare`/`typeset` statement references a variable assigned EARLIER in the SAME statement: under `set -u` the just-declared local is not yet visible while the rest of the statement's RHS is expanded, so the reference is UNBOUND and the script aborts. The dependent assignment is split onto its own `local` line. | One-assignment-per-dependent-`local` in every `*.sh`; the highest-stakes surface is `sync.sh` (runs under `set -uo pipefail`). | `scripts/ci/check-local-selfref.py` (static scan of tracked `*.sh`: pre-commit + CI) | CI-green | 1 |
 | INV-10 | A fresh/headless CLIENT's `setup.sh`/`sync.sh` (incl. `--client`) wiring path runs to **exit 0** AND leaves a FUNCTIONAL client: no step aborts the whole run on an EXPECTED non-zero (a `mcp remove` of an unregistered server, a headless `pbcopy`/`open`, a failed-optional install), and the per-hub `${*_BEARER}` are exported for the shell the agent launches from while every role-aware hub is wired http+`${*_BEARER}` for EACH agent CLI (claude/codex/gemini) — never a literal token, never a leftover stdio entry on a client. | The guards in setup/sync + the shared manifest wiring fns: `\|\| true` on the mcp-remove loop, the `command -v`/`[ -t 0 ]` gates, `ensure_client_bearer_exports`, and `register_all_hub_mcp` http+`${*_BEARER}`. | `scripts/ci/check-fresh-client-setup.sh` (hermetic: throwaway `$HOME` + stub agent CLIs whose unregistered `mcp remove` returns rc1; runs the real shared wiring fns `setup.sh`/`sync.sh` call — `provision_all_client_tokens` + `register_all_hub_mcp` for claude/codex/gemini — under genuine errexit, pre- AND post-cutover, + a revert-test; CI. It exercises the wiring fns, not the whole setup.sh/sync.sh scripts.). ps1 is `PARITY_EXEMPT` (Linux-client gate). | local-green (pending CI) | 4 |
 | INV-11 | Forge work cannot be claimed ready or pushed/PR'd from memory alone: tracker state lives in a shared writable artifact dir, readiness is checked by `check-state.py`, Claude/Codex action hooks pause commit/push/PR commands when the active tracker is incomplete/blocked/invalid, and PRs expose Forge status visibly. | `~/Documents/Agent-Forge/<slug>/tracker.json` + `scripts/forge/check-state.py` + `forge-guard.sh` registered by setup/sync for Claude/Codex + `.github/PULL_REQUEST_TEMPLATE.md`. | `scripts/ci/check-forge-wiring.py` (pre-commit + CI repo wiring; `--machine` during sync verifies generated commands + live Claude/Codex hook registration) plus `check-state.py` fixture checks during development. | local-green (pending merge) | 2 |
+| INV-12 | Auto-git only moves already-committed document history: it pulls clean-behind repos and pushes clean-ahead default-branch repos, while dirty/diverged/in-progress repos are skipped. It never stages, commits, stashes, calls Claude, uses autostash, aborts a rebase, or auto-resolves user work. Manual `sync` and auto-git are serialized by the same atomically published lock. | `auto-git.{sh,ps1}` per-repo policy + `scripts/git-sync-lock.{sh,ps1}` shared by manual sync and auto-git. | `scripts/ci/check-auto-git-safety.sh` on Ubuntu + `scripts/ci/check-auto-git-safety.ps1` on Windows (CI: forbidden-operation scan, Bash and PowerShell bare-repo fixtures for dirty/behind/ahead/diverged/in-progress/git-lock/status-fail/default-ref/remote-ref-race/lock/default-disabled trigger behavior, plus revert-test). | local-green (pending CI) | 1 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -234,6 +235,27 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   than a CI fixture. Add fixture mode to `check-forge-wiring.py` if this regresses once.
 - **Escape hatch**: explicit human confirmation at the hook prompt, recorded in the tracker as
   `explicit_human_override` when it is a real Forge override.
+
+### INV-12 - auto-git never creates commits or touches dirty work
+- **Surfaces**: `auto-git.sh`, `auto-git.ps1`, `scripts/git-sync-lock.sh`,
+  `scripts/git-sync-lock.ps1`, `sync.sh`, `sync.ps1`, and the per-OS trigger bootstraps.
+- **What is guarded**: auto-git only runs on clean repos, fetches the configured upstream, moves
+  clean-behind repos with a pinned `merge --ff-only <fetched-upstream-rev>` only when that fetched
+  OID is still the remote ref, pushes the classified local commit only when the branch is still the
+  remote default branch and the remote ref still equals the fetched OID, and uses an
+  expected-old-OID push lease. It skips dirty, ignored-collision, diverged, detached,
+  missing-upstream, unreadable, or in-progress-operation repos. It never stages, commits, stashes,
+  resets, cleans, checks out/restores paths, calls Claude, uses autostash, or aborts a rebase. The
+  manual sync and timer path take one shared lock.
+- **Gate design**: `check-auto-git-safety.sh` and `check-auto-git-safety.ps1` scan the real
+  auto-git entrypoints for forbidden operative commands and run throwaway local bare-repo fixtures
+  for dirty skip, hidden untracked skip, ignored file/directory/parent collision skip, behind
+  fast-forward, ahead push, branch/default-ref/remote-ref race skips, non-origin upstream,
+  divergence skip, in-progress marker skip, lock contention, partial-owner lock behavior, disabled
+  trigger artifacts, reversible cron fallback, and "no unexpected commit" behavior. Their
+  revert-tests prove planted forbidden operations and enabled-by-default triggers are caught,
+  including PowerShell-specific invocation forms.
+- **Escape hatch**: none for auto-git. A dirty repo belongs to the human/manual path, not the timer.
 
 ### INV-9 - no `local` references a same-statement variable (set -u footgun)
 - **Surfaces**: every tracked `*.sh`; highest-risk is `sync.sh` (runs under `set -uo pipefail`

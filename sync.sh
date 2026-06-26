@@ -551,6 +551,11 @@ sync_skills_repo() {
 # with `bash sync.sh` (executed), so this is a no-op in production. (BASH_SOURCE != $0 = sourced)
 if [ "${BASH_SOURCE[0]}" != "${0}" ]; then return 0 2>/dev/null || exit 0; fi
 
+# GIT_SYNC_SHARED_LOCK: serialize manual sync with auto-git timers.
+# shellcheck source=scripts/git-sync-lock.sh
+source "$DOTFILES_DIR/scripts/git-sync-lock.sh"
+git_sync_lock_acquire "manual-sync" || exit 0
+
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
 NEXUS_DB="$(expand "~/Documents/EA/nexus/nexus.db")"
 if [ -f "$NEXUS_DB" ] && command -v sqlite3 &>/dev/null; then

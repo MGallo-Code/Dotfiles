@@ -23,7 +23,7 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 pass=0; fail=0
 chk() { if eval "$2"; then echo -e "  ${GREEN}\xe2\x9c\x93${NC} $1"; pass=$((pass+1)); else echo -e "  ${RED}\xe2\x9c\x97${NC} $1"; fail=$((fail+1)); fi; }
 
-SANDBOX="$(mktemp -d)"; trap 'rm -rf "$SANDBOX"' EXIT
+SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/hub-bootstrap.XXXXXX")"; trap 'rm -rf "$SANDBOX"' EXIT
 BOOT_LOG="$SANDBOX/boot.log"; export BOOT_LOG
 
 cat > "$SANDBOX/ok.json" <<'EOF'

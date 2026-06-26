@@ -141,6 +141,31 @@ FEATURES = [
         "ps1": ("sync.ps1", r"forge-guard"),
     },
     {
+        "name": "auto-git entrypoint exists (INV-12)",
+        "sh": ("auto-git.sh", r"AUTO_GIT_ENTRYPOINT"),
+        "ps1": ("auto-git.ps1", r"AUTO_GIT_ENTRYPOINT"),
+    },
+    {
+        "name": "auto-git repo union uses managed repos plus dotfiles (INV-12)",
+        "sh": ("auto-git.sh", r"AUTO_GIT_REPO_UNION"),
+        "ps1": ("auto-git.ps1", r"AUTO_GIT_REPO_UNION"),
+    },
+    {
+        "name": "shared git sync lock helper exists (INV-12)",
+        "sh": ("scripts/git-sync-lock.sh", r"GIT_SYNC_SHARED_LOCK"),
+        "ps1": ("scripts/git-sync-lock.ps1", r"GIT_SYNC_SHARED_LOCK"),
+    },
+    {
+        "name": "manual sync takes shared git sync lock (INV-12)",
+        "sh": ("sync.sh", r"GIT_SYNC_SHARED_LOCK"),
+        "ps1": ("sync.ps1", r"GIT_SYNC_SHARED_LOCK"),
+    },
+    {
+        "name": "git autosync bootstrap exists (INV-12)",
+        "sh": ("scripts/git-autosync-bootstrap.sh", r"GIT_AUTOSYNC_BOOTSTRAP"),
+        "ps1": ("scripts/git-autosync-bootstrap.ps1", r"GIT_AUTOSYNC_BOOTSTRAP"),
+    },
+    {
         "name": "combined agent-rules generated (full ruleset, not a subset)",
         "sh": ("setup.sh", r"regen_combined_agent_rules"),
         "ps1": ("setup.ps1", r"Regen-CombinedAgentRules"),
@@ -374,6 +399,12 @@ PARITY_EXEMPT = [
                   "pbcopy/open, [ -t 0 ]-guarding interactive reads) is bash-only: WSL/Linux clients run "
                   "setup.sh, while setup.ps1 is the Windows-native entrypoint and never runs on Linux. "
                   "The host-role guard itself IS mirrored (ROLE_HOST_GUARD feature row)."
+    },
+    {
+        "name": "git autosync trigger backend",
+        "reason": "The auto-git entrypoints and bootstrap command are paired, but the trigger backend is "
+                  "genuinely OS-specific: launchd on macOS, systemd/cron on Linux/WSL, and Task Scheduler "
+                  "on Windows. Disabled-by-default behavior is enforced by check-auto-git-safety.sh."
     },
 ]
 

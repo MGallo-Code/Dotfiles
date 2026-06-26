@@ -82,6 +82,38 @@ jobs:
       - name: check-local-selfref
         run: python scripts/ci/check-local-selfref.py
 
+  auto-git-safety:
+    # INV-12: auto-git never creates commits, never touches dirty work, and ships triggers dormant.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-auto-git-safety
+        run: bash scripts/ci/check-auto-git-safety.sh
+      - name: check-auto-git-safety revert-test
+        run: bash scripts/ci/check-auto-git-safety.sh --revert-test
+
+  auto-git-safety-windows:
+    # INV-12 PowerShell half: execute the behavioral matrix against auto-git.ps1.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-auto-git-safety PowerShell
+        shell: pwsh
+        run: ./scripts/ci/check-auto-git-safety.ps1
+      - name: check-auto-git-safety PowerShell revert-test
+        shell: pwsh
+        run: ./scripts/ci/check-auto-git-safety.ps1 -RevertTest
+      - name: check-auto-git-safety Windows PowerShell
+        shell: powershell
+        env:
+          AUTO_GIT_PSHOST: powershell.exe
+        run: ./scripts/ci/check-auto-git-safety.ps1
+      - name: check-auto-git-safety Windows PowerShell revert-test
+        shell: powershell
+        env:
+          AUTO_GIT_PSHOST: powershell.exe
+        run: ./scripts/ci/check-auto-git-safety.ps1 -RevertTest
+
   forge-wiring:
     # INV-11: Forge tracker/checker/guard wiring stays present. This CI job checks
     # dotfiles-owned surfaces; local sync/pre-commit also check EA source/generation

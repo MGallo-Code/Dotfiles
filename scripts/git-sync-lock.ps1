@@ -27,8 +27,34 @@ function Get-GitSyncProcessStart {
     try {
         return (Get-Process -Id $pidValue -ErrorAction Stop).StartTime.ToUniversalTime().ToString("o")
     }
+    catch { }
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        try {
+            $process = Get-CimInstance Win32_Process -Filter "ProcessId = $pidValue" -ErrorAction Stop
+            if ($process -and $process.CreationDate) {
+                if ($process.CreationDate -is [DateTime]) {
+                    return $process.CreationDate.ToUniversalTime().ToString("o")
+                }
+                return ([System.Management.ManagementDateTimeConverter]::ToDateTime("$($process.CreationDate)")).ToUniversalTime().ToString("o")
+            }
+        }
+        catch { }
+    }
+    return ""
+}
+
+function Test-GitSyncProcessStartMatches {
+    param([string]$LiveProcessStart, [string]$OwnerProcessStart)
+    if (-not $OwnerProcessStart) { return $true }
+    if ($OwnerProcessStart -eq "unknown") { return $true }
+    if ($LiveProcessStart -eq $OwnerProcessStart) { return $true }
+    try {
+        $live = [DateTimeOffset]::Parse($LiveProcessStart)
+        $owner = [DateTimeOffset]::Parse($OwnerProcessStart)
+        return ([Math]::Abs(($live.UtcDateTime - $owner.UtcDateTime).TotalSeconds) -le 2)
+    }
     catch {
-        return ""
+        return $false
     }
 }
 
@@ -36,7 +62,7 @@ function Test-GitSyncPidMatchesOwner {
     param([string]$PidText, [string]$OwnerProcessStart)
     $liveProcessStart = Get-GitSyncProcessStart $PidText
     if (-not $liveProcessStart) { return $false }
-    if ($OwnerProcessStart -and ($OwnerProcessStart -ne "unknown") -and ($liveProcessStart -ne $OwnerProcessStart)) { return $false }
+    if (-not (Test-GitSyncProcessStartMatches $liveProcessStart $OwnerProcessStart)) { return $false }
     return $true
 }
 

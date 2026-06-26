@@ -625,7 +625,7 @@ Commit-InRepo (Join-Path $tmp "lockheld\other") "locked"
 Git -C (Join-Path $tmp "lockheld\other") push | Out-Null
 $heldLock = Join-Path $tmp "lockheld\dotfiles-git-sync.lock.d"
 New-Item -ItemType Directory -Path $heldLock -Force | Out-Null
-$heldOwner = @{ pid = "$PID"; host = [System.Net.Dns]::GetHostName(); runtime = Current-Runtime; started_at = "1"; heartbeat_at = "1"; process_start = Current-ProcessStart }
+$heldOwner = @{ pid = "$PID"; host = [System.Net.Dns]::GetHostName(); runtime = (Current-Runtime); started_at = "1"; heartbeat_at = "1"; process_start = (Current-ProcessStart) }
 $heldOwner | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $heldLock "owner.json") -NoNewline
 Write-List (Join-Path $tmp "lockheld\work") (Join-Path $tmp "lockheld\list")
 Run-AutoGit (Join-Path $tmp "lockheld\list") $heldLock
@@ -637,7 +637,7 @@ Commit-InRepo (Join-Path $tmp "deadlock\other") "deadlock"
 Git -C (Join-Path $tmp "deadlock\other") push | Out-Null
 $deadLock = Join-Path $tmp "deadlock\dotfiles-git-sync.lock.d"
 New-Item -ItemType Directory -Path $deadLock -Force | Out-Null
-$deadOwner = @{ pid = "99999999"; host = [System.Net.Dns]::GetHostName(); runtime = Current-Runtime; started_at = "1"; heartbeat_at = "1"; process_start = "dead" }
+$deadOwner = @{ pid = "99999999"; host = [System.Net.Dns]::GetHostName(); runtime = (Current-Runtime); started_at = "1"; heartbeat_at = "1"; process_start = "dead" }
 $deadOwner | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $deadLock "owner.json") -NoNewline
 Write-List (Join-Path $tmp "deadlock\work") (Join-Path $tmp "deadlock\list")
 Run-AutoGit (Join-Path $tmp "deadlock\list") $deadLock

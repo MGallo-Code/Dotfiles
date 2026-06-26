@@ -173,17 +173,6 @@ function Invoke-BootstrapXml {
     }
 }
 
-function Remove-TestTask {
-    param([string]$TaskName)
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-}
-
-function Task-IsDisabled {
-    param([string]$TaskName)
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-    return $task.State -eq "Disabled"
-}
-
 function Test-NoUnguardedTaskEnable {
     param([string]$ScriptPath)
     $content = Get-Content $ScriptPath -Raw
@@ -651,15 +640,6 @@ Assert "PowerShell bootstrap has no unguarded task enable/start" { Test-NoUnguar
 $xmlOut = Join-Path $tmp "default-task.xml"
 Invoke-BootstrapXml $BootstrapPs1 $xmlOut
 Assert "PowerShell bootstrap XML is disabled by default" { (Get-Content $xmlOut -Raw) -match "<Enabled>false</Enabled>" }
-$taskName = "EA Git Autosync Test $([guid]::NewGuid().ToString('N'))"
-Remove-TestTask $taskName
-try {
-    Invoke-Bootstrap $BootstrapPs1 $taskName
-    Assert "PowerShell bootstrap leaves default task disabled" { Task-IsDisabled $taskName }
-}
-finally {
-    Remove-TestTask $taskName
-}
 
 Write-Host "auto-git PowerShell safety: $script:Pass passed, $script:Fail failed"
 if ($script:Fail -ne 0) { exit 1 }

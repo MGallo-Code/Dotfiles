@@ -115,7 +115,7 @@ function Run-AutoGit {
         $env:AUTO_GIT_NO_SELF_SNAPSHOT = "1"
         $env:AUTO_GIT_REPO_LIST_FILE = $ListFile
         $env:DOTFILES_GIT_SYNC_LOCK_DIR = $LockPath
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $AutoPs1 *> $null
+        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $AutoPs1 1>$null 2>$null
         if ($LASTEXITCODE -ne 0) { throw "auto-git.ps1 exited $LASTEXITCODE" }
     }
     finally {
@@ -136,7 +136,7 @@ function Run-AutoGitAsDotfiles {
         $env:DOTFILES_DIR_OVERRIDE = $DotfilesDir
         $env:AUTO_GIT_REPO_LIST_FILE = $null
         $env:DOTFILES_GIT_SYNC_LOCK_DIR = $null
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $AutoPs1 *> $null
+        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $AutoPs1 1>$null 2>$null
         if ($LASTEXITCODE -ne 0) { throw "auto-git.ps1 exited $LASTEXITCODE" }
     }
     finally {
@@ -171,7 +171,7 @@ function Invoke-Bootstrap {
     try {
         $env:GIT_AUTOSYNC_TEST_TASK_NAME = $TaskName
         $env:GIT_AUTOSYNC_TEST_NO_START = "1"
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $ScriptPath *> $null
+        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $ScriptPath 1>$null 2>$null
         if ($LASTEXITCODE -ne 0) { throw "bootstrap exited $LASTEXITCODE" }
     }
     finally {
@@ -185,7 +185,7 @@ function Invoke-BootstrapXml {
     $oldXml = $env:GIT_AUTOSYNC_TEST_XML_OUT
     try {
         $env:GIT_AUTOSYNC_TEST_XML_OUT = $XmlOut
-        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $ScriptPath *> $null
+        & $ScriptHost -NoProfile -ExecutionPolicy Bypass -File $ScriptPath 1>$null 2>$null
         if ($LASTEXITCODE -ne 0) { throw "bootstrap XML generation exited $LASTEXITCODE" }
     }
     finally {

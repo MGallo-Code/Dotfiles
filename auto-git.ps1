@@ -113,7 +113,7 @@ function Invoke-TestBeforeMutateHook {
         [string]$MergeRef
     )
     if ($env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK -and (Test-Path $env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK)) {
-        & $env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK $Repo $Mode $Branch $LocalRev $RemoteRev $MergeRef *> $null
+        & $env:AUTO_GIT_TEST_BEFORE_MUTATE_HOOK $Repo $Mode $Branch $LocalRev $RemoteRev $MergeRef 1>$null 2>$null
     }
 }
 
@@ -189,7 +189,7 @@ function Test-RemoteRefStillSafe {
 function Sync-AutoGitRepo {
     param([string]$Repo)
     $name = Split-Path $Repo -Leaf
-    & git -C $Repo rev-parse --is-inside-work-tree *> $null
+    & git -C $Repo rev-parse --is-inside-work-tree 1>$null 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "$name`: missing or not a git worktree - skipped"
         return
@@ -216,7 +216,7 @@ function Sync-AutoGitRepo {
         return
     }
 
-    & git -C $Repo fetch $remote *> $null
+    & git -C $Repo fetch $remote 1>$null 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Err "$name`: fetch failed - skipped"
         return
@@ -250,7 +250,7 @@ function Sync-AutoGitRepo {
         }
         if (-not (Test-RepoStateStillSafe $Repo $name $branch $remote $mergeRef $localRev $remoteRev)) { return }
         if (-not (Test-RemoteRefStillSafe $Repo $name $remote $mergeRef $remoteRev)) { return }
-        & git -C $Repo merge --ff-only $remoteRev *> $null
+        & git -C $Repo merge --ff-only $remoteRev 1>$null 2>$null
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "$name`: pulled updates"
         }
@@ -276,7 +276,7 @@ function Sync-AutoGitRepo {
         if (-not (Test-RepoStateStillSafe $Repo $name $branch $remote $mergeRef $localRev $remoteRev)) { return }
         if (-not (Test-RemoteDefaultBranchStillSafe $Repo $name $remote $defaultBranch)) { return }
         if (-not (Test-RemoteRefStillSafe $Repo $name $remote $mergeRef $remoteRev)) { return }
-        & git -C $Repo push "--force-with-lease=${mergeRef}:$remoteRev" $remote "${localRev}:$mergeRef" *> $null
+        & git -C $Repo push "--force-with-lease=${mergeRef}:$remoteRev" $remote "${localRev}:$mergeRef" 1>$null 2>$null
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "$name`: pushed committed work"
         }

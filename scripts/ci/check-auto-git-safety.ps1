@@ -35,7 +35,7 @@ $env:GIT_CONFIG_XDG = Join-Path $TestTmpParent "xdg.gitconfig"
 $env:XDG_CONFIG_HOME = Join-Path $TestTmpParent "xdg"
 New-Item -ItemType Directory -Path $TestTmpParent -Force | Out-Null
 New-Item -ItemType Directory -Path $env:XDG_CONFIG_HOME -Force | Out-Null
-$GitExe = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+$GitExe = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 
 function Ok { param([string]$Label) Write-Host "  ok - $Label"; $script:Pass++ }
 function Bad { param([string]$Label) Write-Host "  FAIL - $Label" -ForegroundColor Red; Write-GitHubError $Label; $script:Fail++ }

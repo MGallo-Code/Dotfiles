@@ -45,6 +45,8 @@ REQUIRED_FIELDS = {
     "last_evidence",
     "next_action",
 }
+REQUIRED_FIELDS_V2 = {"plan_path", "remaining_work"}
+REQUIRED_FIELDS_V3 = {"approved_plan_paths"}
 
 RISK_CLASSES = {"small", "non_trivial", "high_risk", "destructive"}
 PHASES = {
@@ -68,9 +70,12 @@ REQUIRED_LISTS = {
     "degraded_reviewers",
     "gates_run",
     "last_evidence",
+    "remaining_work",
+    "approved_plan_paths",
 }
 REQUIRED_BOOLS = {"visual_required", "visual_verified", "pr_allowed", "explicit_human_override"}
 REQUIRED_INTS = {"schema_version", "plan_clean_streak", "build_clean_streak", "open_findings_count"}
+REQUIRED_STRS = {"plan_path"}
 READY_PHASE = "ready_for_pr"
 MIN_CLEAN_STREAK = 3
 
@@ -94,6 +99,34 @@ def item_reason(item: Any) -> str:
             if key in item and item[key]:
                 return str(item[key])
     return str(item)
+
+
+def is_done_item(item: Any) -> bool:
+    if isinstance(item, dict):
+        return norm(item.get("status", "")) in {"done", "complete", "completed"}
+    return False
+
+
+def item_label(item: Any) -> str:
+    if isinstance(item, dict):
+        for key in ("item", "name", "task", "description"):
+            if item.get(key):
+                return str(item[key])
+        return json.dumps(item, sort_keys=True)
+    return str(item)
+
+
+def item_status(item: Any) -> str:
+    if isinstance(item, dict) and item.get("status"):
+        return norm(item["status"])
+    return "pending"
+
+
+def unfinished_work(data: dict[str, Any]) -> list[Any]:
+    items = data.get("remaining_work", [])
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if not is_done_item(item)]
 
 
 def open_question_blocks(item: Any) -> bool:
@@ -127,7 +160,14 @@ def load_tracker(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
 
 def validate_schema(data: dict[str, Any]) -> list[str]:
     invalid: list[str] = []
-    missing = sorted(REQUIRED_FIELDS - data.keys())
+    required = set(REQUIRED_FIELDS)
+    version = data.get("schema_version")
+    if isinstance(version, int) and not isinstance(version, bool) and version >= 2:
+        required |= REQUIRED_FIELDS_V2
+    if isinstance(version, int) and not isinstance(version, bool) and version >= 3:
+        required |= REQUIRED_FIELDS_V3
+
+    missing = sorted(required - data.keys())
     if missing:
         invalid.append("missing required field(s): " + ", ".join(missing))
 
@@ -152,6 +192,9 @@ def validate_schema(data: dict[str, Any]) -> list[str]:
             invalid.append(f"{field} must be an integer")
         elif data[field] < 0:
             invalid.append(f"{field} must be non-negative")
+    for field in sorted(REQUIRED_STRS & data.keys()):
+        if not isinstance(data[field], str) or not data[field].strip():
+            invalid.append(f"{field} must be a non-empty string")
     return invalid
 
 
@@ -255,6 +298,14 @@ def print_text(status: str, path: Path, data: dict[str, Any] | None, invalid: li
     out = sys.stdout if status == "READY" else sys.stderr
     out.write(f"forge-state: {status} {path}\n")
     out.write(f"  task: {data.get('task_slug')}  phase: {data.get('phase')}  risk: {data.get('risk_class')}\n")
+    plan_path = data.get("plan_path")
+    if plan_path:
+        out.write(f"  plan_path: {plan_path}\n")
+    approved_plan_paths = data.get("approved_plan_paths", [])
+    if approved_plan_paths:
+        out.write("  approved_plan_paths:\n")
+        for item in approved_plan_paths:
+            out.write(f"    - {item}\n")
     if blockers:
         out.write("  blockers:\n")
         for item in blockers:
@@ -266,6 +317,11 @@ def print_text(status: str, path: Path, data: dict[str, Any] | None, invalid: li
     next_action = data.get("next_action")
     if next_action:
         out.write(f"  next_action: {next_action}\n")
+    remaining = unfinished_work(data)
+    if remaining:
+        out.write("  remaining_work:\n")
+        for item in remaining:
+            out.write(f"    - [{item_status(item)}] {item_label(item)}\n")
 
 
 def main(argv: list[str]) -> int:
@@ -320,6 +376,9 @@ def main(argv: list[str]) -> int:
             "blockers": blockers,
             "missing": incomplete,
             "next_action": data.get("next_action"),
+            "plan_path": data.get("plan_path"),
+            "approved_plan_paths": data.get("approved_plan_paths", []),
+            "remaining_work": unfinished_work(data),
         }, indent=2))
     else:
         print_text(status, tracker, data, [], blockers, incomplete)

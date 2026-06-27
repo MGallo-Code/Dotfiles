@@ -25,6 +25,8 @@ TRACKER_FIELDS = {
     "repo",
     "risk_class",
     "phase",
+    "plan_path",
+    "approved_plan_paths",
     "open_questions",
     "approved_decisions",
     "assumptions_made",
@@ -41,6 +43,7 @@ TRACKER_FIELDS = {
     "pr_allowed",
     "explicit_human_override",
     "last_evidence",
+    "remaining_work",
     "next_action",
 }
 
@@ -92,6 +95,9 @@ def check_dotfiles(root: Path, findings: list[str]) -> None:
         "BLOCKED",
         "INVALID",
         "Documents/Agent-Forge",
+        "plan_path",
+        "approved_plan_paths",
+        "remaining_work",
     ], findings)
     if checker.is_file():
         require_executable(checker, "scripts/forge/check-state.py must be executable", findings)
@@ -150,6 +156,10 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
         "status [slug-or-tracker-path]",
         "check-state.py",
         "Documents/Agent-Forge",
+        "plan_path",
+        "approved_plan_paths",
+        "remaining_work",
+        "Plan Authority",
         "READY",
         "INCOMPLETE",
         "BLOCKED",
@@ -158,6 +168,9 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
     require_contains(ea_config / "global-commands/handoff.md", [
         "## Forge State",
         "Documents/Agent-Forge",
+        "Remaining work",
+        "Plan authority",
+        "Michael-approved plans",
         "Plan cross-check",
         "Build verification",
     ], findings)
@@ -165,6 +178,9 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
         "check-state.py",
         "Documents/Agent-Forge",
         "tracker.json",
+        "approved_plan_paths",
+        "remaining_work",
+        "Michael-approved plan files are the source of truth",
         "Resume capsule",
     ], findings)
     require_contains(ea_config / "global-hooks/forge-guard.sh", [
@@ -194,6 +210,9 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
     require_contains(ea_config / "global-skills/forge/templates/tracker.md", [
         "check-state.py",
         "Documents/Agent-Forge",
+        "Remaining Work",
+        "Plan Authority",
+        "Michael-approved plans",
     ], findings)
 
 

@@ -86,9 +86,9 @@ EOF
     set_codex_toml_key model_reasoning_effort xhigh
     set_codex_toml_key approval_policy never
     set_codex_toml_key approvals_reviewer user
-    set_codex_toml_key default_permissions michael_workspace
+    set_codex_toml_key default_permissions :danger-full-access
     ensure_codex_permission_profile
-    ok "Codex: defaults set (xhigh reasoning + Michael workspace permissions)"
+    ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
 
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
     # Claude global-hooks symlink. Trust once via the Codex `/hooks` TUI. Idempotent by marker.

@@ -78,10 +78,10 @@ $markerEnd
     $content = Set-CodexTomlKey $content "model_reasoning_effort" "xhigh"
     $content = Set-CodexTomlKey $content "approval_policy" "never"
     $content = Set-CodexTomlKey $content "approvals_reviewer" "user"
-    $content = Set-CodexTomlKey $content "default_permissions" "michael_workspace"
+    $content = Set-CodexTomlKey $content "default_permissions" ":danger-full-access"
     $content = Set-CodexManagedBlock $content
     Set-Content -Path $codexConfig -Value $content -NoNewline
-    Write-Ok "Codex: defaults set (xhigh reasoning + Michael workspace permissions)"
+    Write-Ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
 
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
     # Claude global-hooks symlink and run via bash on Windows. Trust once via Codex /hooks.

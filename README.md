@@ -81,6 +81,12 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 
 **Also:** Claude Code rules + hooks symlinks (`~/.claude/rules`, `~/.claude/hooks`), per-role courier MCP wiring, shell commands, SSH config, Homebrew packages.
 
+**Terminal surface:**
+- WezTerm config is tracked at `terminal/wezterm/wezterm.lua` and linked to `~/.wezterm.lua`.
+- Starship config is tracked at `terminal/starship/starship.toml` and linked to `~/.config/starship.toml`.
+- Windows setup installs PowerShell 7, Windows Terminal, WezTerm, and Starship when package installation is accepted.
+- SSH aliases separate the two PC entrypoints: `pc-pwsh` for native Windows PowerShell and `pc-wsl` for the default WSL distro through the Windows OpenSSH server.
+
 **MCP servers** (EA, configured in `EA/.mcp.json`): nexus, courier, docgen, calendar.
 
 ## Updating This System

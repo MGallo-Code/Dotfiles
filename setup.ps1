@@ -37,6 +37,74 @@ function Find-Ssh {
     return $null
 }
 
+function Get-PreferredPowerShellPath {
+    $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
+    if (Test-Path $pwshPath) { return $pwshPath }
+    return "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+}
+
+function Set-OpenSshDefaultShell {
+    Write-Step "SSH server default shell"
+
+    $sshShellPath = "HKLM:\SOFTWARE\OpenSSH"
+    $desiredShell = Get-PreferredPowerShellPath
+    $currentShell = (Get-ItemProperty -Path $sshShellPath -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell
+    $shellName = if ($desiredShell -like "*PowerShell\7*") { "PowerShell 7" } else { "Windows PowerShell 5.1" }
+
+    if ($currentShell -eq $desiredShell) {
+        Write-Ok "SSH default shell is $shellName"
+    }
+    else {
+        try {
+            New-ItemProperty -Path $sshShellPath -Name DefaultShell -Value $desiredShell -PropertyType String -Force | Out-Null
+            Restart-Service sshd -ErrorAction SilentlyContinue
+            Write-Ok "Set SSH default shell to $shellName"
+        }
+        catch {
+            Write-Warn "Could not set SSH default shell (needs admin). Run as Administrator or set manually."
+        }
+    }
+}
+
+function Install-CaskaydiaCoveNerdFont {
+    Write-Step "CaskaydiaCove Nerd Font"
+
+    $fontDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
+    $fontName = "CaskaydiaCoveNerdFont-Regular.ttf"
+    $installedFont = Join-Path $fontDir $fontName
+    if (Test-Path $installedFont) {
+        Write-Ok "CaskaydiaCove Nerd Font already installed"
+        return
+    }
+
+    $tmp = Join-Path $env:TEMP "dotfiles-cascadia-code-nerd-font"
+    $zip = Join-Path $tmp "CascadiaCode.zip"
+    try {
+        New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+        Invoke-WebRequest "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/CascadiaCode.zip" -OutFile $zip
+        Expand-Archive -Path $zip -DestinationPath $tmp -Force
+        New-Item -ItemType Directory -Path $fontDir -Force | Out-Null
+
+        $fontFiles = Get-ChildItem -Path $tmp -Filter "CaskaydiaCoveNerdFont*.ttf" -File
+        if (-not $fontFiles) {
+            Write-Warn "CaskaydiaCove font files not found in Nerd Fonts archive"
+            return
+        }
+
+        $regPath = "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
+        New-Item -Path $regPath -Force | Out-Null
+        foreach ($font in $fontFiles) {
+            $target = Join-Path $fontDir $font.Name
+            Copy-Item $font.FullName $target -Force
+            New-ItemProperty -Path $regPath -Name "$($font.BaseName) (TrueType)" -Value $font.Name -PropertyType String -Force | Out-Null
+        }
+        Write-Ok "Installed CaskaydiaCove Nerd Font"
+    }
+    catch {
+        Write-Warn "Could not install CaskaydiaCove Nerd Font: $($_.Exception.Message)"
+    }
+}
+
 . "$DotfilesDir\manifest.ps1"
 
 function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
@@ -291,26 +359,7 @@ else {
     Write-Ok "Set execution policy to RemoteSigned"
 }
 
-# ── OpenSSH Default Shell ────────────────────────────────────────────
-Write-Step "SSH server default shell"
-
-$sshShellPath = "HKLM:\SOFTWARE\OpenSSH"
-$currentShell = (Get-ItemProperty -Path $sshShellPath -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell
-$psPath = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-
-if ($currentShell -eq $psPath) {
-    Write-Ok "SSH default shell is PowerShell"
-}
-else {
-    try {
-        New-ItemProperty -Path $sshShellPath -Name DefaultShell -Value $psPath -PropertyType String -Force | Out-Null
-        Restart-Service sshd -ErrorAction SilentlyContinue
-        Write-Ok "Set SSH default shell to PowerShell"
-    }
-    catch {
-        Write-Warn "Could not set SSH default shell (needs admin). Run as Administrator or set manually."
-    }
-}
+Set-OpenSshDefaultShell
 
 # ── Git Config ────────────────────────────────────────────────────────
 Write-Step "Git config"
@@ -446,6 +495,10 @@ if ($Mode -ne "minimal") {
         if ($answer -eq "y") {
             $packages = @(
                 @{ Id = "Neovim.Neovim" }
+                @{ Id = "Microsoft.PowerShell" }
+                @{ Id = "Microsoft.WindowsTerminal" }
+                @{ Id = "wez.wezterm" }
+                @{ Id = "Starship.Starship" }
                 @{ Id = "OpenJS.NodeJS.LTS" }
                 @{ Id = "GoLang.Go" }
                 @{ Id = "Python.Python.3.12" }
@@ -460,6 +513,8 @@ if ($Mode -ne "minimal") {
             $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
             $env:Path = "$machinePath;$userPath"
             Write-Ok "Packages installed"
+            Set-OpenSshDefaultShell
+            Install-CaskaydiaCoveNerdFont
         }
         else {
             Write-Warn "Skipped package installation"
@@ -906,7 +961,7 @@ if ($Mode -eq "full") {
 Write-Step "Setup complete!"
 Write-Host ""
 Write-Host "What's next:"
-Write-Host "  - Edit SSH config IPs: $HOME\.ssh\config"
+Write-Host "  - Edit SSH config hosts in $HOME\.ssh\config (pc-pwsh, pc-wsl, pc-lan)"
 Write-Host "  - Authenticate Claude Code: claude"
 Write-Host "  - Restart PowerShell to load new commands"
 Write-Host ""

@@ -807,7 +807,7 @@ fi
 step "Setup complete!"
 echo ""
 echo "What's next:"
-echo "  - Edit SSH config IPs: ~/.ssh/config"
+echo "  - Edit SSH config hosts in ~/.ssh/config (pc-pwsh, pc-wsl, pc-lan)"
 echo "  - Authenticate Claude Code: claude"
 echo "  - Restart your shell or run: source ~/.zshrc"
 echo ""

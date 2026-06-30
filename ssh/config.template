@@ -4,12 +4,41 @@ Host github
     User git
     IdentityFile ~/.ssh/id_ed25519
 
-# Windows PC via Tailscale
-Host pc
+# Windows PC via Tailscale: default to the native Windows shell.
+Host pc pc-pwsh
     HostName TAILSCALE_IP_HERE
     User WINDOWS_USER_HERE
+    IdentityFile ~/.ssh/id_ed25519
+
+# Windows PC via Tailscale, then proxy into WSL's native sshd.
+# Keep pc-wsl pointed at the WSL user that owns the active files/config on that machine.
+Host pc-wsl pc-wsl-root
+    HostName pc-wsl-root-proxy
+    User WSL_SSH_USER_HERE
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+    HostKeyAlias pc-wsl-root-direct
+    StrictHostKeyChecking accept-new
+    ProxyCommand ssh -q -T pc-pwsh wsl.exe -d WSL_DISTRO_HERE -u WSL_SSH_USER_HERE -e nc 127.0.0.1 22
+
+# Fallback: Windows OpenSSH launches WSL directly, without a second WSL sshd login.
+Host pc-wsl-via-win
+    HostName TAILSCALE_IP_HERE
+    User WINDOWS_USER_HERE
+    IdentityFile ~/.ssh/id_ed25519
+    RequestTTY yes
+    RemoteCommand wsl.exe -d WSL_DISTRO_HERE -u WSL_USER_HERE --cd "~"
+
+# Future normal-user WSL entrypoint, once files/config are migrated out of /root.
+Host pc-wsl-user
+    HostName TAILSCALE_IP_HERE
+    User WINDOWS_USER_HERE
+    IdentityFile ~/.ssh/id_ed25519
+    RequestTTY yes
+    RemoteCommand wsl.exe -d WSL_DISTRO_HERE -u WSL_USER_HERE --cd "~"
 
 # Windows PC via LAN (fallback)
 Host pc-lan
     HostName LAN_IP_HERE
     User WINDOWS_USER_HERE
+    IdentityFile ~/.ssh/id_ed25519

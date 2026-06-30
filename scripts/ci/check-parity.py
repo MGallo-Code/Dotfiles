@@ -113,6 +113,16 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"global-agents"),
     },
     {
+        "name": "WezTerm config linked",
+        "sh": ("manifest.sh", r"wezterm\.lua"),
+        "ps1": ("manifest.ps1", r"wezterm\.lua"),
+    },
+    {
+        "name": "Starship config linked",
+        "sh": ("manifest.sh", r"starship\.toml"),
+        "ps1": ("manifest.ps1", r"starship\.toml"),
+    },
+    {
         # Claude reads slash-command sources directly from ~/.claude/commands, while Codex/Gemini
         # get generated mirrors from the same source. If this dir is not wired, commands like
         # /forge exist in generated targets but not in Claude itself.
@@ -366,6 +376,11 @@ FEATURES = [
         "name": "sbic workspace launcher present",
         "sh": ("shell/ea.zsh", r"\bsbic\b"),
         "ps1": ("shell/windows/ea.ps1", r"\bsbic\b"),
+    },
+    {
+        "name": "remote PC PowerShell/WSL shortcuts present",
+        "sh": ("shell/core.zsh", r"pcpwsh\(\).*pc-pwsh[\s\S]*pcwsl\(\).*pc-wsl"),
+        "ps1": ("shell/windows/core.ps1", r"function pcpwsh.*pc-pwsh[\s\S]*function pcwsl.*pc-wsl"),
     },
 ]
 

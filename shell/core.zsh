@@ -59,6 +59,10 @@ gemma() { _ollama_claude "gemma4:26b" "$@"; }
 # Higher quality, slower (13 tok/s, 32K max context)
 gemma31b() { _ollama_claude "gemma4:31b" "$@"; }
 
+# Remote PC shells
+pcpwsh() { ssh pc-pwsh "$@"; }
+pcwsl() { ssh pc-wsl "$@"; }
+
 # Tab completion for proj
 _proj_completion() {
     compadd $(find ~/Documents/Projects -maxdepth 1 -mindepth 1 -type d -not -path '*/.*' -exec basename {} \;)

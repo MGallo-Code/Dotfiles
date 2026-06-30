@@ -38,6 +38,8 @@ EA_REPOS=(
 SYMLINKS=(
   "~/Documents/EA/claude-config/global-rules|~/.claude/rules"
   "~/Documents/EA/claude-config/global-hooks|~/.claude/hooks"
+  "~/.dotfiles/terminal/wezterm/wezterm.lua|~/.wezterm.lua"
+  "~/.dotfiles/terminal/starship/starship.toml|~/.config/starship.toml"
   # global-agents -> ~/.claude/agents: Claude subagent defs (e.g. human-voice). Claude-ONLY -
   # codex/gemini have no subagent concept, so there is NO codex/gemini target (a SYMLINKS entry
   # only ever lands in ~/.claude). Previously hand-linked by EA/claude-config/link.sh (now

@@ -32,6 +32,8 @@ $Symlinks = @(
     # stacked-push guard) are available on Windows too. Without this, ~/.claude/hooks
     # never exists on Windows. (parity-checked: scripts/ci/check-parity.py)
     @{ Source = "$HOME\Documents\EA\claude-config\global-hooks"; Target = "$HOME\.claude\hooks" }
+    @{ Source = "$HOME\.dotfiles\terminal\wezterm\wezterm.lua"; Target = "$HOME\.wezterm.lua" }
+    @{ Source = "$HOME\.dotfiles\terminal\starship\starship.toml"; Target = "$HOME\.config\starship.toml" }
     # Mirror of manifest.sh: global-agents -> ~/.claude/agents (Claude subagent defs).
     # Claude-only; codex/gemini have no subagent concept. (parity-checked: scripts/ci/check-parity.py)
     @{ Source = "$HOME\Documents\EA\claude-config\global-agents"; Target = "$HOME\.claude\agents" }
@@ -290,6 +292,22 @@ function Register-AllHubMcp {
     param([string]$Cli)
     $cmd = Get-Command $Cli -ErrorAction SilentlyContinue
     if (-not $cmd) { Write-Warn "$Cli not found - skipping its global MCP wiring"; return }
+    function Remove-HubMcpIfPresent {
+        param([string]$Name)
+        $scopeArgs = if ($Cli -eq "claude") { @("--scope=user") } else { @("--scope", "user") }
+        $oldEap = $ErrorActionPreference
+        try {
+            # Removing an absent server is expected on fresh/partially wired machines.
+            # Under Windows PowerShell, native stderr can become a NativeCommandError when
+            # $ErrorActionPreference is Stop, so make remove-if-present best-effort.
+            $ErrorActionPreference = "Continue"
+            & $cmd.Source mcp remove @scopeArgs $Name *> $null
+        }
+        catch {}
+        finally {
+            $ErrorActionPreference = $oldEap
+        }
+    }
     if ($Cli -eq "codex") {
         # codex keeps MCP servers in config.toml; `codex mcp` can't run when that file won't parse
         # (a drifted-version entry with an invalid transport), deadlocking re-wiring. Text-strip
@@ -302,8 +320,7 @@ function Register-AllHubMcp {
             Set-Content -Path $cfg -Value $c -NoNewline
         }
     } else {
-        $scope = if ($Cli -eq "claude") { @("--scope=user") } else { @("--scope", "user") }
-        foreach ($name in @("nexus", "courier", "docgen", "calendar")) { & $cmd.Source mcp remove @scope $name 2>$null | Out-Null }
+        foreach ($name in @("nexus", "courier", "docgen", "calendar")) { Remove-HubMcpIfPresent $name }
     }
     # nexus: role-aware ONLY after the Phase-D cutover ($NexusRemoted). Until then it stays stdio so
     # the live local-stdio agent + the still-tracked nexus.db keep working (handoff §0). Windows is

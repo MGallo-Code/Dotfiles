@@ -13,6 +13,14 @@ export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_XDG=/dev/null
 mkdir -p "$TEST_TMP_PARENT"
+
+# Remove the test temp tree on exit, even on failure or signal. Only the OUTERMOST
+# invocation registers this; nested `bash "$0"` children inherit the exported
+# sentinel and skip it, so a child never deletes a live parent fixture mid-run.
+if [ -z "${AUTO_GIT_TEST_INNER:-}" ]; then
+    export AUTO_GIT_TEST_INNER=1
+    trap 'rm -rf "$TEST_TMP_PARENT"' EXIT
+fi
 export TMPDIR="$TEST_TMP_PARENT"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$TEST_TMP_PARENT/xdg}"
 if [ -x /Applications/Xcode.app/Contents/Developer/usr/bin/git ]; then
@@ -157,8 +165,6 @@ main_checks() {
 
     local tmp
     tmp="$(mktemp -d "$TEST_TMP_PARENT/run.XXXXXX")"
-    AUTO_GIT_CHECK_TMP="$tmp"
-    trap 'rm -rf "$AUTO_GIT_CHECK_TMP"' EXIT
 
     echo "==> behavioral fixtures"
 
@@ -525,8 +531,6 @@ EOF
 revert_test() {
     local tmp
     tmp="$(mktemp -d "$TEST_TMP_PARENT/revert.XXXXXX")"
-    AUTO_GIT_CHECK_TMP="$tmp"
-    trap 'rm -rf "$AUTO_GIT_CHECK_TMP"' EXIT
     cp "$ROOT/auto-git.sh" "$tmp/auto-git.sh"
     printf '\ngit commit -m bad\n' >> "$tmp/auto-git.sh"
     if AUTO_GIT_SH="$tmp/auto-git.sh" AUTO_GIT_PS1="$ROOT/auto-git.ps1" bash "$0" --static-only >/dev/null 2>&1; then

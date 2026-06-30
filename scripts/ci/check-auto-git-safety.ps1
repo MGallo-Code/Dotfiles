@@ -373,6 +373,7 @@ $git = "git"
     Add-Content -Path $merge -Value 'git merge origin/main'
     Assert "revert-test PowerShell non-ff merge is caught" { -not (Test-NoForbiddenPowerShellAutoGitOps $merge) }
 
+    Remove-Item -LiteralPath $TestTmpParent -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "auto-git PowerShell revert safety: $script:Pass passed, $script:Fail failed"
     if ($script:Fail -ne 0) { exit 1 }
     exit 0
@@ -698,5 +699,7 @@ $xmlOut = Join-Path $tmp "default-task.xml"
 Invoke-BootstrapXml $BootstrapPs1 $xmlOut
 Assert "PowerShell bootstrap XML is disabled by default" { (Get-Content $xmlOut -Raw) -match "<Enabled>false</Enabled>" }
 
+# Self-clean the gitignored test temp tree on exit (parity with the .sh half).
+Remove-Item -LiteralPath $TestTmpParent -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "auto-git PowerShell safety: $script:Pass passed, $script:Fail failed"
 if ($script:Fail -ne 0) { exit 1 }

@@ -1,5 +1,14 @@
 # Core dev shell commands
 
+# zsh's completion system must be initialized before `compdef` (used here and in
+# ea.zsh) exists. Some setups run compinit for us first (e.g. nvm's bash_completion
+# on the Mac, or oh-my-zsh); on a bare login (e.g. the mini hub) nothing does, so
+# `compdef` is "command not found". Initialize it here so these dotfiles are
+# self-sufficient on every machine. Guarded so we never run a second compinit.
+if (( ! ${+functions[compdef]} )); then
+    autoload -Uz compinit && compinit
+fi
+
 # Sync all dotfiles-managed repos
 sync() { bash ~/.dotfiles/sync.sh; }
 

@@ -47,6 +47,12 @@ REQUIRED_FIELDS = {
 }
 REQUIRED_FIELDS_V2 = {"plan_path", "remaining_work"}
 REQUIRED_FIELDS_V3 = {"approved_plan_paths"}
+REQUIRED_FIELDS_V4 = {
+    "plan_non_important_streak",
+    "build_non_important_streak",
+    "crosscheck_stop_decisions",
+    "finding_classifications",
+}
 
 RISK_CLASSES = {"small", "non_trivial", "high_risk", "destructive"}
 PHASES = {
@@ -69,15 +75,28 @@ REQUIRED_LISTS = {
     "reviewers_completed",
     "degraded_reviewers",
     "gates_run",
+    "crosscheck_stop_decisions",
+    "finding_classifications",
     "last_evidence",
     "remaining_work",
     "approved_plan_paths",
 }
 REQUIRED_BOOLS = {"visual_required", "visual_verified", "pr_allowed", "explicit_human_override"}
-REQUIRED_INTS = {"schema_version", "plan_clean_streak", "build_clean_streak", "open_findings_count"}
+REQUIRED_INTS = {
+    "schema_version",
+    "plan_clean_streak",
+    "build_clean_streak",
+    "plan_non_important_streak",
+    "build_non_important_streak",
+    "open_findings_count",
+}
 REQUIRED_STRS = {"plan_path"}
 READY_PHASE = "ready_for_pr"
-MIN_CLEAN_STREAK = 3
+PLAN_CLEAN_STREAK = 2
+BUILD_CLEAN_STREAK = 3
+PLAN_NON_IMPORTANT_STREAK = 4
+BUILD_NON_IMPORTANT_STREAK = 6
+HYBRID_APPROVAL_RISKS = {"high_risk", "destructive"}
 
 
 def norm(value: Any) -> str:
@@ -166,6 +185,8 @@ def validate_schema(data: dict[str, Any]) -> list[str]:
         required |= REQUIRED_FIELDS_V2
     if isinstance(version, int) and not isinstance(version, bool) and version >= 3:
         required |= REQUIRED_FIELDS_V3
+    if isinstance(version, int) and not isinstance(version, bool) and version >= 4:
+        required |= REQUIRED_FIELDS_V4
 
     missing = sorted(required - data.keys())
     if missing:
@@ -198,6 +219,94 @@ def validate_schema(data: dict[str, Any]) -> list[str]:
     return invalid
 
 
+def gate_name(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    gate = norm(item.get("gate", item.get("phase", item.get("kind", ""))))
+    if gate in {"plan", "plan_crosscheck", "plan_check"}:
+        return "plan"
+    if gate in {"build", "build_verify", "build_verification", "result", "result_crosscheck"}:
+        return "build"
+    return gate
+
+
+def gate_items(data: dict[str, Any], field: str, gate: str) -> list[Any]:
+    items = data.get(field, [])
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if gate_name(item) == gate]
+
+
+def finding_is_non_important(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+    classification = norm(item.get("classification", item.get("importance", item.get("severity", ""))))
+    if classification not in {"non_important", "not_important", "unimportant"}:
+        return False
+    rationale = item.get("rationale", item.get("reason", item.get("why", "")))
+    return bool(str(rationale).strip())
+
+
+def has_non_important_stop_decision(
+    data: dict[str, Any],
+    gate: str,
+    risk: str,
+) -> tuple[bool, str]:
+    decisions = gate_items(data, "crosscheck_stop_decisions", gate)
+    for decision in decisions:
+        if not isinstance(decision, dict):
+            continue
+        reason = norm(decision.get("reason", decision.get("stop_reason", "")))
+        if reason not in {"non_important", "not_important", "unimportant"}:
+            continue
+        if risk in HYBRID_APPROVAL_RISKS and not (
+            data["explicit_human_override"]
+            or decision.get("approved")
+            or decision.get("human_approved")
+            or decision.get("human_override")
+        ):
+            return False, f"{gate} non-important stop requires human approval for {risk} risk"
+        return True, ""
+    return False, f"{gate} non-important stop decision is missing"
+
+
+def crosscheck_gate_satisfied(data: dict[str, Any], gate: str, risk: str) -> tuple[bool, str]:
+    if gate == "plan":
+        clean_field = "plan_clean_streak"
+        non_important_field = "plan_non_important_streak"
+        clean_needed = PLAN_CLEAN_STREAK
+        non_important_needed = PLAN_NON_IMPORTANT_STREAK
+    else:
+        clean_field = "build_clean_streak"
+        non_important_field = "build_non_important_streak"
+        clean_needed = BUILD_CLEAN_STREAK
+        non_important_needed = BUILD_NON_IMPORTANT_STREAK
+
+    clean_streak = int(data.get(clean_field, 0))
+    if clean_streak >= clean_needed:
+        return True, ""
+
+    non_important_streak = int(data.get(non_important_field, 0))
+    if non_important_streak < non_important_needed:
+        return (
+            False,
+            f"{clean_field} is {clean_streak}, needs {clean_needed}; "
+            f"or {non_important_field} is {non_important_streak}, needs {non_important_needed}",
+        )
+
+    classifications = gate_items(data, "finding_classifications", gate)
+    if not classifications:
+        return False, f"{gate} non-important stop needs finding_classifications entries"
+    bad = [item for item in classifications if not finding_is_non_important(item)]
+    if bad:
+        return False, f"{gate} has finding classification(s) not marked non-important with rationale"
+
+    stop_recorded, reason = has_non_important_stop_decision(data, gate, risk)
+    if not stop_recorded:
+        return False, reason
+    return True, ""
+
+
 def evaluate(data: dict[str, Any]) -> tuple[str, list[str], list[str]]:
     """Return (status, blockers, incomplete)."""
     blockers: list[str] = []
@@ -227,14 +336,18 @@ def evaluate(data: dict[str, Any]) -> tuple[str, list[str], list[str]]:
         incomplete.append(f"{data['open_findings_count']} open finding(s) remain")
 
     if risk != "small":
-        if data["plan_clean_streak"] < MIN_CLEAN_STREAK and not override:
-            incomplete.append(
-                f"plan_clean_streak is {data['plan_clean_streak']}, needs {MIN_CLEAN_STREAK}"
-            )
-        if data["build_clean_streak"] < MIN_CLEAN_STREAK and not override:
-            incomplete.append(
-                f"build_clean_streak is {data['build_clean_streak']}, needs {MIN_CLEAN_STREAK}"
-            )
+        plan_ok, plan_reason = crosscheck_gate_satisfied(data, "plan", risk)
+        if not plan_ok and not override:
+            if "requires human approval" in plan_reason:
+                blockers.append(plan_reason)
+            else:
+                incomplete.append(plan_reason)
+        build_ok, build_reason = crosscheck_gate_satisfied(data, "build", risk)
+        if not build_ok and not override:
+            if "requires human approval" in build_reason:
+                blockers.append(build_reason)
+            else:
+                incomplete.append(build_reason)
 
         required = {item_name(r) for r in data["reviewers_required"]}
         completed = {item_name(r) for r in data["reviewers_completed"]}
@@ -378,6 +491,10 @@ def main(argv: list[str]) -> int:
             "next_action": data.get("next_action"),
             "plan_path": data.get("plan_path"),
             "approved_plan_paths": data.get("approved_plan_paths", []),
+            "plan_clean_streak": data.get("plan_clean_streak"),
+            "plan_non_important_streak": data.get("plan_non_important_streak"),
+            "build_clean_streak": data.get("build_clean_streak"),
+            "build_non_important_streak": data.get("build_non_important_streak"),
             "remaining_work": unfinished_work(data),
         }, indent=2))
     else:

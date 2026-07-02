@@ -33,10 +33,14 @@ TRACKER_FIELDS = {
     "assumption_risk",
     "plan_clean_streak",
     "build_clean_streak",
+    "plan_non_important_streak",
+    "build_non_important_streak",
     "reviewers_required",
     "reviewers_completed",
     "degraded_reviewers",
     "open_findings_count",
+    "crosscheck_stop_decisions",
+    "finding_classifications",
     "gates_run",
     "visual_required",
     "visual_verified",
@@ -98,6 +102,10 @@ def check_dotfiles(root: Path, findings: list[str]) -> None:
         "plan_path",
         "approved_plan_paths",
         "remaining_work",
+        "PLAN_CLEAN_STREAK",
+        "BUILD_NON_IMPORTANT_STREAK",
+        "finding_classifications",
+        "crosscheck_stop_decisions",
     ], findings)
     if checker.is_file():
         require_executable(checker, "scripts/forge/check-state.py must be executable", findings)
@@ -160,6 +168,8 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
         "approved_plan_paths",
         "remaining_work",
         "Plan Authority",
+        "2 clean rounds",
+        "6 consecutive non-important rounds",
         "READY",
         "INCOMPLETE",
         "BLOCKED",
@@ -173,6 +183,7 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
         "Michael-approved plans",
         "Plan cross-check",
         "Build verification",
+        "Non-important finding classifications",
     ], findings)
     require_contains(ea_config / "global-skills/forge/SKILL.md", [
         "check-state.py",
@@ -180,6 +191,8 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
         "tracker.json",
         "approved_plan_paths",
         "remaining_work",
+        "finding_classifications",
+        "crosscheck_stop_decisions",
         "Michael-approved plan files are the source of truth",
         "Resume capsule",
     ], findings)
@@ -213,6 +226,8 @@ def check_external_sources(ea_config: Path, findings: list[str], required: bool)
         "Remaining Work",
         "Plan Authority",
         "Michael-approved plans",
+        "Cross-Check Finding Classification",
+        "Non-important streak",
     ], findings)
 
 

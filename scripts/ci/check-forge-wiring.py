@@ -242,6 +242,11 @@ def check_machine(ea_config: Path, findings: list[str]) -> None:
     require_contains(expand("~/.codex/prompts/forge.md"), ["Documents/Agent-Forge", "check-state.py"], findings)
     require_contains(expand("~/.gemini/commands/forge.toml"), ["Documents/Agent-Forge", "check-state.py"], findings)
 
+    # Codex config: key on the DURABLE command path, not the "# dotfiles: Forge action guard"
+    # comment. Codex rewrites config.toml and strips that comment (the hook block + command line
+    # survive), so requiring the comment produced a false failure post-sync. The forge-guard.sh
+    # command line is what actually proves the guard is registered as a Codex PreToolUse hook.
+
     claude_settings = expand("~/.claude/settings.json")
     if require_file(claude_settings, findings):
         try:
@@ -271,7 +276,7 @@ def check_machine(ea_config: Path, findings: list[str]) -> None:
             require(any("forge-guard.sh" in cmd for cmd in commands),
                     f"{claude_settings}: missing forge-guard.sh PreToolUse command", findings)
 
-    require_contains(expand("~/.codex/config.toml"), ["Forge action guard", "forge-guard.sh"], findings)
+    require_contains(expand("~/.codex/config.toml"), ["forge-guard.sh"], findings)
 
 
 def main(argv: list[str]) -> int:

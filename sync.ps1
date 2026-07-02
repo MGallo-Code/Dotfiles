@@ -88,7 +88,9 @@ $markerEnd
     function Ensure-CodexPreToolUseHook {
         param([string]$Marker, [string]$Command, [string]$Label)
         $codexExisting = if (Test-Path $codexConfig) { Get-Content $codexConfig -Raw } else { "" }
-        if ($codexExisting -notlike "*$Marker*") {
+        # Key on the COMMAND path, not the marker comment: Codex strips the comment on rewrite
+        # (block/command survive), so keying on the marker re-appended a duplicate block each sync.
+        if ($codexExisting -notlike "*$Command*") {
         $codexGuardBlock = @"
 
 $Marker

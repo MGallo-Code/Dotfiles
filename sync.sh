@@ -91,10 +91,12 @@ EOF
     ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
 
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
-    # Claude global-hooks symlink. Trust once via the Codex `/hooks` TUI. Idempotent by marker.
+    # Claude global-hooks symlink. Trust once via the Codex `/hooks` TUI. Idempotent by the
+    # COMMAND path, not the marker comment: Codex rewrites config.toml and strips the comment
+    # (the block/command survive), so keying on the marker re-appended a duplicate block each sync.
     ensure_codex_pretooluse_hook() {
         local marker="$1" command="$2" label="$3"
-        if ! grep -qF "$marker" "$codex_config"; then
+        if ! grep -qF "$command" "$codex_config"; then
         cat >> "$codex_config" <<EOF
 
 $marker

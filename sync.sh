@@ -90,6 +90,16 @@ EOF
     ensure_codex_permission_profile
     ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
 
+    # CODEX_PIN drift check (pin is canonical in manifest.sh; parity: sync.ps1 $CodexPin).
+    # Warn-only: sync can't fix a version mismatch itself, and a blocked sync is worse.
+    if command -v codex >/dev/null 2>&1 && [ -n "${CODEX_PIN:-}" ]; then
+        local codex_installed
+        codex_installed="$(codex --version 2>/dev/null | awk '{print $2}')"
+        if [ "$codex_installed" != "$CODEX_PIN" ]; then
+            warn "Codex $codex_installed drifts from pin $CODEX_PIN - preflight (scripts/codex-pin-preflight.sh), then: npm install -g @openai/codex@$CODEX_PIN"
+        fi
+    fi
+
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
     # Claude global-hooks symlink. Trust once via the Codex `/hooks` TUI. Idempotent by the
     # COMMAND path, not the marker comment: Codex rewrites config.toml and strips the comment

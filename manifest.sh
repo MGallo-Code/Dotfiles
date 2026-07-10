@@ -33,6 +33,17 @@ EA_REPOS=(
   "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
 )
 
+# ── Codex CLI pin ─────────────────────────────────────────────────────────────
+# Codex is PINNED, never floated: its config.toml MCP schema has drifted across versions
+# before (a newer codex wrote a `transport` field an older one rejected, deadlocking
+# `codex mcp` re-wiring - see the 20db221 self-heal). Bump DELIBERATELY:
+#   1. scripts/codex-pin-preflight.sh <version>  (sandbox compat test, no system changes)
+#   2. update this pin (+ manifest.ps1 $CodexPin) and the kit baseline in
+#      ~/Documents/agent-skills/coding-mastermind/MANIFEST.md
+#   3. npm install -g @openai/codex@<pin> on EVERY machine (lockstep, next sync/sysupdate)
+# sync.sh/sync.ps1 warn when the installed version drifts from this pin.
+CODEX_PIN="0.144.1"
+
 # Symlinks to create: "source|target"
 # Claude loads a whole DIRECTORY of rules, so a dir symlink covers every rule file.
 SYMLINKS=(

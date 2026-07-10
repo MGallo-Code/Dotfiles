@@ -83,6 +83,16 @@ $markerEnd
     Set-Content -Path $codexConfig -Value $content -NoNewline
     Write-Ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
 
+    # $CodexPin drift check (pin is canonical in the manifests; parity: sync.sh CODEX_PIN).
+    # Warn-only: sync can't fix a version mismatch itself, and a blocked sync is worse.
+    $codexCmd = Get-Command codex -ErrorAction SilentlyContinue
+    if ($codexCmd -and $CodexPin) {
+        $codexInstalled = ((& $codexCmd.Source --version 2>$null | Select-Object -First 1) -replace '^codex-cli\s+', '').Trim()
+        if ($codexInstalled -ne $CodexPin) {
+            Write-Warn "Codex $codexInstalled drifts from pin $CodexPin - preflight (scripts/codex-pin-preflight.sh), then: npm install -g @openai/codex@$CodexPin"
+        }
+    }
+
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
     # Claude global-hooks symlink and run via bash on Windows. Trust once via Codex /hooks.
     function Ensure-CodexPreToolUseHook {

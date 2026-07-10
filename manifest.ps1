@@ -26,6 +26,12 @@ $EARepos = @(
     "Notes"
 )
 
+# ── Codex CLI pin (parity: manifest.sh CODEX_PIN) ────────────────────
+# Pinned, never floated - codex config.toml MCP schema has drifted across versions.
+# Bump deliberately: scripts/codex-pin-preflight.sh <version>, update BOTH manifests +
+# the kit MANIFEST, then npm install -g @openai/codex@<pin> on every machine (lockstep).
+$CodexPin = "0.144.1"
+
 $Symlinks = @(
     @{ Source = "$HOME\Documents\EA\claude-config\global-rules"; Target = "$HOME\.claude\rules" }
     # Mirror of manifest.sh: wire the global-hooks dir so hook scripts (notify,

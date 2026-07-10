@@ -62,6 +62,14 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"AGENTS\.md|GEMINI\.md"),
     },
     {
+        # Codex is pinned (manifest CODEX_PIN / $CodexPin): its config.toml MCP schema has
+        # drifted across versions. Both syncs must warn on drift, or a floated install on
+        # one OS silently reintroduces the cross-version config breakage.
+        "name": "codex version pin + sync drift warning",
+        "sh": ("sync.sh", r"CODEX_PIN"),
+        "ps1": ("sync.ps1", r"CodexPin"),
+    },
+    {
         # Managed-root roles: archived roots are tracked separately and never synced, so
         # both manifests must carry the ARCHIVED_REPOS tombstone (IT-Worker). If one side
         # drops it, that root silently looks active again on that OS.

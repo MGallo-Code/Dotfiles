@@ -140,6 +140,20 @@ do_backup() {
     # Retention: prune backups older than N days.
     find "$BACKUP_DIR" -name 'nexus-*.db' -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
 
+    # Recipes ride along (D26, 2026-08-11): the recipe files moved OUT of the
+    # cloud-synced ~/Documents into hub-owned ~/.local/share/ea-hub/recipes, so
+    # this script is now their only backup. User-authored, not refetchable.
+    local recipes_root="$HOME/.local/share/ea-hub/recipes"
+    if [ -d "$recipes_root" ]; then
+        if tar -czf "$BACKUP_DIR/recipes-$ts.tar.gz" -C "$(dirname "$recipes_root")" "$(basename "$recipes_root")" 2>/dev/null; then
+            chmod 600 "$BACKUP_DIR/recipes-$ts.tar.gz"
+            ok "recipes backed up: recipes-$ts.tar.gz"
+        else
+            err "recipes backup FAILED (nexus backup unaffected)"
+        fi
+        find "$BACKUP_DIR" -name 'recipes-*.tar.gz' -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
+    fi
+
     # Data/secret vet on the just-made backup (the good backup is kept regardless; we still ALERT loud).
     local vrc=0
     vet_db "$dest" || vrc=$?

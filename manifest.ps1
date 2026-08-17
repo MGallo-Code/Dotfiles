@@ -102,13 +102,11 @@ $AgentNotifyAccount = "mgallo-va"
 
 function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     $python = $null
+    $tomlProbe = "import importlib.util,sys; sys.exit(not (importlib.util.find_spec('tomllib') or importlib.util.find_spec('tomli')))"
     foreach ($name in @("python3", "python")) {
         $candidate = Get-Command $name -ErrorAction SilentlyContinue
         if (-not $candidate) { continue }
-        & $candidate.Source -c "import tomllib" 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            & $candidate.Source -c "import tomli" 2>$null
-        }
+        & $candidate.Source -c $tomlProbe 2>$null
         if ($LASTEXITCODE -eq 0) { $python = $candidate.Source; break }
     }
     if (-not $python) {

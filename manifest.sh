@@ -97,8 +97,8 @@ configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     python_cmd=""
     for candidate in python3 python; do
         command -v "$candidate" >/dev/null 2>&1 || continue
-        if "$candidate" -c 'import tomllib' >/dev/null 2>&1 || \
-           "$candidate" -c 'import tomli' >/dev/null 2>&1; then
+        if "$candidate" -c 'import importlib.util,sys; sys.exit(not (importlib.util.find_spec("tomllib") or importlib.util.find_spec("tomli")))' \
+            >/dev/null 2>&1; then
             python_cmd="$candidate"
             break
         fi

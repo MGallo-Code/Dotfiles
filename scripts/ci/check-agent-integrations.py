@@ -9,6 +9,7 @@ a stub sender. It never sends email.
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import importlib.util
 import io
@@ -51,6 +52,17 @@ def commands(data: dict, event: str) -> list[str]:
             if isinstance(command, str):
                 result.append(command)
     return result
+
+
+def codex_passthrough(notify: list[str]) -> list[str] | None:
+    try:
+        index = notify.index("--codex-passthrough")
+        token = notify[index + 1]
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+        value = json.loads(raw.decode("utf-8"))
+    except (ValueError, IndexError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, list) and all(isinstance(item, str) for item in value) else None
 
 
 def run_configurator(
@@ -130,7 +142,11 @@ def hermetic(findings: list[str]) -> None:
             + "\n",
             encoding="utf-8",
         )
-        codex_path.write_text('[unrelated]\nvalue = "keep"\n', encoding="utf-8")
+        native_notify = ["/native/codex-desktop", "turn-ended"]
+        codex_path.write_text(
+            'notify = ["/native/codex-desktop", "turn-ended"]\n\n[unrelated]\nvalue = "keep"\n',
+            encoding="utf-8",
+        )
         gemini_path.write_text(
             json.dumps(
                 {
@@ -170,6 +186,8 @@ def hermetic(findings: list[str]) -> None:
         notify = codex.get("notify", [])
         require(isinstance(notify, list) and "agent-notify.py" in " ".join(notify),
                 "Codex native notify program is missing", findings)
+        require(codex_passthrough(notify) == native_notify,
+                "Codex Desktop notify callback was not preserved as a passthrough", findings)
         disabled = codex.get("skills", {}).get("config", [])
         require(len(disabled) == 2 and all(item.get("enabled") is False for item in disabled),
                 "Codex duplicate skill paths were not disabled exactly", findings)
@@ -234,7 +252,11 @@ def machine(findings: list[str]) -> None:
             "live Gemini AfterAgent hook is not converged", findings)
     require(sum("agent-notify.py" in value for value in commands(gemini, "AfterTool")) == 1,
             "live Gemini AfterTool hook is not converged", findings)
-    require("agent-notify.py" in " ".join(codex.get("notify", [])), "live Codex notify is missing", findings)
+    live_notify = codex.get("notify", [])
+    require("agent-notify.py" in " ".join(live_notify), "live Codex notify is missing", findings)
+    if "--codex-passthrough" in live_notify:
+        require(codex_passthrough(live_notify) is not None,
+                "live Codex notify passthrough is malformed", findings)
 
     expected_disabled = set()
     for source in (home / "Documents" / "SBIC" / ".codex" / "skills", home / "Documents" / "SBIC" / ".agents" / "skills"):
@@ -254,6 +276,24 @@ def machine(findings: list[str]) -> None:
         try:
             module = load_hook(hook_path)
             state = Path(raw)
+            passthrough_capture = state / "codex-desktop-passthrough.json"
+            passthrough_event = json.dumps({"type": "agent-turn-complete", "thread-id": "passthrough"})
+            passthrough_argv = [
+                sys.executable,
+                "-c",
+                "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text(sys.argv[2], encoding='utf-8')",
+                str(passthrough_capture),
+            ]
+            passthrough_token = base64.urlsafe_b64encode(
+                json.dumps(passthrough_argv).encode("utf-8")
+            ).decode("ascii").rstrip("=")
+            module._forward_codex_notification(passthrough_token, passthrough_event)
+            require(
+                passthrough_capture.is_file()
+                and passthrough_capture.read_text(encoding="utf-8") == passthrough_event,
+                "Codex Desktop notify passthrough did not receive the unchanged event payload",
+                findings,
+            )
             module._atomic_json(
                 state / "config.json",
                 {

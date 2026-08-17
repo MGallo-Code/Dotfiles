@@ -7,13 +7,14 @@ chokepoint, so the two setup paths cannot silently implement different migration
 
 Every source config is parsed and every candidate is validated before the first write;
 each resulting file is replaced atomically. Unrelated hooks and TOML tables are preserved.
-An unknown pre-existing Codex ``notify`` program is a conflict, not something this script
-overwrites.
+Because Codex exposes one ``notify`` command, a pre-existing callback is retained as an
+argument-safe passthrough behind the managed entry point.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -30,6 +31,11 @@ from typing import Any
 
 MANAGED_SCRIPT = "agent-notify.py"
 LEGACY_SCRIPT = "notify-claude.sh"
+CODEX_PASSTHROUGH_FLAG = "--codex-passthrough"
+MAX_CODEX_PASSTHROUGH_ARGS = 64
+MAX_CODEX_PASSTHROUGH_ARG_CHARS = 4_096
+MAX_CODEX_PASSTHROUGH_TOTAL_CHARS = 8_192
+MAX_CODEX_PASSTHROUGH_TOKEN_CHARS = 12_000
 SKILLS_BEGIN = "# dotfiles: begin Codex duplicate skill suppression"
 SKILLS_END = "# dotfiles: end Codex duplicate skill suppression"
 
@@ -195,6 +201,44 @@ def _strip_skill_block(text: str) -> str:
     return stripped
 
 
+def _validate_passthrough(value: Any) -> list[str]:
+    if not isinstance(value, list) or not value or len(value) > MAX_CODEX_PASSTHROUGH_ARGS:
+        raise ConfigError("Codex notify passthrough must be a non-empty string array")
+    if not all(
+        isinstance(item, str) and item and len(item) <= MAX_CODEX_PASSTHROUGH_ARG_CHARS
+        for item in value
+    ) or sum(len(item) for item in value) > MAX_CODEX_PASSTHROUGH_TOTAL_CHARS:
+        raise ConfigError("Codex notify passthrough contains an invalid argument")
+    return value
+
+
+def _encode_passthrough(argv: list[str]) -> str:
+    raw = json.dumps(argv, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_passthrough(token: str) -> list[str]:
+    if not token or len(token) > MAX_CODEX_PASSTHROUGH_TOKEN_CHARS:
+        raise ConfigError("managed Codex notify passthrough is invalid")
+    try:
+        raw = base64.b64decode(
+            token + "=" * (-len(token) % 4), altchars=b"-_", validate=True
+        )
+        value = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConfigError("managed Codex notify passthrough is invalid") from exc
+    return _validate_passthrough(value)
+
+
+def _managed_passthrough(notify_argv: list[str]) -> list[str] | None:
+    positions = [index for index, value in enumerate(notify_argv) if value == CODEX_PASSTHROUGH_FLAG]
+    if not positions:
+        return None
+    if len(positions) != 1 or positions[0] + 1 >= len(notify_argv):
+        raise ConfigError("managed Codex notify passthrough is malformed")
+    return _decode_passthrough(notify_argv[positions[0] + 1])
+
+
 def _skill_files(roots: list[Path]) -> list[Path]:
     result = set()
     for root in roots:
@@ -212,17 +256,23 @@ def _configure_codex(
 ) -> str:
     parsed = _toml_loads(original, path)
     existing_notify = parsed.get("notify")
+    passthrough = None
     if existing_notify is not None:
         if not isinstance(existing_notify, list) or not all(
             isinstance(item, str) for item in existing_notify
         ):
             raise ConfigError("Codex notify must be a string array")
-        if MANAGED_SCRIPT not in " ".join(existing_notify):
-            raise ConfigError("Codex notify is already owned by another program")
+        if MANAGED_SCRIPT in " ".join(existing_notify):
+            passthrough = _managed_passthrough(existing_notify)
+        elif existing_notify:
+            passthrough = _validate_passthrough(existing_notify)
 
     body = _strip_top_level_notify(original, existing_notify is not None)
     body = _strip_skill_block(body).strip()
-    notify_line = "notify = [" + ", ".join(_toml_string(item) for item in notify_argv) + "]"
+    managed_argv = list(notify_argv)
+    if passthrough:
+        managed_argv.extend([CODEX_PASSTHROUGH_FLAG, _encode_passthrough(passthrough)])
+    notify_line = "notify = [" + ", ".join(_toml_string(item) for item in managed_argv) + "]"
     chunks = [notify_line]
     if body:
         chunks.append(body)

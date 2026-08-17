@@ -91,10 +91,12 @@ AGENT_NOTIFY_ACCOUNT="mgallo-va"
 
 configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     local configurator hook token_file python_cmd candidate
+    local -a python_prefix
     configurator="$(expand "$AGENT_NOTIFY_CONFIGURATOR")"
     hook="$(expand "$AGENT_NOTIFY_HOOK")"
     token_file="$(expand "$COURIER_TOKEN_FILE")"
     python_cmd=""
+    python_prefix=()
     for candidate in python3 python; do
         command -v "$candidate" >/dev/null 2>&1 || continue
         if "$candidate" -c 'import importlib.util,sys; sys.exit(not (importlib.util.find_spec("tomllib") or importlib.util.find_spec("tomli")))' \
@@ -104,8 +106,13 @@ configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
         fi
     done
     if [ -z "$python_cmd" ]; then
-        warn "agent integrations: Python with tomllib/tomli not found - completion hooks not updated"
-        return 1
+        if command -v uv >/dev/null 2>&1; then
+            python_cmd="$(command -v uv)"
+            python_prefix=(run --no-project --with tomli python)
+        else
+            warn "agent integrations: Python with tomllib/tomli or uv not found - completion hooks not updated"
+            return 1
+        fi
     fi
     if [ ! -f "$configurator" ] || [ ! -f "$hook" ]; then
         warn "agent integrations: configurator or hook source missing"
@@ -124,7 +131,7 @@ configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     for root in "${CODEX_LOCAL_SKILL_DISABLE_ROOTS[@]}"; do
         args+=(--codex-disable-root "$(expand "$root")")
     done
-    "$python_cmd" "$configurator" "${args[@]}"
+    "$python_cmd" "${python_prefix[@]}" "$configurator" "${args[@]}"
 }
 
 # Concatenate all global-rules/*.md into each single-file target. Idempotent;

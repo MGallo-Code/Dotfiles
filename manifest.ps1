@@ -103,6 +103,7 @@ $AgentNotifyAccount = "mgallo-va"
 
 function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     $python = $null
+    $pythonPrefix = @()
     $tomlProbe = "import importlib.util,sys; sys.exit(not (importlib.util.find_spec('tomllib') or importlib.util.find_spec('tomli')))"
     foreach ($name in @("python3", "python")) {
         $candidate = Get-Command $name -ErrorAction SilentlyContinue
@@ -111,8 +112,15 @@ function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
         if ($LASTEXITCODE -eq 0) { $python = $candidate.Source; break }
     }
     if (-not $python) {
-        Write-Warn "agent integrations: Python with tomllib/tomli not found - completion hooks not updated"
-        return
+        $uv = Get-Command uv -ErrorAction SilentlyContinue
+        if ($uv) {
+            $python = $uv.Source
+            $pythonPrefix = @("run", "--no-project", "--with", "tomli", "python")
+        }
+        else {
+            Write-Warn "agent integrations: Python with tomllib/tomli or uv not found - completion hooks not updated"
+            return
+        }
     }
     if (-not (Test-Path $AgentNotifyConfigurator) -or -not (Test-Path $AgentNotifyHook)) {
         Write-Warn "agent integrations: configurator or hook source missing"
@@ -130,7 +138,7 @@ function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     foreach ($root in $CodexLocalSkillDisableRoots) {
         $argsList += @("--codex-disable-root", $root)
     }
-    & $python $AgentNotifyConfigurator @argsList
+    & $python @pythonPrefix $AgentNotifyConfigurator @argsList
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "agent integrations: configuration failed; existing files were preserved"
     }

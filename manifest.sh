@@ -42,7 +42,7 @@ EA_REPOS=(
 #      ~/Documents/agent-skills/coding-mastermind/MANIFEST.md
 #   3. npm install -g @openai/codex@<pin> on EVERY machine (lockstep, next sync/sysupdate)
 # sync.sh/sync.ps1 warn when the installed version drifts from this pin.
-CODEX_PIN="0.144.1"
+CODEX_PIN="0.147.0"
 
 # Symlinks to create: "source|target"
 # Claude loads a whole DIRECTORY of rules, so a dir symlink covers every rule file.
@@ -81,6 +81,43 @@ COMBINED_RULES_TARGETS=(
   "~/.gemini/GEMINI.md"
 )
 
+# Completion-email implementation lives in EA; dotfiles owns the machine-local
+# Claude/Codex/Gemini registrations and the private transport config it generates.
+AGENT_NOTIFY_HOOK="~/Documents/EA/claude-config/global-hooks/agent-notify.py"
+AGENT_NOTIFY_CONFIGURATOR="~/.dotfiles/scripts/configure-agent-integrations.py"
+AGENT_NOTIFY_DEFAULT_TO="mgallo2043@gmail.com"
+AGENT_NOTIFY_FROM_ADDRESS="michaelgallo.va@gmail.com"
+AGENT_NOTIFY_ACCOUNT="mgallo-va"
+
+configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
+    local configurator hook token_file
+    configurator="$(expand "$AGENT_NOTIFY_CONFIGURATOR")"
+    hook="$(expand "$AGENT_NOTIFY_HOOK")"
+    token_file="$(expand "$COURIER_TOKEN_FILE")"
+    if ! command -v python3 >/dev/null 2>&1; then
+        warn "agent integrations: python3 not found - completion hooks not updated"
+        return 1
+    fi
+    if [ ! -f "$configurator" ] || [ ! -f "$hook" ]; then
+        warn "agent integrations: configurator or hook source missing"
+        return 1
+    fi
+    local args=(
+        --home "$HOME"
+        --hook "$hook"
+        --courier-url "$COURIER_REMOTE_URL"
+        --courier-token-file "$token_file"
+        --default-to "$AGENT_NOTIFY_DEFAULT_TO"
+        --from-address "$AGENT_NOTIFY_FROM_ADDRESS"
+        --account "$AGENT_NOTIFY_ACCOUNT"
+    )
+    local root
+    for root in "${CODEX_LOCAL_SKILL_DISABLE_ROOTS[@]}"; do
+        args+=(--codex-disable-root "$(expand "$root")")
+    done
+    python3 "$configurator" "${args[@]}"
+}
+
 # Concatenate all global-rules/*.md into each single-file target. Idempotent;
 # replaces a prior symlink with a generated file. Written to be safe under `set -e`.
 # Relies on expand()/ok()/warn() from the sourcing script (setup.sh / sync.sh).
@@ -100,15 +137,20 @@ regen_combined_agent_rules() {
         expanded="$(expand "$tgt")"
         mkdir -p "$(dirname "$expanded")"
         if [ -L "$expanded" ]; then rm -f "$expanded"; fi
+        if [ -f "$expanded" ] && cmp -s "$tmp" "$expanded"; then
+            chmod 0444 "$expanded"
+            ok "combined-rules: $tgt already current (read-only)"
+            continue
+        fi
         # Diff-guard: these targets are GENERATED from $GLOBAL_RULES_DIR. If a real
         # file is already here and differs from what we're about to write, someone
         # hand-edited the copy (its edits would be silently lost on this sync), so
         # back it up first. Edit the SOURCE rule files, never this generated copy.
-        if [ -f "$expanded" ] && ! cmp -s "$tmp" "$expanded"; then
+        if [ -f "$expanded" ]; then
             cp -p "$expanded" "$expanded.sync-backup" 2>/dev/null || true
             warn "combined-rules: $tgt differed from source; backed up to $tgt.sync-backup before regenerating (edit the global-rules source, not this copy)"
         fi
-        # A prior run left it 0444 (below); re-grant write so cp can overwrite it.
+        # A prior run may have left it 0444; re-grant write before replacement.
         [ -f "$expanded" ] && chmod u+w "$expanded" 2>/dev/null || true
         cp "$tmp" "$expanded"
         # chmod 0444: OS-enforced read-only so an agent's Edit fails fast with EACCES
@@ -192,11 +234,19 @@ NEXUS_REMOTED="true"
 # Linked by sync's regen_agent_skills_links (idempotent; never clobbers real dirs).
 GLOBAL_SKILLS_DIR="~/Documents/EA/claude-config/global-skills"
 
-# ── Project (repo-scoped) skills -> codex/gemini, namespaced ──────────
-# Claude reads each repo's .claude/skills/* project-scoped already. codex/gemini have
-# no project-skill scope, so we link them GLOBALLY, namespaced "<label>-<skill>" to
-# avoid collisions (EA and Wiki BOTH define `refresh`). "label|skills_dir".
-PROJECT_SKILLS=(
+# ── Project skills -> each agent's native source, namespaced globally ────────
+# Claude reads repo-local .claude skills itself. Codex and Gemini have global skill
+# dirs, but SBIC intentionally authors DIFFERENT native implementations for them:
+# Codex consumes .codex, Gemini consumes .claude. The third Codex field is the
+# propagation mode: link for ordinary Claude-compatible sources, copy for Codex-native
+# SBIC sources. Copying makes the global copy a distinct file, so Codex can suppress the
+# repo-local duplicate without canonical-path suppression also hiding the global copy.
+CODEX_PROJECT_SKILLS=(
+  "ea|~/Documents/EA/.claude/skills|link"
+  "wiki|~/Documents/Wiki/.claude/skills|link"
+  "sbic|~/Documents/SBIC/.codex/skills|copy"
+)
+GEMINI_PROJECT_SKILLS=(
   "ea|~/Documents/EA/.claude/skills"
   "wiki|~/Documents/Wiki/.claude/skills"
   "sbic|~/Documents/SBIC/.claude/skills"
@@ -210,6 +260,13 @@ ARCHIVED_PROJECT_SKILLS=()
 PROJECT_SKILLS_TARGETS=(
   "~/.codex/skills"
   "~/.gemini/skills"
+)
+# Codex discovers repo-local .codex and converted .agents skills in addition to the
+# dotfiles-generated global copies. Disable those exact SKILL.md paths in user config so
+# each capability appears once, while leaving every source file untouched in the shared repo.
+CODEX_LOCAL_SKILL_DISABLE_ROOTS=(
+  "~/Documents/SBIC/.codex/skills"
+  "~/Documents/SBIC/.agents/skills"
 )
 
 # ── Claude slash-commands -> codex prompts + gemini TOML ──────────────

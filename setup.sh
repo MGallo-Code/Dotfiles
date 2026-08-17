@@ -639,37 +639,12 @@ if [[ "$MODE" == "--full" ]]; then
 
     # Generate Codex + Gemini single-file rule bundles from global-rules/*
     regen_combined_agent_rules
-
-    # Wire the notify-when-done hook into the per-machine Claude settings.json.
-    # The SCRIPT rides the symlink above; the Stop/Notification REGISTRATION lives
-    # in settings.json, which is machine-local and NOT symlinked, so merge it
-    # idempotently with jq (preserves all existing keys). See global-hooks/README.md.
-    settings="$HOME/.claude/settings.json"
-    hook_cmd="$HOME/.claude/hooks/notify-claude.sh"
-    if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then
-        if jq -e '.hooks.Stop' "$settings" >/dev/null 2>&1; then
-            ok "notify hook already wired in settings.json"
-        else
-            tmp="$(mktemp)"
-            if jq --arg cmd "$hook_cmd" \
-                '.hooks.Stop = [{matcher:"", hooks:[{type:"command", command:$cmd}]}]
-               | .hooks.Notification = [{matcher:"", hooks:[{type:"command", command:$cmd}]}]' \
-                "$settings" > "$tmp" && [ -s "$tmp" ]; then
-                cp "$settings" "$settings.bak"
-                mv "$tmp" "$settings"
-                ok "Wired notify hook into settings.json"
-            else
-                rm -f "$tmp"
-                warn "notify hook: jq merge failed, settings.json left untouched"
-            fi
-        fi
-    else
-        warn "notify hook: no jq or no settings.json - wire manually (see global-hooks/README.md)"
-    fi
+    configure_agent_integrations || warn "agent integrations were not updated"
 
     # Wire PreToolUse guards into settings.json. Same rationale as the notify hook above:
     # scripts ride the global-hooks symlink; registration is machine-local, so merge each
     # specific command idempotently instead of treating any PreToolUse entry as sufficient.
+    settings="$HOME/.claude/settings.json"
     ensure_claude_pretooluse_hook() {
         local hook_cmd="$1" label="$2" tmp
         if command -v jq >/dev/null 2>&1 && [ -f "$settings" ]; then

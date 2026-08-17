@@ -370,7 +370,7 @@ function Link-SkillDirs {
             if ($skill.Name.StartsWith(".")) { continue }   # skip .system etc.
             $link = Join-Path $tgtRoot ($Prefix + $skill.Name)
             if (($tgtRoot -ieq (Join-Path $HOME ".gemini\skills")) -and $Prefix) {
-                Copy-GeminiProjectSkill $skill.FullName $link ($Prefix + $skill.Name)
+                Copy-ProjectSkill $skill.FullName $link ($Prefix + $skill.Name) $true
                 continue
             }
             if (Test-Path $link) {
@@ -392,8 +392,8 @@ function Link-SkillDirs {
     }
 }
 
-function Copy-GeminiProjectSkill {
-    param([string]$Source, [string]$Target, [string]$NamespacedName)
+function Copy-ProjectSkill {
+    param([string]$Source, [string]$Target, [string]$NamespacedName, [bool]$RewriteName)
 
     $marker = Join-Path $Target ".dotfiles-skill-source"
     if (Test-Path $Target) {
@@ -413,7 +413,7 @@ function Copy-GeminiProjectSkill {
     Set-Content -Path $marker -Value $Source -NoNewline
 
     $skillFile = Join-Path $Target "SKILL.md"
-    if (Test-Path $skillFile) {
+    if ($RewriteName -and (Test-Path $skillFile)) {
         $lines = [System.Collections.Generic.List[string]]::new()
         foreach ($line in Get-Content $skillFile) {
             $lines.Add($line)
@@ -432,9 +432,8 @@ function Copy-GeminiProjectSkill {
     Write-Ok "skills: materialized $NamespacedName -> $(Split-Path $Target -Parent | Split-Path -Leaf)"
 }
 
-# Prune skill links whose source no longer exists (mirror of sh clean_stale_skill_symlinks).
-# ONLY removes reparse points (junctions/symlinks) whose target is gone - a real directory
-# (materialized gemini project skill, or a user skill) is never touched. Idempotent.
+# Prune generated links and materialized copies whose recorded source no longer exists.
+# User-authored real directories have no marker and are never touched. Idempotent.
 # (parity-checked: scripts/ci/check-parity.py)
 function Clean-StaleSkillSymlinks {
     $targets = @($AgentSkillsTargets + $ProjectSkillsTargets) | Select-Object -Unique
@@ -448,17 +447,41 @@ function Clean-StaleSkillSymlinks {
                     Write-Ok "skills: pruned stale link $($item.Name) (source archived/removed)"
                 }
             }
+            elseif (Test-Path (Join-Path $item.FullName ".dotfiles-skill-source")) {
+                $source = (Get-Content (Join-Path $item.FullName ".dotfiles-skill-source") -Raw).Trim()
+                if (-not $source -or -not (Test-Path $source)) {
+                    Remove-Item $item.FullName -Recurse -Force
+                    Write-Ok "skills: pruned stale materialized skill $($item.Name) (source archived/removed)"
+                }
+            }
         }
     }
 }
 
-# vendor + custom-global skills -> all 3 agents (un-namespaced); project (repo-scoped)
-# skills -> codex/gemini only, namespaced <label>- (EA and Wiki both define `refresh`).
+# Vendor/global skills go to all agents. Project skills come from the native source
+# declared for Codex or Gemini; Codex-native SBIC skills are distinct materialized copies.
 function Update-AgentSkillsLinks {
     Link-SkillDirs (Join-Path $AgentSkillsDir "skills") "" $AgentSkillsTargets
     Link-SkillDirs $GlobalSkillsDir "" $AgentSkillsTargets
-    foreach ($ps in $ProjectSkills) {
-        Link-SkillDirs $ps.Dir "$($ps.Label)-" $ProjectSkillsTargets
+    $codexTarget = Join-Path $HOME ".codex\skills"
+    foreach ($ps in $CodexProjectSkills) {
+        if ($ps.Mode -eq "copy") {
+            if (-not (Test-Path $ps.Dir)) {
+                Write-Warn "skills: no source dir $($ps.Dir) - skipping"
+                continue
+            }
+            foreach ($skill in (Get-ChildItem -Path $ps.Dir -Directory)) {
+                if ($skill.Name.StartsWith(".")) { continue }
+                Copy-ProjectSkill $skill.FullName (Join-Path $codexTarget "$($ps.Label)-$($skill.Name)") "$($ps.Label)-$($skill.Name)" $false
+            }
+        }
+        else {
+            Link-SkillDirs $ps.Dir "$($ps.Label)-" @($codexTarget)
+        }
+    }
+    $geminiTarget = Join-Path $HOME ".gemini\skills"
+    foreach ($ps in $GeminiProjectSkills) {
+        Link-SkillDirs $ps.Dir "$($ps.Label)-" @($geminiTarget)
     }
     Clean-StaleSkillSymlinks   # prune links whose source was removed/archived (idempotent)
 }
@@ -641,6 +664,11 @@ if ($AgentSkillsDir) {
     Update-AgentSkillsLinks   # ensure links exist even when upstream didn't move
 }
 
+# Routine sync repairs the generated instruction bundles and every agent's completion
+# hook registration before the live machine gate evaluates them.
+Regen-CombinedAgentRules
+Set-AgentIntegrations
+
 # ── Regenerate cross-agent COMMANDS + mirror Claude ALLOWLIST ─────────
 # Shared python generators (same scripts the sh side calls) - one source of truth, no
 # PowerShell duplication of the markdown/TOML/JSON transforms. (parity-checked.)
@@ -661,6 +689,8 @@ if ($pyCmd) {
     # fail the run at the end. Guarded: absent target dirs (fresh machine) are skipped in the check.
     & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-skill-targets.py") --machine
     if ($LASTEXITCODE -ne 0) { Write-Err "check-skill-targets --machine: skill links incomplete/dangling/colliding (above) - run a full sync; if it persists, investigate"; $SkillTargetFail = $true }
+    & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-agent-integrations.py") --machine
+    if ($LASTEXITCODE -ne 0) { Write-Warn "agent integration machine check reported an issue" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-worktrees.py")
 }
 else {

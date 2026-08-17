@@ -340,7 +340,7 @@ link_skill_dirs() {
             case "$sname" in .*) continue ;; esac   # skip .system etc.
             link="$tgt_root/${prefix}${sname}"
             if [[ "$tgt_root" == "$HOME/.gemini/skills" && -n "$prefix" ]]; then
-                materialize_gemini_project_skill "${skill%/}" "$link" "${prefix}${sname}"
+                materialize_project_skill "${skill%/}" "$link" "${prefix}${sname}" true
                 continue
             fi
             if [ -L "$link" ]; then
@@ -354,11 +354,11 @@ link_skill_dirs() {
     done
 }
 
-materialize_gemini_project_skill() {
+materialize_project_skill() {
     # marker MUST be a SEPARATE `local`: referencing $dst in the same `local` that declares it
     # expands to UNBOUND under `set -u` (bash evaluates the RHS before the just-declared local
     # is visible), which crashed sync mid-regen and aborted everything after it. (fix 2026-06-18)
-    local src="$1" dst="$2" namespaced="$3"
+    local src="$1" dst="$2" namespaced="$3" rewrite_name="$4"
     local marker="$dst/.dotfiles-skill-source"
     if [ -L "$dst" ]; then
         rm -f "$dst"
@@ -373,7 +373,7 @@ materialize_gemini_project_skill() {
     mkdir -p "$(dirname "$dst")"
     cp -R "$src" "$dst"
     printf '%s\n' "$src" > "$marker"
-    if [ -f "$dst/SKILL.md" ] && command -v python3 >/dev/null 2>&1; then
+    if [ "$rewrite_name" = true ] && [ -f "$dst/SKILL.md" ] && command -v python3 >/dev/null 2>&1; then
         python3 - "$dst/SKILL.md" "$namespaced" <<'PY'
 from pathlib import Path
 import sys
@@ -394,34 +394,58 @@ PY
     ok "skills: materialized ${namespaced} -> $(basename "$(dirname "$dst")")"
 }
 
-# Prune skill links whose source no longer exists (e.g. the it-worker-* links left after
-# IT-Worker's skills were archived 2026-06-18). ONLY removes dangling SYMLINKS - a real
-# directory (a materialized gemini project skill, or a user-authored skill) fails the -L
-# test and is never touched. Idempotent: a second run finds nothing. The sync-time machine
-# check (below) then asserts no dangling generated link survives. See INVARIANTS.md.
+# Prune generated links or materialized copies whose recorded source is gone. Real
+# user-authored directories have no .dotfiles-skill-source marker and are never touched.
 clean_stale_skill_symlinks() {
-    local tgt_root link
+    local tgt_root link marker source
     for tgt_root in "${AGENT_SKILLS_TARGETS[@]}" "${PROJECT_SKILLS_TARGETS[@]}"; do
         tgt_root="$(expand "$tgt_root")"
         [ -d "$tgt_root" ] || continue
         for link in "$tgt_root"/*; do
             if [ -L "$link" ] && [ ! -e "$link" ]; then
                 rm -f "$link" && ok "skills: pruned stale link $(basename "$link") (source archived/removed)"
+            elif [ -d "$link" ] && [ -f "$link/.dotfiles-skill-source" ]; then
+                marker="$link/.dotfiles-skill-source"
+                source="$(cat "$marker" 2>/dev/null || true)"
+                if [ -z "$source" ] || [ ! -d "$source" ]; then
+                    rm -rf "$link" && ok "skills: pruned stale materialized skill $(basename "$link") (source archived/removed)"
+                fi
             fi
         done
     done
 }
 
-# Wire all skills into the agents: vendor + custom-global -> all 3 (claude/codex/gemini)
-# un-namespaced; project (repo-scoped) skills -> codex/gemini only, namespaced <label>-
-# (EA and Wiki both define `refresh`, so the namespace avoids a collision).
+# Wire vendor/global skills into all agents, then project skills from each agent's
+# declared native source. Codex-native SBIC skills are materialized so suppressing the
+# repo-local duplicate cannot also hide a symlink that resolves to the same file.
 regen_agent_skills_links() {
     link_skill_dirs "$AGENT_SKILLS_DIR/skills" "" "${AGENT_SKILLS_TARGETS[@]}"
     link_skill_dirs "$GLOBAL_SKILLS_DIR" "" "${AGENT_SKILLS_TARGETS[@]}"
-    local entry label dir
-    for entry in "${PROJECT_SKILLS[@]}"; do
-        label="${entry%%|*}"; dir="${entry#*|}"
-        link_skill_dirs "$dir" "${label}-" "${PROJECT_SKILLS_TARGETS[@]}"
+    local entry label rest dir mode src skill sname target
+    target="$(expand "~/.codex/skills")"
+    for entry in "${CODEX_PROJECT_SKILLS[@]}"; do
+        label="${entry%%|*}"
+        rest="${entry#*|}"
+        dir="${rest%%|*}"
+        mode="${rest##*|}"
+        if [ "$mode" = copy ]; then
+            src="$(expand "$dir")"
+            [ -d "$src" ] || { warn "skills: no source dir $src - skipping"; continue; }
+            for skill in "$src"/*/; do
+                [ -d "$skill" ] || continue
+                sname="$(basename "$skill")"
+                case "$sname" in .*) continue ;; esac
+                materialize_project_skill "${skill%/}" "$target/${label}-${sname}" "${label}-${sname}" false
+            done
+        else
+            link_skill_dirs "$dir" "${label}-" "$target"
+        fi
+    done
+    target="$(expand "~/.gemini/skills")"
+    for entry in "${GEMINI_PROJECT_SKILLS[@]}"; do
+        label="${entry%%|*}"
+        dir="${entry#*|}"
+        link_skill_dirs "$dir" "${label}-" "$target"
     done
     clean_stale_skill_symlinks   # prune links whose source was removed/archived (idempotent)
 }
@@ -616,6 +640,7 @@ done
 
 # Regenerate Codex + Gemini single-file rule bundles from global-rules/*
 regen_combined_agent_rules
+configure_agent_integrations || warn "agent integrations were not updated"
 
 # Regenerate cross-agent COMMANDS (codex prompts + gemini TOML) and mirror the Claude
 # permission ALLOWLIST into codex/gemini. Both are shared python generators (one source
@@ -634,6 +659,7 @@ if command -v python3 >/dev/null 2>&1; then
     # tree is genuinely wrong, not mid-sync: flag now, fail the run at the end (not warn-and-forget).
     # Guarded: absent target dirs (fresh machine) are skipped inside the check, never a false-fail.
     python3 "$DOTFILES_DIR/scripts/ci/check-skill-targets.py" --machine || { err "check-skill-targets --machine: skill links incomplete/dangling/colliding (above) - run a full sync; if it persists, investigate"; SKILL_TARGET_FAIL=1; }
+    python3 "$DOTFILES_DIR/scripts/ci/check-agent-integrations.py" --machine || warn "agent integration machine check reported an issue"
     python3 "$DOTFILES_DIR/scripts/ci/check-worktrees.py" || true
 else
     warn "python3 not found - skipping cross-agent command + allowlist generation"

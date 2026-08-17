@@ -70,6 +70,17 @@ jobs:
       - name: check-skill-targets
         run: python scripts/ci/check-skill-targets.py
 
+  agent-integrations:
+    # Completion notifications stay explicit, per-session, cross-agent, and idempotent.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-agent-integrations
+        run: python scripts/ci/check-agent-integrations.py
+
   bash-local-selfref:
     # INV-9: no `local`/`declare` references a variable assigned earlier in the SAME statement
     # (unbound under `set -u` - the class of bug that crashed sync mid-regen 2026-06-18).

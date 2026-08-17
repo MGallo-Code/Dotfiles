@@ -296,9 +296,24 @@ FEATURES = [
         "ps1": ("sync.ps1", r"GlobalSkillsDir|Link-SkillDirs"),
     },
     {
-        "name": "project skills namespaced into codex/gemini",
-        "sh": ("sync.sh", r"PROJECT_SKILLS"),
-        "ps1": ("sync.ps1", r"ProjectSkills"),
+        "name": "project skills use target-specific native sources",
+        "sh": ("manifest.sh", r"CODEX_PROJECT_SKILLS[\s\S]*GEMINI_PROJECT_SKILLS"),
+        "ps1": ("manifest.ps1", r"CodexProjectSkills[\s\S]*GeminiProjectSkills"),
+    },
+    {
+        "name": "cross-agent completion notification wired during setup",
+        "sh": ("setup.sh", r"configure_agent_integrations"),
+        "ps1": ("setup.ps1", r"Set-AgentIntegrations"),
+    },
+    {
+        "name": "cross-agent completion notification repaired during sync",
+        "sh": ("sync.sh", r"configure_agent_integrations"),
+        "ps1": ("sync.ps1", r"Set-AgentIntegrations"),
+    },
+    {
+        "name": "combined global rules regenerated during routine sync",
+        "sh": ("sync.sh", r"regen_combined_agent_rules"),
+        "ps1": ("sync.ps1", r"Regen-CombinedAgentRules"),
     },
     {
         # Stale generated skill links (e.g. it-worker-* after the source was archived) get
@@ -393,11 +408,6 @@ FEATURES = [
 ]
 
 PARITY_EXEMPT = [
-    {
-        "name": "notify-when-done hook registration",
-        "reason": "Claude Code notify hook is macOS-only by design (see "
-                  "global-rules/notify-when-done.md: 'Claude Code on macOS only')."
-    },
     {
         # remote-hubs Phase D / INV-10: the fresh-client abort-free gate exercises bash setup/sync in a
         # Linux container. The behavior IS mirrored on Windows (setup.ps1 client wiring), but a

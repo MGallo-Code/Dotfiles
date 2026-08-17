@@ -104,10 +104,15 @@ function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     $python = $null
     foreach ($name in @("python3", "python")) {
         $candidate = Get-Command $name -ErrorAction SilentlyContinue
-        if ($candidate) { $python = $candidate.Source; break }
+        if (-not $candidate) { continue }
+        & $candidate.Source -c "import tomllib" 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            & $candidate.Source -c "import tomli" 2>$null
+        }
+        if ($LASTEXITCODE -eq 0) { $python = $candidate.Source; break }
     }
     if (-not $python) {
-        Write-Warn "agent integrations: python not found - completion hooks not updated"
+        Write-Warn "agent integrations: Python with tomllib/tomli not found - completion hooks not updated"
         return
     }
     if (-not (Test-Path $AgentNotifyConfigurator) -or -not (Test-Path $AgentNotifyHook)) {

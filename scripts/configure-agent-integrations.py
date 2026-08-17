@@ -162,8 +162,9 @@ def _toml_module():
 
 
 def _toml_loads(text: str, path: Path) -> dict[str, Any]:
+    module = _toml_module()
     try:
-        value = _toml_module().loads(text)
+        value = module.loads(text)
     except Exception as exc:
         raise ConfigError(f"malformed TOML: {path}") from exc
     if not isinstance(value, dict):

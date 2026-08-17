@@ -90,12 +90,21 @@ AGENT_NOTIFY_FROM_ADDRESS="michaelgallo.va@gmail.com"
 AGENT_NOTIFY_ACCOUNT="mgallo-va"
 
 configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
-    local configurator hook token_file
+    local configurator hook token_file python_cmd candidate
     configurator="$(expand "$AGENT_NOTIFY_CONFIGURATOR")"
     hook="$(expand "$AGENT_NOTIFY_HOOK")"
     token_file="$(expand "$COURIER_TOKEN_FILE")"
-    if ! command -v python3 >/dev/null 2>&1; then
-        warn "agent integrations: python3 not found - completion hooks not updated"
+    python_cmd=""
+    for candidate in python3 python; do
+        command -v "$candidate" >/dev/null 2>&1 || continue
+        if "$candidate" -c 'import tomllib' >/dev/null 2>&1 || \
+           "$candidate" -c 'import tomli' >/dev/null 2>&1; then
+            python_cmd="$candidate"
+            break
+        fi
+    done
+    if [ -z "$python_cmd" ]; then
+        warn "agent integrations: Python with tomllib/tomli not found - completion hooks not updated"
         return 1
     fi
     if [ ! -f "$configurator" ] || [ ! -f "$hook" ]; then
@@ -115,7 +124,7 @@ configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     for root in "${CODEX_LOCAL_SKILL_DISABLE_ROOTS[@]}"; do
         args+=(--codex-disable-root "$(expand "$root")")
     done
-    python3 "$configurator" "${args[@]}"
+    "$python_cmd" "$configurator" "${args[@]}"
 }
 
 # Concatenate all global-rules/*.md into each single-file target. Idempotent;

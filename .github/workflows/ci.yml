@@ -93,6 +93,31 @@ jobs:
       - name: check-local-selfref
         run: python scripts/ci/check-local-selfref.py
 
+  workspace-access:
+    # INV-14: named launchers are cwd-safe, explicit, fail-loud, and privacy-diagnosable.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Zsh behavior-test dependency
+        run: sudo apt-get update && sudo apt-get install -y zsh
+      - name: check-workspace-access and load-bearing revert-test
+        run: python scripts/ci/check-workspace-access.py --revert-test
+
+  workspace-access-windows:
+    # INV-14 PowerShell half: execute the trusted-launch behavior on Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-workspace-access PowerShell behavior
+        shell: pwsh
+        run: ./scripts/ci/check-workspace-access.ps1
+
   auto-git-safety:
     # INV-12: auto-git never creates commits, never touches dirty work, and ships triggers dormant.
     runs-on: ubuntu-latest

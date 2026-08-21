@@ -53,3 +53,8 @@ fi
 if [ -f "$ROOT/scripts/ci/check-forge-wiring.py" ]; then
   "$PY" "$ROOT/scripts/ci/check-forge-wiring.py"
 fi
+
+# INV-14: trusted workspace launchers stay cwd-safe, explicit, and diagnosable.
+if [ -f "$ROOT/scripts/ci/check-workspace-access.py" ]; then
+  "$PY" "$ROOT/scripts/ci/check-workspace-access.py"
+fi

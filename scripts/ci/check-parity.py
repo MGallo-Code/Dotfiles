@@ -360,13 +360,13 @@ FEATURES = [
     },
     {
         "name": "agent defaults configured (Codex xhigh user approvals + full-access permissions + Gemini auto_edit)",
-        "sh": ("setup.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|danger-full-access"),
-        "ps1": ("setup.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|danger-full-access"),
+        "sh": ("setup.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|sandbox_mode|danger-full-access"),
+        "ps1": ("setup.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|sandbox_mode|danger-full-access"),
     },
     {
         "name": "agent defaults repaired during sync (Codex full-access permissions)",
-        "sh": ("sync.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|danger-full-access"),
-        "ps1": ("sync.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|default_permissions|danger-full-access"),
+        "sh": ("sync.sh", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|sandbox_mode|danger-full-access"),
+        "ps1": ("sync.ps1", r"AGENT_DEFAULTS_CONFIG|defaultApprovalMode|approvals_reviewer|sandbox_mode|danger-full-access"),
     },
     {
         "name": "Gemini cross-check setup repaired during setup",

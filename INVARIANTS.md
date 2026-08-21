@@ -34,6 +34,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-11 | Forge work cannot be claimed ready or pushed/PR'd from memory alone: tracker state lives in a shared writable artifact dir, readiness is checked by `check-state.py`, Claude/Codex action hooks pause commit/push/PR commands when the active tracker is incomplete/blocked/invalid, and PRs expose Forge status visibly. | `~/Documents/Agent-Forge/<slug>/tracker.json` + `scripts/forge/check-state.py` + `forge-guard.sh` registered by setup/sync for Claude/Codex + `.github/PULL_REQUEST_TEMPLATE.md`. | `scripts/ci/check-forge-wiring.py` (pre-commit + CI repo wiring; `--machine` during sync verifies generated commands + live Claude/Codex hook registration) plus `check-state.py` fixture checks during development. | local-green (pending merge) | 2 |
 | INV-12 | Auto-git only moves already-committed document history: it pulls clean-behind repos and pushes clean-ahead default-branch repos, while dirty/diverged/in-progress repos are skipped. It never stages, commits, stashes, calls Claude, uses autostash, aborts a rebase, or auto-resolves user work. Manual `sync` and auto-git are serialized by the same atomically published lock. | `auto-git.{sh,ps1}` per-repo policy + `scripts/git-sync-lock.{sh,ps1}` shared by manual sync and auto-git. | `scripts/ci/check-auto-git-safety.sh` on Ubuntu + `scripts/ci/check-auto-git-safety.ps1` on Windows (CI: forbidden-operation scan, Bash and PowerShell bare-repo fixtures for dirty/behind/ahead/diverged/in-progress/git-lock/status-fail/default-ref/remote-ref-race/lock/default-disabled trigger behavior, plus revert-test). | local-green (pending CI) | 1 |
 | INV-13 | Completion email is strictly a per-session, per-turn opt-in across Claude, Codex, and Gemini: ordinary events never email or log payloads; only the native completion event may consume an arm; one acknowledged send disarms it; a failed send retains only the explicit request for retry; Notification/action-needed events never email; prompt, response, cwd, and session id never enter the email. Setup and routine sync converge the same behavior on macOS/Linux and Windows without overwriting unrelated hooks; because Codex exposes one notify command, an existing Codex Desktop callback is preserved as an argument-safe passthrough. | EA `agent-notify.py` state machine + dotfiles `configure-agent-integrations.py`, called through the shared manifest functions by all four setup/sync entrypoints. | `scripts/ci/check-agent-integrations.py` (hermetic migration/idempotence/fail-closed fixtures in pre-commit + CI; `--machine` live three-agent wiring + stubbed state transitions during sync) | local-green (pending merge) | 1 |
+| INV-14 | A named Michael Workspace agent launcher never silently continues with the wrong access context: only the fixed trusted roots receive autonomous Claude/Codex modes; workspace cwd is child-scoped; missing, stale, denied, redirected, or read-only roots fail loudly; the parent recovers to HOME; and automatic reports distinguish child sandbox, TCC, cwd/File Provider, read-only mount, Unix permission, and Zsh history/prompt evidence without storing private content or raw paths. | `shell/ea.zsh` + `shell/windows/ea.ps1`, `configure-{claude,codex}-defaults.py`, and `workspace-access-diagnostics.py`; all four setup/sync entrypoints converge user defaults. | `scripts/ci/check-workspace-access.py` + `.ps1` (pre-commit + Linux/Windows CI: static wiring, config preservation/idempotence/fail-closed fixtures, real Zsh/PowerShell launcher behavior, diagnostic classifier/privacy probes, plus revert-test) | local-green (Windows CI pending) | 3 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -323,3 +324,26 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   retain-on-failure, retry, Gemini arm handoff, and unarmed no-op with a stub sender.
 - **Escape hatch**: a pre-existing non-dotfiles Codex `notify` program is left untouched and the
   configurator fails closed. A human must decide how to compose the two programs.
+
+### INV-14 - trusted workspace launches are cwd-safe, explicit, and diagnosable
+- **Surfaces**: the Zsh and PowerShell `ea`/`wiki`/`sbic`/`sysupdate` launchers; Claude and Codex
+  user defaults converged by all four setup/sync entrypoints; macOS responsible-process TCC for
+  Terminal, Ghostty, Claude CLI/Desktop, and Codex CLI/Desktop; Zsh prompt and history behavior.
+- **Recurrence (recur=3)**: historical Claude `Operation not permitted` denials preceded its
+  refreshed Full Disk Access grant; a Codex task persisted with an inherited read-only sandbox
+  despite autonomous user config; and the ordinary interactive shell has separately lost cwd/file
+  access after child agents exited until the terminal process was restarted.
+- **Privacy boundary**: reports contain only known bundle identifiers, permission values, coarse
+  process labels, errno names, mount flags, fixed root labels, and a truncated path hash. Raw paths,
+  unified-log lines, environment values, history, commands, prompts, responses, and transcripts are
+  never stored. On POSIX the state directory is mode 0700 and reports are mode 0600; Windows inherits
+  the user-profile ACL. `latest.json` is published atomically, and retention is bounded.
+- **Gate design**: `check-workspace-access.py` and its PowerShell companion launch the real Zsh and
+  PowerShell functions with stub agent CLIs and assert child cwd, parent restoration, exact
+  permission flags, exit-code preservation, fail-loud missing/untrusted/redirected roots and scope
+  overrides, and HOME recovery when a launch or caller root disappears. They also exercise the real
+  settings writers and diagnostic self-test, check cross-platform/config/docs/hook/CI wiring, and
+  prove a weakened Codex launch is rejected in `--revert-test` mode.
+- **Escape hatch**: use a raw agent CLI when intentionally selecting a non-autonomous policy or an
+  unnamed root. Desktop host envelopes remain outside a child CLI's authority; diagnose and
+  escalate them without editing opaque task history or signed application bundles.

@@ -111,82 +111,19 @@ function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     $codexDir = Join-Path $HOME ".codex"
     $codexConfig = Join-Path $codexDir "config.toml"
     New-Item -ItemType Directory -Path $codexDir -Force | Out-Null
-    $content = ""
-    if (Test-Path $codexConfig) {
-        $content = Get-Content $codexConfig -Raw
-    }
-
-    function Set-CodexTomlKey {
-        param([string]$Content, [string]$Key, [string]$Value)
-        $line = "$Key = `"$Value`""
-        $keyPattern = '(?m)^' + [regex]::Escape($Key) + '\s*=\s*"[^"]*"\r?\n?'
-        $Content = [regex]::Replace($Content, $keyPattern, "")
-        $tableMatch = [regex]::Match($Content, '(?m)^\s*\[')
-        if ($tableMatch.Success) {
-            $before = $Content.Substring(0, $tableMatch.Index).TrimEnd()
-            $after = $Content.Substring($tableMatch.Index)
-            if ($before) {
-                return $before + "`n" + $line + "`n`n" + $after
-            }
-            return $line + "`n`n" + $after
-        }
-        if ($Content -and -not $Content.EndsWith("`n")) { $Content += "`n" }
-        return $Content + $line + "`n"
-    }
-
-    function Set-CodexManagedBlock {
-        param([string]$Content)
-        $markerStart = "# dotfiles: Codex Michael workspace permission profile"
-        $markerEnd = "# dotfiles: end Codex Michael workspace permission profile"
-        $block = @"
-$markerStart
-[permissions.michael_workspace]
-description = "Michael's local workspace, dotfiles, and agent config"
-
-[permissions.michael_workspace.filesystem]
-":minimal" = "read"
-
-[permissions.michael_workspace.filesystem.":workspace_roots"]
-"." = "write"
-
-[permissions.michael_workspace.workspace_roots]
-"~/Documents" = true
-"~/Downloads" = true
-"~/.dotfiles" = true
-"~/.codex" = true
-"~/.claude" = true
-"~/.gemini" = true
-"~/.config/nvim" = true
-
-[permissions.michael_workspace.network]
-enabled = true
-allow_local_binding = true
-$markerEnd
-"@
-        # Strip EVERY michael_workspace table group (marked OR unmarked) + our marker
-        # comments, then append exactly one canonical block. An unmarked block (e.g.
-        # one a machine bootstrap seeded) used to slip past the marker-gated removal
-        # and produce a duplicate-key TOML parse error; this self-heals that.
-        $Content = [regex]::Replace($Content, '(?m)^# dotfiles: (?:end )?Codex Michael workspace permission profile[^\r\n]*\r?\n', '')
-        $Content = [regex]::Replace($Content, '(?m)^\[permissions\.michael_workspace(?:\.[^\]]*)?\][^\r\n]*\r?\n(?:(?!^\[)[^\r\n]*\r?\n?)*', '')
-        $Content = [regex]::Replace($Content, '(\r?\n){3,}', "`n`n")
-        if ($Content -and -not $Content.EndsWith("`n")) { $Content += "`n" }
-        return $Content + "`n" + $block + "`n"
-    }
-
-    $content = Set-CodexTomlKey $content "model_reasoning_effort" "xhigh"
-    $content = Set-CodexTomlKey $content "approval_policy" "never"
-    $content = Set-CodexTomlKey $content "approvals_reviewer" "user"
-    $content = Set-CodexTomlKey $content "default_permissions" ":danger-full-access"
-    $content = Set-CodexManagedBlock $content
-    Set-Content -Path $codexConfig -Value $content -NoNewline
+    $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
+    if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+    if (-not $pythonCmd) { throw "Agent defaults require Python; refusing partial configuration" }
+    & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-codex-defaults.py") --home $HOME | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Codex settings are unsupported or inaccessible; defaults were not changed" }
     Write-Ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
 
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
     # Claude global-hooks symlink and run via bash on Windows. Trust once via Codex /hooks.
     function Ensure-CodexPreToolUseHook {
         param([string]$Marker, [string]$Command, [string]$Label)
-        $codexExisting = if (Test-Path $codexConfig) { Get-Content $codexConfig -Raw } else { "" }
+        $utf8 = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false
+        $codexExisting = if (Test-Path $codexConfig) { [IO.File]::ReadAllText($codexConfig, $utf8) } else { "" }
         # Key on the COMMAND path, not the marker comment: Codex strips the comment on rewrite
         # (block/command survive), so keying on the marker re-appended a duplicate block each sync.
         if ($codexExisting -notlike "*$Command*") {
@@ -201,7 +138,7 @@ matcher = "^Bash`$"
   command = '$Command'
   timeout = 30
 "@
-        Add-Content -Path $codexConfig -Value $codexGuardBlock
+        [IO.File]::AppendAllText($codexConfig, $codexGuardBlock + "`n", $utf8)
             Write-Ok "Codex: wired $Label (run /hooks once to trust it)"
         } else {
             Write-Ok "Codex $Label already wired"
@@ -209,6 +146,10 @@ matcher = "^Bash`$"
     }
     Ensure-CodexPreToolUseHook "# dotfiles: flat-PR stacked-push guard" "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
     Ensure-CodexPreToolUseHook "# dotfiles: Forge action guard" "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
+
+    & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-claude-defaults.py") --home $HOME | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Claude settings are malformed or inaccessible; defaults were not changed" }
+    Write-Ok "Claude: autonomous user default set (bypassPermissions)"
 
     $geminiDir = Join-Path $HOME ".gemini"
     $geminiSettings = Join-Path $geminiDir "settings.json"

@@ -77,71 +77,16 @@ fi
 ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
     local codex_config="$HOME/.codex/config.toml"
     mkdir -p "$HOME/.codex"
-    touch "$codex_config"
 
-    set_codex_toml_key() {
-        local key="$1"
-        local value="$2"
-        CODEX_TOML_KEY="$key" CODEX_TOML_VALUE="$value" perl -0pi -e '
-            my $key = $ENV{"CODEX_TOML_KEY"};
-            my $value = $ENV{"CODEX_TOML_VALUE"};
-            my $line = qq{$key = "$value"};
-            s/^\Q$key\E\s*=\s*"[^"]*"\r?\n?//mg;
-            if (s/(^|\n)(\s*\[)/$1$line\n\n$2/s) {
-                next;
-            }
-            $_ .= "\n" if length($_) && $_ !~ /\n\z/;
-            $_ .= "$line\n";
-        ' "$codex_config"
-    }
+    if ! command -v python3 >/dev/null 2>&1; then
+        err "Agent defaults require python3; refusing partial configuration"
+        return 1
+    fi
+    if ! python3 "$DOTFILES_DIR/scripts/configure-codex-defaults.py" --home "$HOME" >/dev/null; then
+        err "Codex settings are unsupported or inaccessible; defaults were not changed"
+        return 1
+    fi
 
-    ensure_codex_permission_profile() {
-        local block
-
-        block=$(cat <<'EOF'
-# dotfiles: Codex Michael workspace permission profile
-[permissions.michael_workspace]
-description = "Michael's local workspace, dotfiles, and agent config"
-
-[permissions.michael_workspace.filesystem]
-":minimal" = "read"
-
-[permissions.michael_workspace.filesystem.":workspace_roots"]
-"." = "write"
-
-[permissions.michael_workspace.workspace_roots]
-"~/Documents" = true
-"~/Downloads" = true
-"~/.dotfiles" = true
-"~/.codex" = true
-"~/.claude" = true
-"~/.gemini" = true
-"~/.config/nvim" = true
-
-[permissions.michael_workspace.network]
-enabled = true
-allow_local_binding = true
-# dotfiles: end Codex Michael workspace permission profile
-EOF
-)
-
-        # Strip EVERY michael_workspace table group (marked OR unmarked) + our marker
-        # comments, then append exactly one canonical block. An unmarked block (e.g.
-        # one a machine bootstrap seeded) used to slip past the marker-gated removal
-        # and produce a duplicate-key TOML parse error; this self-heals that.
-        perl -0pi -e '
-            s/^# dotfiles: (?:end )?Codex Michael workspace permission profile[^\n]*\n//mg;
-            s/^\[permissions\.michael_workspace(?:\.[^\]]*)?\][^\n]*\n(?:(?!^\[)[^\n]*\n?)*//mg;
-            s/\n{3,}/\n\n/g;
-        ' "$codex_config"
-        printf '\n%s\n' "$block" >> "$codex_config"
-    }
-
-    set_codex_toml_key model_reasoning_effort xhigh
-    set_codex_toml_key approval_policy never
-    set_codex_toml_key approvals_reviewer user
-    set_codex_toml_key default_permissions :danger-full-access
-    ensure_codex_permission_profile
     ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
 
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
@@ -169,6 +114,12 @@ EOF
     }
     ensure_codex_pretooluse_hook "# dotfiles: flat-PR stacked-push guard" "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
     ensure_codex_pretooluse_hook "# dotfiles: Forge action guard" "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
+
+    if ! python3 "$DOTFILES_DIR/scripts/configure-claude-defaults.py" --home "$HOME" >/dev/null; then
+        err "Claude settings are malformed or inaccessible; defaults were not changed"
+        return 1
+    fi
+    ok "Claude: autonomous user default set (bypassPermissions)"
 
     local gemini_settings="$HOME/.gemini/settings.json"
     mkdir -p "$HOME/.gemini"

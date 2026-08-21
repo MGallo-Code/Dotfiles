@@ -124,3 +124,4 @@ try {
     if (Test-Path -LiteralPath $Fixture) { Remove-Item -LiteralPath $Fixture -Recurse -Force }
     Remove-Item Function:\claude, Function:\codex -ErrorAction SilentlyContinue
 }
+$global:LASTEXITCODE = 0

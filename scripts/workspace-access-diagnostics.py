@@ -101,6 +101,7 @@ def probe_child(
             probe_path = path / f".workspace-access-probe-{token}"
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
             flags |= getattr(os, "O_NOFOLLOW", 0)
+            flags |= getattr(os, "O_BINARY", 0)
             descriptor = os.open(probe_path, flags, 0o600)
             try:
                 payload = b"workspace-access-probe\n"
@@ -664,8 +665,13 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory(prefix="workspace-access-selftest-") as raw:
         root = Path(raw)
         probe = bounded_probe(root, "full", 2)
-        if not probe.get("ok") or any(root.glob(".workspace-access-probe-*")):
-            print("self-test: reversible write probe failed or left residue", file=sys.stderr)
+        residue = list(root.glob(".workspace-access-probe-*"))
+        if not probe.get("ok") or residue:
+            print(
+                "self-test: reversible write probe failed or left residue: "
+                f"probe={probe} residue_count={len(residue)}",
+                file=sys.stderr,
+            )
             return 1
         timed_out = bounded_probe(root, "enumerate", 0.02, test_delay=0.2)
         if not timed_out.get("timed_out") or timed_out.get("errno") != "ETIMEDOUT":

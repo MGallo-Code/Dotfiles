@@ -35,6 +35,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-12 | Auto-git only moves already-committed document history: it pulls clean-behind repos and pushes clean-ahead default-branch repos, while dirty/diverged/in-progress repos are skipped. It never stages, commits, stashes, calls Claude, uses autostash, aborts a rebase, or auto-resolves user work. Manual `sync` and auto-git are serialized by the same atomically published lock. | `auto-git.{sh,ps1}` per-repo policy + `scripts/git-sync-lock.{sh,ps1}` shared by manual sync and auto-git. | `scripts/ci/check-auto-git-safety.sh` on Ubuntu + `scripts/ci/check-auto-git-safety.ps1` on Windows (CI: forbidden-operation scan, Bash and PowerShell bare-repo fixtures for dirty/behind/ahead/diverged/in-progress/git-lock/status-fail/default-ref/remote-ref-race/lock/default-disabled trigger behavior, plus revert-test). | local-green (pending CI) | 1 |
 | INV-13 | Completion email is strictly a per-session, per-turn opt-in across Claude, Codex, and Gemini: ordinary events never email or log payloads; only the native completion event may consume an arm; one acknowledged send disarms it; a failed send retains only the explicit request for retry; Notification/action-needed events never email; prompt, response, cwd, and session id never enter the email. Setup and routine sync converge the same behavior on macOS/Linux and Windows without overwriting unrelated hooks; because Codex exposes one notify command, an existing Codex Desktop callback is preserved as an argument-safe passthrough. | EA `agent-notify.py` state machine + dotfiles `configure-agent-integrations.py`, called through the shared manifest functions by all four setup/sync entrypoints. | `scripts/ci/check-agent-integrations.py` (hermetic migration/idempotence/fail-closed fixtures in pre-commit + CI; `--machine` live three-agent wiring + stubbed state transitions during sync) | local-green (pending merge) | 1 |
 | INV-14 | A named Michael Workspace agent launcher never silently continues with the wrong access context: only the fixed trusted roots receive autonomous Claude/Codex modes; workspace cwd is child-scoped; missing, stale, denied, redirected, or read-only roots fail loudly; the parent recovers to HOME; and automatic reports distinguish child sandbox, TCC, cwd/File Provider, read-only mount, Unix permission, and Zsh history/prompt evidence without storing private content or raw paths. | `shell/ea.zsh` + `shell/windows/ea.ps1`, `configure-{claude,codex}-defaults.py`, and `workspace-access-diagnostics.py`; all four setup/sync entrypoints converge user defaults. | `scripts/ci/check-workspace-access.py` + `.ps1` (pre-commit + Linux/Windows CI: static wiring, config preservation/idempotence/fail-closed fixtures, real Zsh/PowerShell launcher behavior, diagnostic classifier/privacy probes, plus revert-test) | CI-green | 3 |
+| INV-15 | Codex and Gemini run on the same global rules Claude reads: `~/.codex/AGENTS.md` and `~/.gemini/GEMINI.md` are regenerated from every `global-rules/*.md` in EA's main working tree (the files `~/.claude/rules` points at) whenever EA commits, pulls or checks out, not only at the next sync; they stay read-only and are written by rename, never partially. An empty or unreadable source never replaces them. A differing copy whose body still matches the checksum in its generated header is stale and replaced; any other (hand-edited whatever its mode, or legacy) is saved under its own timestamped `.sync-backup-*` name, never over an earlier backup, and never replaced when that save fails. | `regen_combined_agent_rules` / `Regen-CombinedAgentRules` (manifest), called by setup/sync and by EA's `.githooks/post-commit`/`post-merge`/`post-checkout` through `scripts/regen-agent-rules.{sh,ps1}`. | `scripts/ci/check-combined-rules.sh` (pre-commit + CI) + `check-combined-rules.ps1` (Windows CI, pwsh + Windows PowerShell); EA `scripts/ci/check-agent-rules-hooks.sh` (EA CI: hooks tracked executable, calling the entrypoint); parity rows for the diff-guard and the entrypoint | local-green (pending CI) | 2 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -258,6 +259,49 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   revert-tests prove planted forbidden operations and enabled-by-default triggers are caught,
   including PowerShell-specific invocation forms.
 - **Escape hatch**: none for auto-git. A dirty repo belongs to the human/manual path, not the timer.
+
+### INV-15 - combined agent rules stay current and never lose a differing copy
+- **Surfaces**: `manifest.{sh,ps1}` (the regen + diff-guard), `scripts/regen-agent-rules.{sh,ps1}`
+  (standalone entrypoints), EA `.githooks/post-commit` + `post-merge` + `post-checkout` (the
+  between-sync trigger, all via `.githooks/refresh-agent-rules`), and the generated
+  `~/.codex/AGENTS.md` + `~/.gemini/GEMINI.md`. Decision record: `docs/decisions/0003`.
+- **Recurrence (recur=2, both found 2026-09-10)**: (1) STALENESS - regen ran only in setup/sync, so
+  the 2026-08-24 rules merge (the commit-authority and clarify-the-plan rules) never reached Codex or
+  Gemini for 17 days. (2) SILENT BACKUP FAILURE - `cp -p` copied the 0444 mode onto the single
+  `.sync-backup` slot, so every later backup failed under `2>/dev/null || true` while the warning
+  still claimed "backed up": both backups were frozen at 2026-07-14.
+- **Stale vs edited is decided by content, not mode**: the generated header carries a checksum of
+  the body (`body-cksum:` from `cksum` in bash, `body-sha256:` in ps1). A target whose body still
+  matches is untouched generated output, merely stale: EA history rebuilds it, so it gets no backup,
+  which keeps frequent hook regens from cycling backups. Anything else gets
+  `<target>.sync-backup-<timestamp>-<pid>`, unique per run, so no later hand-edit, stale regen or
+  concurrent run can overwrite it. Mode could not decide this: `sed -i`, `perl -pi` and an editor's
+  forced write all keep 0444 (a first-draft mode-bit rule would have destroyed those edits
+  silently). A header without a checksum (files from before this change) counts as edited, so the
+  first regen after it lands takes one backup of each target. The legacy `.sync-backup` files are
+  left alone.
+- **Gate design**: `check-combined-rules.sh` drives the real entrypoint in a throwaway `$HOME`:
+  fresh generate, quiet idempotence, stale copy (written by rename, no backup, no warning), two
+  hand-edits then a stale regen (both backups survive), an edit that kept 0444, a legacy header,
+  empty source and unreadable rule file (target untouched), and a target that cannot be backed up
+  but could be written (untouched: only the fail-closed branch saves it). Mutations caught: dropping
+  that `continue`, an in-place write, mode bits instead of content, and removing either source guard.
+  The ps1 half repoints `$GlobalRulesDir`/`$CombinedRulesTargets` after dot-sourcing (`$HOME` is
+  read-only in PowerShell), adds a case-only change (`-ceq`, matching `cmp`), and uses an `icacls`
+  read-data deny for the unreadable cases. EA's `check-agent-rules-hooks.sh` guards the trigger: each hook
+  tracked 100755 and handing off to the entrypoint, verified against a stub.
+- **Hook triggers (verified on git 2.50)**: `post-commit` fires on commit, amend, and each replayed
+  commit of a rebase; `post-merge` on `pull --ff-only`, auto-git's `merge --ff-only`, and a
+  `pull --rebase` with no local commits; `post-checkout` on switch, a fetch-then-rebase that
+  fast-forwards, and `checkout -- <file>`. `git reset --hard` fires no hook and waits for the next
+  sync.
+- **Known limits**: Windows PowerShell 5.1 has no one-step replace, so its `Move-Item` deletes then
+  moves (pwsh 7 uses `File.Move(..., overwrite)`). On Windows each hook starts PowerShell (roughly 0.5-1s per commit, and per
+  replayed commit in a rebase); only the bash hook path is exercised in CI, the Windows chain
+  (git-bash, `cygpath`, `pwsh -File`) is not. A hook fired from a worktree regenerates from the
+  main working tree, uncommitted edits included, which is what Claude already reads live.
+- **Escape hatch**: none for the diff-guard. The hooks fail open (no dotfiles checkout or a regen
+  error never blocks git; a missing entrypoint prints one line); the next sync regenerates.
 
 ### INV-9 - no `local` references a same-statement variable (set -u footgun)
 - **Surfaces**: every tracked `*.sh`; highest-risk is `sync.sh` (runs under `set -uo pipefail`

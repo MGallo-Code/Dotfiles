@@ -58,3 +58,11 @@ fi
 if [ -f "$ROOT/scripts/ci/check-workspace-access.py" ]; then
   "$PY" "$ROOT/scripts/ci/check-workspace-access.py"
 fi
+
+# INV-15: combined Codex/Gemini rule files regenerate from source and never lose a differing
+# copy. The bash half only; Windows uses the PowerShell half, which CI runs on windows-latest.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *) bash "$ROOT/scripts/ci/check-combined-rules.sh" >/dev/null || {
+       echo "pre-commit: check-combined-rules failed - run: bash scripts/ci/check-combined-rules.sh" >&2; exit 1; } ;;
+esac

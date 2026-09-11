@@ -62,6 +62,19 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"AGENTS\.md|GEMINI\.md"),
     },
     {
+        # INV-15: a differing combined-rules copy is always saved before overwrite and never
+        # overwritten when the save fails; a hand-edit warning needs the read-only lock lifted.
+        "name": "combined agent-rules diff-guard (backup, fail-closed, unlocked warning)",
+        "sh": ("manifest.sh", r"could not save .*left it unchanged"),
+        "ps1": ("manifest.ps1", r"could not save .*left it unchanged"),
+    },
+    {
+        # INV-15: EA's post-commit/post-merge hooks call a standalone quiet entrypoint on each OS.
+        "name": "combined agent-rules standalone entrypoint (EA hooks)",
+        "sh": ("scripts/regen-agent-rules.sh", r"COMBINED_RULES_QUIET"),
+        "ps1": ("scripts/regen-agent-rules.ps1", r"CombinedRulesQuiet"),
+    },
+    {
         # Codex is pinned (manifest CODEX_PIN / $CodexPin): its config.toml MCP schema has
         # drifted across versions. Both syncs must warn on drift, or a floated install on
         # one OS silently reintroduces the cross-version config breakage.

@@ -118,6 +118,27 @@ jobs:
         shell: pwsh
         run: ./scripts/ci/check-workspace-access.ps1
 
+  combined-rules:
+    # INV-15: Codex/Gemini combined rule files regenerate from source, stay read-only, and a
+    # differing copy is always backed up (never lost) before it is overwritten.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-combined-rules
+        run: bash scripts/ci/check-combined-rules.sh
+
+  combined-rules-windows:
+    # INV-15 PowerShell half: the same contract through the real Regen-CombinedAgentRules.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-combined-rules PowerShell
+        shell: pwsh
+        run: ./scripts/ci/check-combined-rules.ps1
+      - name: check-combined-rules Windows PowerShell
+        shell: powershell
+        run: ./scripts/ci/check-combined-rules.ps1
+
   auto-git-safety:
     # INV-12: auto-git never creates commits, never touches dirty work, and ships triggers dormant.
     runs-on: ubuntu-latest

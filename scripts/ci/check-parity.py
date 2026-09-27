@@ -152,6 +152,13 @@ FEATURES = [
         "ps1": ("setup.ps1", r"hooksPath"),
     },
     {
+        # One install channel for Claude Code on every OS: npm global (the Brewfile cask and
+        # `brew install claude` were a second and third channel that drifted from reality).
+        "name": "Claude Code installed via npm",
+        "sh": ("setup.sh", r"npm install -g @anthropic-ai/claude-code"),
+        "ps1": ("setup.ps1", r"npm install -g @anthropic-ai/claude-code"),
+    },
+    {
         "name": "stacked-push guard registered",
         "sh": ("setup.sh", r"warn-stacked|stacked-push"),
         "ps1": ("setup.ps1", r"warn-stacked|stacked-push"),

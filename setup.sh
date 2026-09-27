@@ -692,12 +692,17 @@ if command -v claude &>/dev/null; then
     ok "Claude Code is installed"
     echo "    Run 'claude' to authenticate if needed"
 else
-    if command -v brew &>/dev/null; then
+    # npm global is the one install channel on every OS (setup.ps1 does the same); update the same
+    # way: npm install -g @anthropic-ai/claude-code@latest
+    if command -v npm &>/dev/null; then
         echo "Installing Claude Code..."
-        brew install claude
-        ok "Claude Code installed. Run 'claude' to authenticate."
+        if npm install -g @anthropic-ai/claude-code; then
+            ok "Claude Code installed. Run 'claude' to authenticate."
+        else
+            warn "Claude Code npm install failed - retry: npm install -g @anthropic-ai/claude-code"
+        fi
     else
-        warn "Claude Code not found - install via: brew install claude"
+        warn "Claude Code not found. Install Node.js first, then: npm install -g @anthropic-ai/claude-code"
     fi
 fi
 

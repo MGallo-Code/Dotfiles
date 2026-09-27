@@ -1,8 +1,8 @@
 brew "neovim"
 brew "go"
 brew "python3"
+brew "node"      # npm: the install channel for Claude Code and Codex
 brew "tailscale"
-cask "claude-code"
 
 # Email stack
 brew "himalaya"  # multi-account CLI for read/draft/send/move/delete

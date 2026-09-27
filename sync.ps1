@@ -309,10 +309,6 @@ function Link-SkillDirs {
         foreach ($skill in (Get-ChildItem -Path $SrcRoot -Directory)) {
             if ($skill.Name.StartsWith(".")) { continue }   # skip .system etc.
             $link = Join-Path $tgtRoot ($Prefix + $skill.Name)
-            if (($tgtRoot -ieq (Join-Path $HOME ".gemini\skills")) -and $Prefix) {
-                Copy-ProjectSkill $skill.FullName $link ($Prefix + $skill.Name) $true
-                continue
-            }
             if (Test-Path $link) {
                 $item = Get-Item $link -Force
                 if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -404,10 +400,30 @@ function Clean-StaleSkillSymlinks {
             }
         }
     }
+    # Retired targets (ADR-0004): drop every generated junction/link or marked copy (never a
+    # user-authored real dir), then the dir itself once nothing is left in it.
+    foreach ($tgtRoot in $RetiredSkillTargets) {
+        if (-not (Test-Path $tgtRoot)) { continue }
+        foreach ($item in (Get-ChildItem -Path $tgtRoot -Force -ErrorAction SilentlyContinue)) {
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                # A junction: remove the link itself, never the source directory it points at.
+                [System.IO.Directory]::Delete($item.FullName, $false)
+                Write-Ok "skills: removed $($item.Name) from retired $tgtRoot"
+            }
+            elseif (Test-Path (Join-Path $item.FullName ".dotfiles-skill-source")) {
+                Remove-Item $item.FullName -Recurse -Force
+                Write-Ok "skills: removed $($item.Name) from retired $tgtRoot"
+            }
+        }
+        if (-not (Get-ChildItem -Path $tgtRoot -Force -ErrorAction SilentlyContinue)) {
+            Remove-Item $tgtRoot -Force
+            Write-Ok "skills: removed empty retired dir $tgtRoot"
+        }
+    }
 }
 
 # Vendor/global skills go to all agents. Project skills come from the native source
-# declared for Codex or Gemini; Codex-native (copy-mode) skills are distinct materialized copies.
+# declared for Codex; Codex-native (copy-mode) skills are distinct materialized copies.
 function Update-AgentSkillsLinks {
     Link-SkillDirs (Join-Path $AgentSkillsDir "skills") "" $AgentSkillsTargets
     Link-SkillDirs $GlobalSkillsDir "" $AgentSkillsTargets
@@ -426,10 +442,6 @@ function Update-AgentSkillsLinks {
         else {
             Link-SkillDirs $ps.Dir "$($ps.Label)-" @($codexTarget)
         }
-    }
-    $geminiTarget = Join-Path $HOME ".gemini\skills"
-    foreach ($ps in $GeminiProjectSkills) {
-        Link-SkillDirs $ps.Dir "$($ps.Label)-" @($geminiTarget)
     }
     Clean-StaleSkillSymlinks   # prune links whose source was removed/archived (idempotent)
 }
@@ -627,9 +639,9 @@ if ($pyCmd) {
     foreach ($cs in $CommandSources) { $cmdArgs += "$($cs.Prefix):$($cs.Dir)" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-commands.py") @cmdArgs
     if ($LASTEXITCODE -ne 0) { Write-Warn "command generation reported an issue" }
-    # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt + gemini command.
+    # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt.
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-commands.py") --verify @cmdArgs
-    if ($LASTEXITCODE -ne 0) { Write-Warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex/gemini output" }
+    if ($LASTEXITCODE -ne 0) { Write-Warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex output" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\gen-agent-allowlist.py")
     if ($LASTEXITCODE -ne 0) { Write-Warn "allowlist mirror reported an issue" }
     # Machine-state verification (INV-6 BLOCKING + INV-8 advisory; parity with sync.sh). Runs

@@ -289,10 +289,6 @@ link_skill_dirs() {
             sname="$(basename "$skill")"
             case "$sname" in .*) continue ;; esac   # skip .system etc.
             link="$tgt_root/${prefix}${sname}"
-            if [[ "$tgt_root" == "$HOME/.gemini/skills" && -n "$prefix" ]]; then
-                materialize_project_skill "${skill%/}" "$link" "${prefix}${sname}" true
-                continue
-            fi
             if [ -L "$link" ]; then
                 [ "$(readlink "$link")" = "${skill%/}" ] || ln -sfn "${skill%/}" "$link"
             elif [ -e "$link" ]; then
@@ -372,6 +368,20 @@ clean_stale_skill_symlinks() {
             fi
         done
     done
+    # Retired targets (ADR-0004): drop every generated link or marked copy (never a user-authored
+    # real dir), then the dir itself once nothing is left in it.
+    for tgt_root in ${RETIRED_SKILL_TARGETS[@]+"${RETIRED_SKILL_TARGETS[@]}"}; do
+        tgt_root="$(expand "$tgt_root")"
+        [ -d "$tgt_root" ] || continue
+        for link in "$tgt_root"/*; do
+            if [ -L "$link" ]; then
+                rm -f "$link" && ok "skills: removed $(basename "$link") from retired $(dirname "$link")"
+            elif [ -d "$link" ] && [ -f "$link/.dotfiles-skill-source" ]; then
+                rm -rf "$link" && ok "skills: removed $(basename "$link") from retired $(dirname "$link")"
+            fi
+        done
+        rmdir "$tgt_root" 2>/dev/null && ok "skills: removed empty retired dir $tgt_root"
+    done
 }
 
 # Wire vendor/global skills into all agents, then project skills from each agent's
@@ -399,12 +409,6 @@ regen_agent_skills_links() {
         else
             link_skill_dirs "$dir" "${label}-" "$target"
         fi
-    done
-    target="$(expand "~/.gemini/skills")"
-    for entry in "${GEMINI_PROJECT_SKILLS[@]}"; do
-        label="${entry%%|*}"
-        dir="${entry#*|}"
-        link_skill_dirs "$dir" "${label}-" "$target"
     done
     clean_stale_skill_symlinks   # prune links whose source was removed/archived (idempotent)
 }
@@ -597,11 +601,11 @@ for entry in "${SYMLINKS[@]}"; do
     fi
 done
 
-# Regenerate Codex + Gemini single-file rule bundles from global-rules/*
+# Regenerate the Codex single-file rule bundle from global-rules/* (and remove retired ones)
 regen_combined_agent_rules
 configure_agent_integrations || warn "agent integrations were not updated"
 
-# Regenerate cross-agent COMMANDS (codex prompts + gemini TOML) and mirror the Claude
+# Regenerate cross-agent COMMANDS (codex prompts) and mirror the Claude
 # permission ALLOWLIST into codex/gemini. Both are shared python generators (one source
 # of truth; both OSes invoke the same script - parity is "both sync scripts call them").
 if command -v python3 >/dev/null 2>&1; then
@@ -610,8 +614,8 @@ if command -v python3 >/dev/null 2>&1; then
         cmd_args+=("${entry%%|*}:$(expand "${entry#*|}")")
     done
     python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" "${cmd_args[@]}" || warn "command generation reported an issue"
-    # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt + gemini command.
-    python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" --verify "${cmd_args[@]}" || warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex/gemini output"
+    # COMMAND_MIRROR_VERIFY: every source command produced a codex prompt.
+    python3 "$DOTFILES_DIR/scripts/gen-agent-commands.py" --verify "${cmd_args[@]}" || warn "COMMAND_MIRROR_VERIFY: a source command is missing its generated codex output"
     python3 "$DOTFILES_DIR/scripts/gen-agent-allowlist.py" || warn "allowlist mirror reported an issue"
     # Machine-state verification (INV-6 BLOCKING + INV-8 advisory). check-skill-targets --machine
     # runs AFTER regen_agent_skills_links (508/552), so dangling/missing/colliding links mean the

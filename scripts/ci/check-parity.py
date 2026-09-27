@@ -299,9 +299,21 @@ FEATURES = [
         "ps1": ("sync.ps1", r"GlobalSkillsDir|Link-SkillDirs"),
     },
     {
-        "name": "project skills use target-specific native sources",
-        "sh": ("manifest.sh", r"CODEX_PROJECT_SKILLS[\s\S]*GEMINI_PROJECT_SKILLS"),
-        "ps1": ("manifest.ps1", r"CodexProjectSkills[\s\S]*GeminiProjectSkills"),
+        "name": "project skills use the Codex-native source list",
+        "sh": ("manifest.sh", r"CODEX_PROJECT_SKILLS"),
+        "ps1": ("manifest.ps1", r"CodexProjectSkills"),
+    },
+    {
+        # ADR-0004: Gemini retired as an interactive agent - its skill dir is emptied of
+        # generated entries and its combined rules file removed, on both OSes.
+        "name": "retired skill targets cleaned in sync",
+        "sh": ("sync.sh", r"RETIRED_SKILL_TARGETS"),
+        "ps1": ("sync.ps1", r"RetiredSkillTargets"),
+    },
+    {
+        "name": "retired combined-rules targets removed",
+        "sh": ("manifest.sh", r"RETIRED_COMBINED_RULES_TARGETS"),
+        "ps1": ("manifest.ps1", r"RetiredCombinedRulesTargets"),
     },
     {
         "name": "cross-agent completion notification wired during setup",

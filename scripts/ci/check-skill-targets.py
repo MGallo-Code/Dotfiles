@@ -24,8 +24,9 @@ Scopes (deliberately different, so the gate is meaningful everywhere):
        (c) COLLISION: no name in a target dir is claimed by two distinct source roots
            (the shadow risk - a vendor skill and a personal skill of the same name).
      Mirrors regen_agent_skills_links exactly: vendor + global skills -> AGENT_SKILLS_TARGETS
-     un-namespaced; CODEX_PROJECT_SKILLS and GEMINI_PROJECT_SKILLS each name their native
-     source and are generated into that agent only, namespaced <label>-. A materialized
+     un-namespaced; CODEX_PROJECT_SKILLS names its native source and is generated into
+     Codex only, namespaced <label>-. A RETIRED_SKILL_TARGETS dir (ADR-0004: Gemini) must
+     hold no generated link or marked copy. A materialized
      project skill is a real dir carrying
      .dotfiles-skill-source and counts as linked. Guarded: a target dir that does not exist
      yet (fresh machine, pre-first-sync) is skipped, never a false-fail. CI never runs this
@@ -102,7 +103,7 @@ def agent_skill_target(target_dirs, agent):
 
 def is_linked(target_dir, entry_name, expected_source=None):
     """True if target_dir/entry_name is a satisfied generated link: a symlink that
-    resolves, a Windows directory junction, OR a materialized gemini real-dir
+    resolves, a Windows directory junction, OR a materialized (copy-mode) real-dir
     carrying .dotfiles-skill-source."""
     p = os.path.join(target_dir, entry_name)
     expected = os.path.realpath(os.path.expanduser(expected_source)) if expected_source else None
@@ -144,8 +145,8 @@ def main(argv):
     repos = extract_array(manifest, "REPOS")
     ea_repos = extract_array(manifest, "EA_REPOS")
     codex_project_skills = extract_array(manifest, "CODEX_PROJECT_SKILLS")
-    gemini_project_skills = extract_array(manifest, "GEMINI_PROJECT_SKILLS")
-    project_skills = codex_project_skills + gemini_project_skills
+    project_skills = codex_project_skills
+    retired_targets = extract_array(manifest, "RETIRED_SKILL_TARGETS")
     archived_repos = extract_array(manifest, "ARCHIVED_REPOS")
     archived_skills = extract_array(manifest, "ARCHIVED_PROJECT_SKILLS")
     agent_targets = extract_array(manifest, "AGENT_SKILLS_TARGETS")
@@ -204,7 +205,7 @@ def main(argv):
                     failures.append(f"archived skill still generated: {p} (from {source}) - run `sync` to prune")
 
         # Source buckets, mirroring regen_agent_skills_links:
-        #   bucket A: vendor + global skills -> agent_t (claude/codex/gemini), un-namespaced
+        #   bucket A: vendor + global skills -> agent_t (claude/codex), un-namespaced
         #   bucket B: per-agent native project sources -> that agent target, namespaced label-
         # claude is deliberately ABSENT from bucket B: it reads each repo's .claude/skills
         # natively, so project skills are never linked there - requiring them would false-fail.
@@ -227,11 +228,18 @@ def main(argv):
                             f"missing skill link: {root_label} skill {name!r} is not linked "
                             f"into {td} - run `sync`")
 
-        target_for = {
-            "codex": agent_skill_target(project_t, "codex"),
-            "gemini": agent_skill_target(project_t, "gemini"),
-        }
-        for agent, entries in (("codex", codex_project_skills), ("gemini", gemini_project_skills)):
+        # (d) RETIRED: a retired target keeps no generated link or marked copy.
+        for d in (os.path.expanduser(t) for t in retired_targets):
+            if not os.path.isdir(d):
+                continue
+            scanned += 1
+            for name in sorted(os.listdir(d)):
+                p = os.path.join(d, name)
+                if os.path.islink(p) or os.path.isfile(os.path.join(p, ".dotfiles-skill-source")):
+                    failures.append(f"generated skill left in retired target: {p} - run `sync`")
+
+        target_for = {"codex": agent_skill_target(project_t, "codex")}
+        for agent, entries in (("codex", codex_project_skills),):
             td = target_for[agent]
             if not td or not os.path.isdir(td):
                 continue
@@ -256,7 +264,7 @@ def main(argv):
 
     mode = "manifest + machine" if machine else "manifest"
     print(f"check-skill-targets [{mode}]: {len(repos)} active repo(s), "
-          f"{len(codex_project_skills)} Codex + {len(gemini_project_skills)} Gemini project source(s), "
+          f"{len(codex_project_skills)} Codex project source(s), "
           f"{len(archived_repos)} archived repo(s)"
           + (f", scanned {scanned} target dir(s)" if machine else ""))
 

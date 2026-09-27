@@ -12,6 +12,8 @@
 #   - an empty source or an unreadable rule file never replaces a real ruleset
 #   - a copy that cannot be backed up is left unchanged, even when a write would succeed
 #     (Windows only: needs icacls)
+#   - a retired target (ADR-0004) is removed when it still carries our header, saved first
+#     when hand-edited, and never touched when it is the user's own file
 # Also parses regen-agent-rules.ps1 (the entrypoint EA's hooks call on Windows).
 # Exit 0 = all assertions hold, 1 = a regression.
 $ErrorActionPreference = 'Stop'
@@ -52,6 +54,7 @@ try {
     $Cx = Join-Path $T 'codex\AGENTS.md'
     $Gm = Join-Path $T 'gemini\GEMINI.md'
     $CombinedRulesTargets = @($Cx, $Gm)
+    $RetiredCombinedRulesTargets = @()
     New-Item -ItemType Directory -Path $GlobalRulesDir | Out-Null
     Set-Content -Path (Join-Path $GlobalRulesDir 'a.md') -Value "# Rule A`nalpha"
     Set-Content -Path (Join-Path $GlobalRulesDir 'b.md') -Value "# Rule B`nbravo"
@@ -127,6 +130,25 @@ try {
     Expect "empty source reported" (Says 'no readable rule files')
     Expect "empty source leaves the target unchanged" ([System.IO.File]::ReadAllText($Cx) -ceq $before)
     Get-ChildItem -Path $aside -Filter *.md | Move-Item -Destination $GlobalRulesDir
+
+    Write-Host "check-combined-rules (ps1): retired target (ADR-0004)"
+    $Rt = Join-Path $T 'retired\GEMINI.md'
+    New-Item -ItemType Directory -Path (Split-Path $Rt -Parent) -Force | Out-Null
+    $RetiredCombinedRulesTargets = @($Rt)
+    [System.IO.File]::WriteAllText($Rt, [System.IO.File]::ReadAllText($Cx))
+    Set-ItemProperty -Path $Rt -Name IsReadOnly -Value $true
+    Regen -Quiet
+    Expect "pristine retired copy removed" (-not (Test-Path $Rt))
+    Expect "pristine retired copy not backed up" ((Backups $Rt).Count -eq 0)
+    [System.IO.File]::WriteAllText($Rt, [System.IO.File]::ReadAllText($Cx))
+    Locked-Edit $Rt 'HAND EDIT'
+    Regen -Quiet
+    Expect "edited retired copy removed" (-not (Test-Path $Rt))
+    Expect "edited retired copy saved first" (BackedUp $Rt 'HAND EDIT')
+    [System.IO.File]::WriteAllText($Rt, "# my own gemini notes`n")
+    Regen -Quiet
+    Expect "user-authored file at a retired path untouched" (Has $Rt 'my own gemini notes')
+    $RetiredCombinedRulesTargets = @()
 
     if ($env:OS -eq 'Windows_NT') {
         $me = "$($env:USERNAME):(RD)"

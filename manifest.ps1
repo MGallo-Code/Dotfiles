@@ -297,7 +297,6 @@ $CommandSources = @(
 $Directories = @(
     "$HOME\Documents\Learning"
     "$HOME\Documents\Jobs"
-    "$HOME\Documents\Agent-Forge"
 )
 
 # ── Per-ROLE hub client token (shared by setup.ps1 AND sync.ps1) ──────

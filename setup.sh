@@ -113,7 +113,6 @@ EOF
         fi
     }
     ensure_codex_pretooluse_hook "# dotfiles: flat-PR stacked-push guard" "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
-    ensure_codex_pretooluse_hook "# dotfiles: Forge action guard" "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
 
     if ! python3 "$DOTFILES_DIR/scripts/configure-claude-defaults.py" --home "$HOME" >/dev/null; then
         err "Claude settings are malformed or inaccessible; defaults were not changed"
@@ -622,7 +621,6 @@ if [[ "$MODE" == "--full" ]]; then
         fi
     }
     ensure_claude_pretooluse_hook "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
-    ensure_claude_pretooluse_hook "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
 
     # Wire repo-local git hooks (coding-mastermind pre-commit gate) for managed repos
     # that ship a tracked .githooks/ dir. core.hooksPath is per-clone LOCAL config, so

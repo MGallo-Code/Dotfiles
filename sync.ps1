@@ -56,7 +56,6 @@ matcher = "^Bash`$"
         }
     }
     Ensure-CodexPreToolUseHook "# dotfiles: flat-PR stacked-push guard" "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
-    Ensure-CodexPreToolUseHook "# dotfiles: Forge action guard" "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
 
     & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-claude-defaults.py") --home $HOME | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Claude settings are malformed or inaccessible; defaults were not changed" }
@@ -704,15 +703,7 @@ function Ensure-ClaudePreToolUseHook {
     Write-Ok "Wired $Label into settings.json"
 }
 Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
-Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
 Set-AgentDefaults
-if ($pyCmd) {
-    & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-forge-wiring.py") --machine
-    if ($LASTEXITCODE -ne 0) {
-        Write-Err "check-forge-wiring --machine: Forge command/checker/hook wiring incomplete (above)"
-        $ForgeWiringFail = $true
-    }
-}
 
 # ── Rebuild Nexus if EA was updated ──────────────────────────────────
 $NexusPath = "$HOME\Documents\EA\nexus"
@@ -947,7 +938,3 @@ finally {
     Release-GitSyncLock
 }
 
-if ($ForgeWiringFail) {
-    Write-Err "sync: Forge wiring machine check FAILED (see above) - run a full sync or investigate"
-    exit 1
-}

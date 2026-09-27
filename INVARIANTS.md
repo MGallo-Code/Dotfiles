@@ -31,7 +31,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-8 | A temporary git worktree does not masquerade as a canonical workspace root: every linked worktree lives under `~/Documents/Worktrees/` or is explicitly allowlisted; none sits as a bare top-level sibling of the project roots in `~/Documents`. | The canonical home `~/Documents/Worktrees` + the `ALLOWLIST` in the checker; the linked-worktree test is a `.git` FILE vs DIR. | `scripts/ci/check-worktrees.py` (ADVISORY - warns, never fails; run by hand or during `sync`) | advisor-only | 1 |
 | INV-9 | No bash `local`/`declare`/`typeset` statement references a variable assigned EARLIER in the SAME statement: under `set -u` the just-declared local is not yet visible while the rest of the statement's RHS is expanded, so the reference is UNBOUND and the script aborts. The dependent assignment is split onto its own `local` line. | One-assignment-per-dependent-`local` in every `*.sh`; the highest-stakes surface is `sync.sh` (runs under `set -uo pipefail`). | `scripts/ci/check-local-selfref.py` (static scan of tracked `*.sh`: pre-commit + CI) | CI-green | 1 |
 | INV-10 | A fresh/headless CLIENT's `setup.sh`/`sync.sh` (incl. `--client`) wiring path runs to **exit 0** AND leaves a FUNCTIONAL client: no step aborts the whole run on an EXPECTED non-zero (a `mcp remove` of an unregistered server, a headless `pbcopy`/`open`, a failed-optional install), and the per-hub `${*_BEARER}` are exported for the shell the agent launches from while every role-aware hub is wired http+`${*_BEARER}` for EACH agent CLI (claude/codex/gemini) — never a literal token, never a leftover stdio entry on a client. | The guards in setup/sync + the shared manifest wiring fns: `\|\| true` on the mcp-remove loop, the `command -v`/`[ -t 0 ]` gates, `ensure_client_bearer_exports`, and `register_all_hub_mcp` http+`${*_BEARER}`. | `scripts/ci/check-fresh-client-setup.sh` (hermetic: throwaway `$HOME` + stub agent CLIs whose unregistered `mcp remove` returns rc1; runs the real shared wiring fns `setup.sh`/`sync.sh` call — `provision_all_client_tokens` + `register_all_hub_mcp` for claude/codex/gemini — under genuine errexit, pre- AND post-cutover, + a revert-test; CI. It exercises the wiring fns, not the whole setup.sh/sync.sh scripts.). ps1 is `PARITY_EXEMPT` (Linux-client gate). | local-green (pending CI) | 4 |
-| INV-11 | Forge work cannot be claimed ready or pushed/PR'd from memory alone: tracker state lives in a shared writable artifact dir, readiness is checked by `check-state.py`, Claude/Codex action hooks pause commit/push/PR commands when the active tracker is incomplete/blocked/invalid, and PRs expose Forge status visibly. | `~/Documents/Agent-Forge/<slug>/tracker.json` + `scripts/forge/check-state.py` + `forge-guard.sh` registered by setup/sync for Claude/Codex + `.github/PULL_REQUEST_TEMPLATE.md`. | `scripts/ci/check-forge-wiring.py` (pre-commit + CI repo wiring; `--machine` during sync verifies generated commands + live Claude/Codex hook registration) plus `check-state.py` fixture checks during development. | local-green (pending merge) | 2 |
+| INV-11 | RETIRED 2026-09-27 (ADR-0004): Forge was retired. What remains is its tombstone: no machine keeps a Claude or Codex registration of the deleted `forge-guard.sh`. | `RETIRED_HOOK_SCRIPTS` in `configure-claude-defaults.py` + `configure-codex-defaults.py`, run by all four setup/sync entrypoints. | `scripts/ci/check-workspace-access.py` retired-hook fixtures (pre-commit + CI) | retired | 2 |
 | INV-12 | Auto-git only moves already-committed document history: it pulls clean-behind repos and pushes clean-ahead default-branch repos, while dirty/diverged/in-progress repos are skipped. It never stages, commits, stashes, calls Claude, uses autostash, aborts a rebase, or auto-resolves user work. Manual `sync` and auto-git are serialized by the same atomically published lock. | `auto-git.{sh,ps1}` per-repo policy + `scripts/git-sync-lock.{sh,ps1}` shared by manual sync and auto-git. | `scripts/ci/check-auto-git-safety.sh` on Ubuntu + `scripts/ci/check-auto-git-safety.ps1` on Windows (CI: forbidden-operation scan, Bash and PowerShell bare-repo fixtures for dirty/behind/ahead/diverged/in-progress/git-lock/status-fail/default-ref/remote-ref-race/lock/default-disabled trigger behavior, plus revert-test). | local-green (pending CI) | 1 |
 | INV-13 | Completion email is strictly a per-session, per-turn opt-in across Claude, Codex, and Gemini: ordinary events never email or log payloads; only the native completion event may consume an arm; one acknowledged send disarms it; a failed send retains only the explicit request for retry; Notification/action-needed events never email; prompt, response, cwd, and session id never enter the email. Setup and routine sync converge the same behavior on macOS/Linux and Windows without overwriting unrelated hooks; because Codex exposes one notify command, an existing Codex Desktop callback is preserved as an argument-safe passthrough. | EA `agent-notify.py` state machine + dotfiles `configure-agent-integrations.py`, called through the shared manifest functions by all four setup/sync entrypoints. | `scripts/ci/check-agent-integrations.py` (hermetic migration/idempotence/fail-closed fixtures in pre-commit + CI; `--machine` live three-agent wiring + stubbed state transitions during sync) | local-green (pending merge) | 1 |
 | INV-14 | A named Michael Workspace agent launcher never silently continues with the wrong access context: only the fixed trusted roots receive autonomous Claude/Codex modes; workspace cwd is child-scoped; missing, stale, denied, redirected, or read-only roots fail loudly; the parent recovers to HOME; and automatic reports distinguish child sandbox, TCC, cwd/File Provider, read-only mount, Unix permission, and Zsh history/prompt evidence without storing private content or raw paths. | `shell/ea.zsh` + `shell/windows/ea.ps1`, `configure-{claude,codex}-defaults.py`, and `workspace-access-diagnostics.py`; all four setup/sync entrypoints converge user defaults. | `scripts/ci/check-workspace-access.py` + `.ps1` (pre-commit + Linux/Windows CI: static wiring, config preservation/idempotence/fail-closed fixtures, real Zsh/PowerShell launcher behavior, diagnostic classifier/privacy probes, plus revert-test) | CI-green | 3 |
@@ -214,30 +214,15 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 - **Escape hatch**: none. If a command should not be global, keep it out of
   `global-commands` or namespace it through project command sources.
 
-### INV-11 - Forge readiness is checked from state, not memory
-- **Surfaces**: `~/Documents/Agent-Forge/<slug>/tracker.json`,
-  `scripts/forge/check-state.py`, `~/Documents/EA/claude-config/global-hooks/forge-guard.sh`,
-  Claude `~/.claude/settings.json` PreToolUse registration, Codex `~/.codex/config.toml`
-  PreToolUse registration, and the generated `/forge` command mirrors.
-- **Recurrence (recur=2)**: (1) Forge plan/build verification was easy to skip because the
-  state lived in prose and chat context. Root fix: a machine-readable tracker and checker with
-  `READY`/`INCOMPLETE`/`BLOCKED`/`INVALID` exits. (2) The first neutral tracker path,
-  `~/.agent-forge`, was outside this sandbox's writable roots, so sandboxed agents could not
-  reliably create state there. Root fix: move the default artifact home to
-  `~/Documents/Agent-Forge`, which is already inside the shared workspace and is ensured by
-  setup/sync.
-- **Gate design**: `check-state.py` validates tracker schema and readiness. `forge-guard.sh`
-  finds the active tracker for the current repo (or `FORGE_TRACKER`) and asks before
-  `git commit`, `git push`, `gh pr create`, or `gh pr merge` unless the checker returns
-  `READY`. The PR template carries Forge status, tracker, cross-check, build verification,
-  visual verification, and explicit PR approval fields. `check-forge-wiring.py` guards the
-  dotfiles-owned wiring surfaces in pre-commit and CI, checks EA source files when that tree is
-  present, and `--machine` verifies generated Codex/Gemini command mirrors plus live Claude/Codex
-  hook registrations during `sync`.
-- **Current gap**: the hook's JSON-output sample matrix is still a development check rather
-  than a CI fixture. Add fixture mode to `check-forge-wiring.py` if this regresses once.
-- **Escape hatch**: explicit human confirmation at the hook prompt, recorded in the tracker as
-  `explicit_human_override` when it is a real Forge override.
+### INV-11 - retired (Forge)
+- Retired 2026-09-27 by ADR-0004: Forge went unused (last Claude use 2026-07-06, last Codex
+  use 2026-08-24) and `forge-guard.sh` never blocked or warned. The skill, command, hook,
+  `check-state.py`, `check-forge-wiring.py`, the PR-template section and the `Agent-Forge`
+  directory ensure are gone; existing `~/Documents/Agent-Forge` content stays on disk.
+- **What still holds**: every machine that syncs drops a leftover registration of the deleted
+  hook (Claude `settings.json` and Codex `config.toml`, with Codex's positional trust keys
+  renumbered), so no agent is left calling a missing script. Enforced by the retired-hook
+  fixtures in `check-workspace-access.py`.
 
 ### INV-12 - auto-git never creates commits or touches dirty work
 - **Surfaces**: `auto-git.sh`, `auto-git.ps1`, `scripts/git-sync-lock.sh`,

@@ -12,6 +12,41 @@ import sys
 import tempfile
 
 
+# Hook scripts that no longer exist (ADR-0004). A registration left behind would fail on every
+# tool call, so every machine that syncs drops it. Matched by file name inside the command.
+RETIRED_HOOK_SCRIPTS = ("forge-guard.sh",)
+
+
+def drop_retired_hooks(data: dict) -> None:
+    hooks = data.get("hooks")
+    if not isinstance(hooks, dict):
+        return
+    for event, entries in list(hooks.items()):
+        if not isinstance(entries, list):
+            continue
+        kept_entries = []
+        changed = False
+        for entry in entries:
+            inner = entry.get("hooks") if isinstance(entry, dict) else None
+            if not isinstance(inner, list):
+                kept_entries.append(entry)
+                continue
+            kept = [
+                hook for hook in inner
+                if not (isinstance(hook, dict)
+                        and any(name in str(hook.get("command", "")) for name in RETIRED_HOOK_SCRIPTS))
+            ]
+            if len(kept) != len(inner):
+                changed = True
+            if kept:
+                kept_entries.append({**entry, "hooks": kept})
+        if changed:
+            if kept_entries:
+                hooks[event] = kept_entries
+            else:
+                del hooks[event]
+
+
 def configure(home: Path) -> Path:
     settings_dir = home / ".claude"
     settings = settings_dir / "settings.json"
@@ -34,6 +69,7 @@ def configure(home: Path) -> Path:
         raise RuntimeError("Claude permissions setting must be a JSON object")
     permissions["defaultMode"] = "bypassPermissions"
     permissions["skipDangerousModePermissionPrompt"] = True
+    drop_retired_hooks(data)
 
     rendered = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     existing = settings.read_text(encoding="utf-8") if settings.exists() else None

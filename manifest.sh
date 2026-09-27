@@ -58,7 +58,7 @@ SYMLINKS=(
   "~/Documents/EA/claude-config/global-agents|~/.claude/agents"
   # global-commands -> ~/.claude/commands: Claude slash-command sources. Codex/Gemini get generated
   # mirrors from the SAME source via gen-agent-commands.py; Claude gets the source directory directly.
-  # This makes commands like /forge available without relying on a skill being remembered.
+  # This makes commands like /handoff available without relying on a skill being remembered.
   "~/Documents/EA/claude-config/global-commands|~/.claude/commands"
 )
 
@@ -290,7 +290,7 @@ NEXUS_TOKEN_FILE="~/.config/nexus/auth-token"
 NEXUS_REMOTED="true"
 
 # ── Custom global skills (tracked in EA) ─────────────────────────────
-# Custom skills authored in EA (calendar, contact, dev-update, forge), linked into all 3
+# Custom skills authored in EA (calendar, contact, dev-update), linked into all 3
 # agents alongside the vendor agent-skills, into the SAME AGENT_SKILLS_TARGETS dirs.
 # Linked by sync's regen_agent_skills_links (idempotent; never clobbers real dirs).
 GLOBAL_SKILLS_DIR="~/Documents/EA/claude-config/global-skills"
@@ -343,7 +343,6 @@ COMMAND_SOURCES=(
 DIRECTORIES=(
   "~/Documents/Learning"
   "~/Documents/Jobs"
-  "~/Documents/Agent-Forge"
 )
 
 # Shell command files (relative to dotfiles repo root)

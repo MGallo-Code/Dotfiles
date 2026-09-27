@@ -145,7 +145,6 @@ matcher = "^Bash`$"
         }
     }
     Ensure-CodexPreToolUseHook "# dotfiles: flat-PR stacked-push guard" "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
-    Ensure-CodexPreToolUseHook "# dotfiles: Forge action guard" "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
 
     & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-claude-defaults.py") --home $HOME | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Claude settings are malformed or inaccessible; defaults were not changed" }
@@ -770,7 +769,6 @@ if ($Mode -eq "full") {
         Write-Ok "Wired $Label into settings.json"
     }
     Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
-    Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/forge-guard.sh`"" "Forge action guard"
 }
 
 # ── PowerShell Profile ───────────────────────────────────────────────

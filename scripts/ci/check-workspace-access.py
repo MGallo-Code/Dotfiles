@@ -217,8 +217,8 @@ def check_codex_defaults(root: Path, findings: list[str]) -> None:
             findings.append("Codex defaults writer did not fail closed on a multiline managed value")
 
 
-def check_codex_hook_dedupe(root: Path, findings: list[str]) -> None:
-    """Repeated identical PreToolUse blocks collapse to one; positional trust follows its hook."""
+def check_codex_hook_prune(root: Path, findings: list[str]) -> None:
+    """Duplicate and retired PreToolUse blocks are dropped; positional trust follows its hook."""
     with tempfile.TemporaryDirectory(prefix="workspace-access-codex-hooks-") as raw_home:
         home = Path(raw_home)
         config = home / ".codex/config.toml"
@@ -239,34 +239,37 @@ def check_codex_hook_dedupe(root: Path, findings: list[str]) -> None:
             + block("/h/stacked.sh") + block("/h/stacked.sh")
             + '[projects."/p"]\ntrust_level = "trusted"\n\n'
             + block("/h/stacked.sh", "# dotfiles: flat-PR stacked-push guard\n")
-            + block("/h/forge.sh", "# dotfiles: Forge action guard\n")
+            + block("/h/forge-guard.sh", "# dotfiles: Forge action guard\n")
+            + block("/h/other.sh", "# dotfiles: other guard\n")
             + "[hooks.state]\n\n"
             + state(own, 0, "aaa") + state(own, 1, "aaa") + state(own, 2, "aaa") + state(own, 3, "fff")
-            + state("/elsewhere/.codex/config.toml", 3, "zzz"),
+            + state(own, 4, "ooo") + state("/elsewhere/.codex/config.toml", 3, "zzz"),
             encoding="utf-8",
         )
         command = [sys.executable, str(root / "scripts/configure-codex-defaults.py"), "--home", str(home)]
         first = run(command)
         if first.returncode != 0:
-            findings.append("Codex hook dedupe fixture failed: " + first.stderr.strip())
+            findings.append("Codex hook prune fixture failed: " + first.stderr.strip())
             return
         once = config.read_text(encoding="utf-8")
         second = run(command)
         if second.returncode != 0 or config.read_text(encoding="utf-8") != once:
-            findings.append("Codex hook dedupe is not idempotent")
+            findings.append("Codex hook prune is not idempotent")
         expected_state = {
             f"{own}:pre_tool_use:0:0": "sha256:aaa",
-            f"{own}:pre_tool_use:1:0": "sha256:fff",
+            f"{own}:pre_tool_use:1:0": "sha256:ooo",
             "/elsewhere/.codex/config.toml:pre_tool_use:3:0": "sha256:zzz",
         }
         if (
             once.count('command = "/h/stacked.sh"') != 1
-            or once.count('command = "/h/forge.sh"') != 1
-            or once.index("/h/stacked.sh") > once.index("/h/forge.sh")
-            or "# dotfiles: Forge action guard" not in once
+            or once.count('command = "/h/other.sh"') != 1
+            or "forge-guard" in once
+            or "# dotfiles: Forge action guard" in once
+            or once.index("/h/stacked.sh") > once.index("/h/other.sh")
+            or "# dotfiles: other guard" not in once
             or 'trust_level = "trusted"' not in once
         ):
-            findings.append("Codex hook dedupe did not keep exactly one of each hook in order")
+            findings.append("Codex hook prune did not keep exactly one of each live hook in order")
         try:
             try:
                 import tomllib as toml_reader
@@ -277,11 +280,46 @@ def check_codex_hook_dedupe(root: Path, findings: list[str]) -> None:
         try:
             parsed = toml_reader.loads(once)
         except Exception as exc:  # pragma: no cover - exact parser exception varies
-            findings.append(f"Codex hook dedupe output is not valid TOML: {exc}")
+            findings.append(f"Codex hook prune output is not valid TOML: {exc}")
             return
         trust = {key: value.get("trusted_hash") for key, value in parsed["hooks"]["state"].items()}
         if trust != expected_state:
-            findings.append(f"Codex hook dedupe did not carry positional trust with its hook: {trust}")
+            findings.append(f"Codex hook prune did not carry positional trust with its hook: {trust}")
+
+
+def check_claude_retired_hooks(root: Path, findings: list[str]) -> None:
+    """A retired hook script's registration is dropped; every other hook is preserved."""
+    with tempfile.TemporaryDirectory(prefix="workspace-access-claude-hooks-") as raw_home:
+        home = Path(raw_home)
+        settings = home / ".claude/settings.json"
+        settings.parent.mkdir(parents=True)
+        stacked = {"matcher": "Bash", "hooks": [{"type": "command", "command": "/x/.claude/hooks/warn-stacked-git-push.sh"}]}
+        settings.write_text(json.dumps({
+            "hooks": {
+                "PreToolUse": [
+                    stacked,
+                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "/x/.claude/hooks/forge-guard.sh"}]},
+                    {"matcher": "Bash", "hooks": [
+                        {"type": "command", "command": 'bash "C:/u/.claude/hooks/forge-guard.sh"'},
+                        {"type": "command", "command": "keep-too"},
+                    ]},
+                ],
+                "Stop": [{"hooks": [{"type": "command", "command": "keep-me"}]}],
+            },
+        }), encoding="utf-8")
+        command = [sys.executable, str(root / "scripts/configure-claude-defaults.py"), "--home", str(home)]
+        first = run(command)
+        if first.returncode != 0:
+            findings.append("Claude retired-hook fixture failed: " + first.stderr.strip())
+            return
+        once = settings.read_bytes()
+        second = run(command)
+        if second.returncode != 0 or settings.read_bytes() != once:
+            findings.append("Claude retired-hook removal is not idempotent")
+        hooks = json.loads(once).get("hooks", {})
+        expected_pre = [stacked, {"matcher": "Bash", "hooks": [{"type": "command", "command": "keep-too"}]}]
+        if hooks.get("PreToolUse") != expected_pre or hooks.get("Stop") != [{"hooks": [{"type": "command", "command": "keep-me"}]}]:
+            findings.append(f"Claude retired-hook removal dropped or kept the wrong hooks: {hooks}")
 
 
 def write_stub(path: Path) -> None:
@@ -494,7 +532,8 @@ def main() -> int:
     check_diagnostic_self_test(ROOT, findings)
     check_claude_defaults(ROOT, findings)
     check_codex_defaults(ROOT, findings)
-    check_codex_hook_dedupe(ROOT, findings)
+    check_codex_hook_prune(ROOT, findings)
+    check_claude_retired_hooks(ROOT, findings)
     check_zsh_behavior(ROOT, findings)
     if findings:
         for finding in findings:

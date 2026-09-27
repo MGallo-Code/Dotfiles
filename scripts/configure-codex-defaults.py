@@ -193,8 +193,13 @@ def same_file(recorded: str, config_path: str) -> bool:
     return normalized_path(unescaped) in candidates
 
 
-def dedupe_pretooluse_hooks(content: str, config_path: str | None) -> str:
-    """Drop repeated identical [[hooks.PreToolUse]] entries, keeping the first.
+# Hook scripts that no longer exist (ADR-0004); an entry naming one is dropped on every machine.
+RETIRED_HOOK_SCRIPTS = ("forge-guard.sh",)
+
+
+def prune_pretooluse_hooks(content: str, config_path: str | None) -> str:
+    """Drop repeated identical [[hooks.PreToolUse]] entries (keeping the first) and entries
+    that run a retired hook script.
 
     Codex records hook trust by position (`<config>:pre_tool_use:<entry>:<hook>`), so the
     trust keys of surviving entries are renumbered to their new positions and the keys of
@@ -221,7 +226,8 @@ def dedupe_pretooluse_hooks(content: str, config_path: str | None) -> str:
         signature = tuple(
             line.strip() for line in lines[start:end] if line.strip() and not line.strip().startswith("#")
         )
-        if signature not in seen:
+        retired = any(name in line for line in signature for name in RETIRED_HOOK_SCRIPTS)
+        if signature not in seen and not retired:
             seen.add(signature)
             continue
         removed.add(ordinal)
@@ -255,7 +261,7 @@ def dedupe_pretooluse_hooks(content: str, config_path: str | None) -> str:
 
 
 def render(content: str, config_path: str | None = None) -> str:
-    content = dedupe_pretooluse_hooks(content, config_path)
+    content = prune_pretooluse_hooks(content, config_path)
     lines = content.splitlines(keepends=True)
     safe_at_start, headers = layout(lines)
     first_table = headers[0][0] if headers else len(lines)

@@ -146,7 +146,7 @@ FEATURES = [
     {
         # Claude reads slash-command sources directly from ~/.claude/commands, while Codex/Gemini
         # get generated mirrors from the same source. If this dir is not wired, commands like
-        # /forge exist in generated targets but not in Claude itself.
+        # /handoff exist in generated targets but not in Claude itself.
         "name": "~/.claude/commands dir wired (Claude slash commands)",
         "sh": ("manifest.sh", r"global-commands\|~/.claude/commands"),
         "ps1": ("manifest.ps1", r"global-commands.*\.claude\\commands"),
@@ -160,16 +160,6 @@ FEATURES = [
         "name": "stacked-push guard registered",
         "sh": ("setup.sh", r"warn-stacked|stacked-push"),
         "ps1": ("setup.ps1", r"warn-stacked|stacked-push"),
-    },
-    {
-        "name": "Forge action guard registered in setup",
-        "sh": ("setup.sh", r"forge-guard"),
-        "ps1": ("setup.ps1", r"forge-guard"),
-    },
-    {
-        "name": "Forge action guard repaired in sync",
-        "sh": ("sync.sh", r"forge-guard"),
-        "ps1": ("sync.ps1", r"forge-guard"),
     },
     {
         "name": "auto-git entrypoint exists (INV-12)",
@@ -346,11 +336,6 @@ FEATURES = [
         "name": "command mirror verified (source cmd -> codex prompt + gemini cmd)",
         "sh": ("sync.sh", r"COMMAND_MIRROR_VERIFY"),
         "ps1": ("sync.ps1", r"COMMAND_MIRROR_VERIFY"),
-    },
-    {
-        "name": "Forge state artifact directory ensured",
-        "sh": ("manifest.sh", r"Documents/Agent-Forge"),
-        "ps1": ("manifest.ps1", r"Documents\\Agent-Forge"),
     },
     {
         # INV-6: sync runs the --machine check after pruning, so a dangling generated skill

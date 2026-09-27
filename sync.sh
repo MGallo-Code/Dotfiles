@@ -69,7 +69,6 @@ EOF
         fi
     }
     ensure_codex_pretooluse_hook "# dotfiles: flat-PR stacked-push guard" "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
-    ensure_codex_pretooluse_hook "# dotfiles: Forge action guard" "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
 
     if ! python3 "$DOTFILES_DIR/scripts/configure-claude-defaults.py" --home "$HOME" >/dev/null; then
         err "Claude settings are malformed or inaccessible; defaults were not changed"
@@ -646,17 +645,9 @@ ensure_claude_pretooluse_hook() {
     fi
 }
 ensure_claude_pretooluse_hook "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
-ensure_claude_pretooluse_hook "$HOME/.claude/hooks/forge-guard.sh" "Forge action guard"
 if ! ensure_agent_defaults; then
     err "sync: agent default convergence FAILED"
     exit 1
-fi
-
-if command -v python3 >/dev/null 2>&1; then
-    python3 "$DOTFILES_DIR/scripts/ci/check-forge-wiring.py" --machine || {
-        err "check-forge-wiring --machine: Forge command/checker/hook wiring incomplete (above)"
-        FORGE_WIRING_FAIL=1
-    }
 fi
 
 # ── Nvim-adjacent configs (delegated) ────────────────────────────────
@@ -880,11 +871,6 @@ echo ""
 # the link tree is not in the expected state. Sync still completed its other work first.
 if [ "${SKILL_TARGET_FAIL:-0}" = 1 ]; then
     err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
-    exit 1
-fi
-
-if [ "${FORGE_WIRING_FAIL:-0}" = 1 ]; then
-    err "sync: Forge wiring machine check FAILED (see above) - run a full sync or investigate"
     exit 1
 fi
 

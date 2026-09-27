@@ -70,7 +70,7 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 | Wiki | ~/Documents/Wiki | active-repo (synced; `--full`) |
 | Notes | ~/Documents/Notes | active-repo (synced; `--full`) |
 | NVIM-Setup | ~/.config/nvim (Mac) / %LOCALAPPDATA%\nvim (Win) | active-repo (synced; `--dev` + `--full`) |
-| agent-skills | ~/Documents/agent-skills | external-managed (forked addyosmani upstream; security-gated sync) |
+| agent-skills | ~/Documents/agent-skills | active fork (synced with origin; upstream pulled by hand, ADR-0004) |
 | IT-Worker | ~/Documents/IT-Worker | archive-repo (NOT synced; legacy reference, active ops moved to EA/business/michaelgit) |
 
 **Generated for codex on every sync** (never hand-edit; the targets are read-only):

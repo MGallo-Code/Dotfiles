@@ -23,7 +23,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 |----|-----------------------|-------------------|-------------|--------|-------|
 | INV-1 | No live credential ever enters the tracked tree: private keys, real `~/.ssh/config` (with LAN/Tailscale IPs), `.env`, tokens. The committed SSH config is always the `*.template`, never the populated copy. | The git index at commit time + a content scanner over staged blobs; a committed `.gitignore`. | `scripts/ci/check-no-secrets.py` (pre-commit + CI) | CI-green | 0 |
 | INV-2 | Every behavior the mac/linux `setup`/`sync`/`manifest` scripts perform is also performed by the Windows scripts (and vice-versa); a machine ends up configured the same way whichever OS ran setup, except genuinely OS-specific steps on the exempt list. | The paired `*.sh`/`*.ps1` files + a declared feature-token registry. | `scripts/ci/check-parity.py` (pre-commit + CI) | CI-green | 3 |
-| INV-3 | The agent-skills sync security gate stays load-bearing and identical across platforms: an untrusted upstream diff auto-merges only when text-only + in-scope + clean (no net/exec/secret/prompt-injection/hidden-unicode) AND the LLM advisory clears it; any deterministic failure forces human review regardless of the LLM verdict (fails closed); bash and powershell enforce the SAME policy. | `gate_skill_diff()` (sync.sh) + `Test-SkillDiffGate` (sync.ps1), both delegating to `skills-scan.py`. | `scripts/ci/check-skill-gate-corpus.sh` (CI: a fixed malicious+good corpus through the REAL bash `gate_skill_diff` AND, where pwsh is present, the ps1 `Test-SkillDiffGate` - asserting both flag/pass identically) | CI-green | 0 |
+| INV-3 | RETIRED 2026-09-27 (ADR-0004): upstream agent-skills is no longer merged automatically, so there is no untrusted diff to gate. The fork syncs with origin like any repo; upstream stays one link away in `manifest.sh` (`AGENT_SKILLS_UPSTREAM`). | - | - | retired | 0 |
 | INV-4 | No managed hub's bearer token is ever inlined into agent MCP wiring: the only token reference in a hub `mcp add` is an env var - `${<HUB>_BEARER}` (or the manifest's generic `${$token_env}` indirection) via claude/gemini `--header`/`-H`, or `--bearer-token-env-var <HUB>_BEARER` (codex); a literal token never reaches argv or a CLI's stored config. Distinct from INV-1 (the token lives OUTSIDE git, in `~/.config/<hub>/auth-token`, so the secret-scan never sees it). | The `Authorization: Bearer` references inside `register_hub_mcp`/`Register-HubMcp` (manifest), which only ever name an env var. | `scripts/ci/check-hub-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
 | INV-5 | Every managed hub is wired per-ROLE only through the shared functions: the host-vs-client decision AND every hub `mcp add` live once in `manifest.{sh,ps1}` (`register_hub_mcp`/`register_all_hub_mcp` and `Register-HubMcp`/`Register-AllHubMcp`); no `setup`/`sync` script wires a hub directly. | `register_hub_mcp`/`register_all_hub_mcp` (+ the `Register-*` ps1 mirror) in manifest; setup/sync only CALL them. | `scripts/ci/check-hub-wiring.py` COVERAGE (pre-commit + CI) | CI-green | 1 |
 | INV-6 | Generated agent affordances derive only from ACTIVE roots AND match each target agent's native source exactly: an archived root (`ARCHIVED_REPOS` / `ARCHIVED_PROJECT_SKILLS`) never appears in an active list; after a regen every active source skill HAS its intended generated link/copy, no generated target dangles, and no two sources collide on a name. An archived project-skill source whose repo stays on disk (SBIC, ADR-0004) is pruned from every generated target; user-authored real skill dirs are never touched. | The manifest active/archived split + `CODEX_PROJECT_SKILLS` / `GEMINI_PROJECT_SKILLS` + `regen_agent_skills_links` (link/materialize + stale prune) + the post-regen `--machine` assertion. | `scripts/ci/check-skill-targets.py` (manifest mode: pre-commit + CI; `--machine` source-exact completeness/dangling/archived-leak/collision during `sync`, BLOCKING on both OSes) | local-green (pending merge) | 3 |
@@ -80,31 +80,11 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 - **Escape hatch**: `PARITY_EXEMPT` with a one-line reason per genuinely OS-specific step
   (e.g. Windows OpenSSH `DefaultShell` registry, macOS `pbcopy`/`open`).
 
-### INV-3 - the agent-skills sync gate stays load-bearing
-- **Surfaces**: `sync.sh` `gate_skill_diff()`, `sync.ps1` `Test-SkillDiffGate`,
-  `skills-scan.py`.
-- **What is guarded**: REGRESSION - `check-skill-gate-corpus.sh` re-runs the real `gate_skill_diff`
-  over a fixed corpus every CI run, so a known-bad diff that stops being rejected fails the build.
-  DIVERGENCE - on CI (where `pwsh` is present) the SAME corpus is also run through the PowerShell
-  `Test-SkillDiffGate`, and its verdict must AGREE with bash on every case (a flag/pass mismatch
-  fails the build), so the two reimplementations cannot silently drift apart. On a host without
-  pwsh (the macOS dev box) the ps1 cross-check is skipped and only the bash gate is exercised.
-- **Gate design (built)**: `gate_skill_diff` is made sourceable (sync.sh returns at a source-
-  guard before its main flow, and `DOTFILES_DIR` keys on `BASH_SOURCE` so the path is right when
-  sourced), so `scripts/ci/check-skill-gate-corpus.sh` sources the REAL gate and feeds it a fixed
-  corpus built as throwaway git commits: an out-of-scope path, a `100755` exec bit, a `120000`
-  symlink, a binary blob, a >400-insertion diff, a curl/network line, a secret-path
-  (`~/.ssh/id_rsa`) line, a prompt-injection line, a bidi-unicode (U+202E) line, plus a known-GOOD
-  markdown-only change. It asserts every malicious sample is FLAGGED with the expected reason AND
-  the clean sample clears (so the gate is not trivially "flag everything"). Each assertion pins
-  the SPECIFIC expected reason (not a bare "flagged"), so a detector that regresses makes its own
-  sample fail - verified during development by neutering a detector and watching its case go red.
-  Both `sync.sh` and `sync.ps1` carry a matching source-guard (BASH_SOURCE / InvocationName), so
-  the test pulls in `gate_skill_diff` AND `Test-SkillDiffGate` without running either sync flow;
-  where `pwsh` exists it cross-runs both gates and asserts identical verdicts. CI-tier (it builds
-  git repos), not pre-commit.
-- **Escape hatch**: none (true invariant) - this gate protects auto-merge of untrusted
-  upstream code.
+### INV-3 - retired (agent-skills upstream gate)
+- Retired 2026-09-27 by ADR-0004. The fork is Michael's system now; nothing untrusted is merged
+  automatically, so `gate_skill_diff`/`Test-SkillDiffGate`, `skills-scan.py`, the LLM advisory,
+  `check-skill-gate-corpus.sh` and `/skills-review` were removed. Pulling upstream is a manual,
+  reviewed act: `git -C ~/Documents/agent-skills fetch https://github.com/addyosmani/agent-skills.git`.
 
 ### INV-4 - no hub bearer is ever inlined into agent wiring
 - **Generalized (remote-hubs Phase A)**: was courier-only; now covers EVERY managed hub (the gate

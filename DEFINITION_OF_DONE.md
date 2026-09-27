@@ -25,6 +25,4 @@ machine" is not done; "the gate is green AND the green asserts a real outcome" i
 
 - [ ] No secrets/keys/tokens in the diff (INV-1). The committed SSH config is the
       `*.template`, never the populated copy.
-- [ ] The agent-skills sync gate (INV-3) still fails closed and is identical across
-      bash/powershell.
 - [ ] Docs/cross-references the change touches still resolve.

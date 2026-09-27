@@ -235,9 +235,8 @@ function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
 }
 
 # ── Forked agent-skills (addyosmani/agent-skills) ────────────────────
-# Two remotes: origin = your fork (trusted, push), upstream = Addy (untrusted,
-# gated pull). Synced by the dedicated, security-gated Sync-SkillsRepo in
-# sync.ps1, NOT the generic Sync-Repo. Kept OUT of $Repos for that reason.
+# Michael's fork, synced with origin by Sync-Repo like any repo (ADR-0004). Upstream is not
+# merged automatically; the link below is kept for a manual, reviewed fetch.
 $AgentSkillsDir = "$HOME\Documents\agent-skills"
 $AgentSkillsUpstream = "https://github.com/addyosmani/agent-skills.git"
 

@@ -5,7 +5,7 @@
 # Dotfiles is the transport layer; every root it manages has exactly one role:
 #   active-repo      synced by sync (REPOS): pull/push/commit each run
 #   archive-repo     legacy, NOT synced (ARCHIVED_REPOS): kept for reference only
-#   external-managed forked upstream, security-gated sync (AGENT_SKILLS_DIR)
+#   fork-repo        Michael's fork, origin-synced; upstream pulled by hand (AGENT_SKILLS_DIR)
 #   generated-target written by dotfiles, never hand-edited (COMBINED_RULES_TARGETS,
 #                    PROJECT_SKILLS_TARGETS, codex prompts)
 #   artifact-dir     ensured to exist, content owned by the user (DIRECTORIES)
@@ -248,12 +248,9 @@ regen_combined_agent_rules() {
     done
 }
 
-# ── Forked agent-skills (addyosmani/agent-skills) ────────────────────
-# Two remotes: origin = your fork (MGallo-Code/agent-skills, trusted, push),
-# upstream = Addy (untrusted source of truth, gated pull). Synced by the
-# dedicated, security-gated sync_skills_repo() in sync.sh, NOT the generic
-# sync_repo (which would blind ff-pull origin and skip the gate). Kept OUT of
-# REPOS for that reason.
+# ── agent-skills fork ─────────────────────────────────────────────────
+# Michael's fork, synced with origin by sync_repo like any repo (ADR-0004). Upstream is not
+# merged automatically; the link below is kept for a manual, reviewed fetch.
 AGENT_SKILLS_DIR="~/Documents/agent-skills"
 AGENT_SKILLS_UPSTREAM="https://github.com/addyosmani/agent-skills.git"
 

@@ -44,15 +44,10 @@ FEATURES = [
         "ps1": ("setup.ps1", r"trustedFolders"),
     },
     {
-        "name": "agent-skills security gate (untrusted-diff scan)",
-        "sh": ("sync.sh", r"skills-scan"),
-        "ps1": ("sync.ps1", r"skills-scan"),
-    },
-    {
-        # Both sync scripts carry a source-guard so the INV-3 gate corpus can pull in the gate
-        # function without running the sync flow. If one side loses its guard, dot-sourcing it in
-        # the test would run main (or the cross-check would silently stop covering that side).
-        "name": "sync scripts test-sourceable (INV-3 corpus source-guard)",
+        # Both sync scripts carry a source-guard so a test or a targeted run can call one of their
+        # functions without running the sync flow. If one side loses its guard, sourcing it would
+        # run main (pulls, pushes) instead.
+        "name": "sync scripts test-sourceable (source-guard)",
         "sh": ("sync.sh", r"Sourceable for tests"),
         "ps1": ("sync.ps1", r"Sourceable for tests"),
     },

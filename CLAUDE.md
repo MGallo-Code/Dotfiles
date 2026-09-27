@@ -16,9 +16,9 @@ Definition-of-Done: [`DEFINITION_OF_DONE.md`](./DEFINITION_OF_DONE.md).
 ## Repo at a glance
 
 - Stack: Bash (`setup.sh`/`sync.sh`/`manifest.sh`), PowerShell (`setup.ps1`/`sync.ps1`/
-  `manifest.ps1`), and Python (`skills-scan.py`, the shared security classifier).
+  `manifest.ps1`), and Python (config convergers and CI checks under `scripts/`).
 - Run: `bash setup.sh [--full|--dev|--minimal]` (mac/linux) or `.\setup.ps1` (Windows);
-  `sync` pulls/pushes managed repos and runs the agent-skills security gate.
+  `sync` pulls/pushes managed repos (including the agent-skills fork) and regenerates agent wiring.
 - Where it lives: paired `*.sh`/`*.ps1` scripts at the root; `shell/` (commands),
   `ssh/` (config template), `packages/` (Homebrew). Manages EA, Wiki, NVIM-Setup, the
   Claude/Codex/Gemini rules, and SSH config.
@@ -30,10 +30,8 @@ Definition-of-Done: [`DEFINITION_OF_DONE.md`](./DEFINITION_OF_DONE.md).
   the parity gate's exempt list. The mac and windows sides must not silently drift.
 - No live secrets in the tree (INV-1): the committed SSH config is always the
   `*.template`; private keys / `.env` / tokens never become tracked content.
-- The agent-skills sync gate (INV-3) stays load-bearing and fails CLOSED: an untrusted
-  upstream diff auto-merges only when it is text-only, in-scope, clean of
-  net/exec/secret/prompt-injection/hidden-unicode tokens AND the LLM advisory clears it.
-  Both the bash and powershell implementations must enforce the same policy.
+- Retired surfaces stay retired (ADR-0004: Forge, SBIC dev wiring, interactive Gemini,
+  upstream skill sync): their tombstone lists in the manifests clean every machine on sync.
 - Idempotency: `setup`/`sync` are safe to re-run; a second run is a no-op, not a double.
 
 ## Decisions

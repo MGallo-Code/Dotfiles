@@ -7,7 +7,7 @@ never become tracked git content - across every MCP server (EA) or every paired 
 (dotfiles). It is the ENFORCER; the .gitignore patterns are the advisor.
 
 This is a VALUE-shaped scanner (it matches actual key material / token shapes), NOT a
-mention scanner. It deliberately does NOT reuse dotfiles/skills-scan.py's `secrets`
+mention scanner. It deliberately did NOT reuse the (now retired) skills-scan.py `secrets`
 regex: that one flags any *reference* (the word "openai", "nexus.db") because its job is
 to triage untrusted upstream diffs. Here the job is "is this an actual live secret,"
 so the bar is the secret's own shape - otherwise the intentionally-tracked nexus.db

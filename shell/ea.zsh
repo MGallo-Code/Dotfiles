@@ -8,7 +8,7 @@ typeset -g _MICHAEL_WORKSPACE_DIAGNOSTIC="$_MICHAEL_WORKSPACE_DOTFILES/scripts/w
 
 _ws_is_trusted_root() {
     case "$1" in
-        "$HOME/.dotfiles"|"$HOME/Documents/EA"|"$HOME/Documents/Wiki"|"$HOME/Documents/SBIC") return 0 ;;
+        "$HOME/.dotfiles"|"$HOME/Documents/EA"|"$HOME/Documents/Wiki") return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -160,7 +160,6 @@ _ws_launch() {
 
 ea()   { _ws_launch ~/Documents/EA "$@"; }        # active personal ops + MCP tools
 wiki() { _ws_launch ~/Documents/Wiki "$@"; }      # LLM-curated research
-sbic() { _ws_launch ~/Documents/SBIC "$@"; }      # employer-only work (SBIC)
 
 # Update the Michael Workspace SYSTEM: open an agent in the dotfiles control plane (manifest.sh
 # is the map of every managed root + its role). For Claude (default) we add the EA + agent-skills
@@ -181,7 +180,7 @@ sysupdate() {
 _workspace_prompt_access_guard() {
     [[ "${_MICHAEL_WORKSPACE_PROMPT_GUARD_ACTIVE:-0}" == 1 ]] && return 0
     case "$PWD" in
-        "$HOME/.dotfiles"|"$HOME/Documents/EA"|"$HOME/Documents/Wiki"|"$HOME/Documents/SBIC") ;;
+        "$HOME/.dotfiles"|"$HOME/Documents/EA"|"$HOME/Documents/Wiki") ;;
         *) return 0 ;;
     esac
     typeset -g _MICHAEL_WORKSPACE_PROMPT_GUARD_ACTIVE=1
@@ -212,7 +211,7 @@ wsdoctor() {
 
 # Tab-complete the agent flags for the workspace launchers.
 _ws_agent_completion() { compadd -- --claude --codex --gemini; }
-compdef _ws_agent_completion ea wiki sbic sysupdate
+compdef _ws_agent_completion ea wiki sysupdate
 
 # Hub remotes (ADR-0002 / remote-hubs): expose each per-hub bearer token to MCP clients. claude/gemini
 # reference it as ${<HUB>_BEARER} in their http header; codex reads it via --bearer-token-env-var.

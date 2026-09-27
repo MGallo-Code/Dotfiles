@@ -75,7 +75,7 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 
 **Generated for codex + gemini on every sync** (never hand-edit; the targets are read-only):
 - Combined agent rules from `EA/claude-config/global-rules/*.md` -> `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`
-- Global + per-repo project skills, namespaced (`ea-*`, `wiki-*`, `sbic-*`) into `~/.codex/skills`, `~/.gemini/skills`
+- Global + per-repo project skills, namespaced (`ea-*`, `wiki-*`) into `~/.codex/skills`, `~/.gemini/skills`
 - Claude slash-commands -> codex prompts (`~/.codex/prompts/*.md`) + gemini commands (`~/.gemini/commands/*.toml`). Invoke with `/<name>` (e.g. `/handoff`); each dir gets a generated `README.md` index listing commands + how to invoke them.
 - Tool allowlist mirrored into codex/gemini
 
@@ -105,7 +105,7 @@ sysupdate     # = cd ~/.dotfiles && claude --add-dir ~/Documents/EA --add-dir ~/
 - Claude Code scopes to its launch dir, so `sysupdate` adds the EA + agent-skills source roots.
   Codex and Gemini already see the whole workspace (the `michael_workspace` permission profile
   + Gemini `includeDirectories`), so for those use `sysupdate --codex` / `sysupdate --gemini`.
-- The workspace launchers (`ea`, `wiki`, `sbic`, `sysupdate`) open Codex/Gemini with
+- The workspace launchers (`ea`, `wiki`, `sysupdate`) open Codex/Gemini with
   auto-approve and **no sandbox** (`codex --dangerously-bypass-approvals-and-sandbox`,
   `gemini --yolo`), so an agent never stops to ask before editing files or running commands.
   Claude keeps its own permission model. Use them only in trusted local roots.

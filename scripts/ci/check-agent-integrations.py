@@ -14,6 +14,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import re
 import os
 import stat
 import subprocess
@@ -71,6 +72,7 @@ def run_configurator(
     runner: Path,
     disable_roots: list[Path],
     courier_url: str = "https://notify.invalid/mcp",
+    retired_roots: list[Path] | None = None,
 ):
     argv = [
         sys.executable,
@@ -94,6 +96,8 @@ def run_configurator(
     ]
     for path in disable_roots:
         argv.extend(["--codex-disable-root", str(path)])
+    for path in retired_roots or []:
+        argv.extend(["--codex-retired-disable-root", str(path)])
     return subprocess.run(argv, text=True, capture_output=True, check=False)
 
 
@@ -198,6 +202,34 @@ def hermetic(findings: list[str]) -> None:
         require(second.returncode == 0, "second configurator run failed", findings)
         require(before == {path: path.read_bytes() for path in tracked}, "configurator is not byte-idempotent", findings)
 
+        # A retired disable root: Codex dropped the block's begin marker and moved a table in
+        # front of the end marker. Entries under the retired root go; a user's own toggle stays.
+        retired_home = base / "retired-home"
+        retired_codex = retired_home / ".codex" / "config.toml"
+        retired_codex.parent.mkdir(parents=True)
+        user_skill = base / "elsewhere" / "mine" / "SKILL.md"
+        retired_codex.write_text(
+            '[unrelated]\nvalue = "keep"\n\n'
+            f'[[skills.config]]\npath = "{(codex_root / "native" / "SKILL.md").resolve()}"\nenabled = false\n\n'
+            f'[[skills.config]]\npath = "{user_skill}"\nenabled = false\n\n'
+            f'[[skills.config]]\npath = "{(agents_root / "converted" / "SKILL.md").resolve()}"\nenabled = false\n\n'
+            '[moved]\nx = 1\n\n# dotfiles: end Codex duplicate skill suppression\n',
+            encoding="utf-8",
+        )
+        retired = run_configurator(retired_home, hook, runner, [], retired_roots=[codex_root, agents_root])
+        require(retired.returncode == 0, f"retired-root fixture failed: {retired.stderr.strip()}", findings)
+        if retired.returncode == 0:
+            text = retired_codex.read_text(encoding="utf-8")
+            data = toml_module().loads(text)
+            paths = [item.get("path") for item in data.get("skills", {}).get("config", [])]
+            require(paths == [str(user_skill)], f"retired skill entries not stripped exactly: {paths}", findings)
+            require("duplicate skill suppression" not in text, "orphaned skill-block marker survived", findings)
+            require(data.get("moved", {}).get("x") == 1 and data.get("unrelated", {}).get("value") == "keep",
+                    "retired-root strip touched unrelated tables", findings)
+            again = run_configurator(retired_home, hook, runner, [], retired_roots=[codex_root, agents_root])
+            require(again.returncode == 0 and retired_codex.read_text(encoding="utf-8") == text,
+                    "retired-root strip is not idempotent", findings)
+
         malformed_home = base / "malformed-home"
         bad_claude = malformed_home / ".claude" / "settings.json"
         bad_codex = malformed_home / ".codex" / "config.toml"
@@ -258,8 +290,15 @@ def machine(findings: list[str]) -> None:
         require(codex_passthrough(live_notify) is not None,
                 "live Codex notify passthrough is malformed", findings)
 
+    manifest = (root() / "manifest.sh").read_text(encoding="utf-8")
+
+    def manifest_paths(name: str) -> list[Path]:
+        match = re.search(rf"^{name}=\((.*?)\)[ \t]*$", manifest, re.S | re.M)
+        entries = re.findall(r'"([^"]+)"', match.group(1)) if match else []
+        return [Path(entry.replace("~", str(home), 1)).resolve() for entry in entries]
+
     expected_disabled = set()
-    for source in (home / "Documents" / "SBIC" / ".codex" / "skills", home / "Documents" / "SBIC" / ".agents" / "skills"):
+    for source in manifest_paths("CODEX_LOCAL_SKILL_DISABLE_ROOTS"):
         if source.is_dir():
             expected_disabled.update(str(path.resolve()) for path in source.glob("*/SKILL.md") if path.is_file())
     actual_disabled = {
@@ -268,6 +307,10 @@ def machine(findings: list[str]) -> None:
         if isinstance(item, dict) and item.get("enabled") is False
     }
     require(expected_disabled <= actual_disabled, "live Codex duplicate-skill suppression is incomplete", findings)
+    retired_roots = manifest_paths("CODEX_RETIRED_SKILL_DISABLE_ROOTS")
+    leftover = sorted(path for path in actual_disabled if isinstance(path, str)
+                      and any(Path(path).resolve().is_relative_to(r) for r in retired_roots))
+    require(not leftover, f"live Codex config still disables skills under a retired root: {leftover}", findings)
 
     with tempfile.TemporaryDirectory(prefix="agent-notify-state-check-") as raw:
         old_state = os.environ.get("AGENT_NOTIFY_STATE_DIR")
@@ -391,8 +434,8 @@ def machine(findings: list[str]) -> None:
 
 def static_wiring(findings: list[str]) -> None:
     files = {
-        "manifest.sh": ["AGENT_NOTIFY_CROSS_AGENT_CONFIG", "CODEX_LOCAL_SKILL_DISABLE_ROOTS"],
-        "manifest.ps1": ["AGENT_NOTIFY_CROSS_AGENT_CONFIG", "CodexLocalSkillDisableRoots"],
+        "manifest.sh": ["AGENT_NOTIFY_CROSS_AGENT_CONFIG", "CODEX_LOCAL_SKILL_DISABLE_ROOTS", "CODEX_RETIRED_SKILL_DISABLE_ROOTS"],
+        "manifest.ps1": ["AGENT_NOTIFY_CROSS_AGENT_CONFIG", "CodexLocalSkillDisableRoots", "CodexRetiredSkillDisableRoots"],
         "setup.sh": ["configure_agent_integrations"],
         "sync.sh": ["configure_agent_integrations"],
         "setup.ps1": ["Set-AgentIntegrations"],

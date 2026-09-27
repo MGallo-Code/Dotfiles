@@ -13,8 +13,7 @@ function Test-WsTrustedRoot {
     $trusted = @(
         (Join-Path $HOME ".dotfiles"),
         (Join-Path $HOME "Documents/EA"),
-        (Join-Path $HOME "Documents/Wiki"),
-        (Join-Path $HOME "Documents/SBIC")
+        (Join-Path $HOME "Documents/Wiki")
     )
     return $trusted -contains $Dir
 }
@@ -211,7 +210,6 @@ function Invoke-WsLaunch {
 
 function ea   { Invoke-WsLaunch "$HOME\Documents\EA" @args }        # active personal ops + MCP tools
 function wiki { Invoke-WsLaunch "$HOME\Documents\Wiki" @args }      # LLM-curated research
-function sbic { Invoke-WsLaunch "$HOME\Documents\SBIC" @args }      # employer-only work (SBIC)
 
 # Update the Michael Workspace SYSTEM: open an agent in the dotfiles control plane (manifest.sh
 # = root/role map). Claude (default) gets the EA + agent-skills source roots added; Codex/Gemini
@@ -242,7 +240,7 @@ $WsAgentCompleter = {
         Where-Object { $_ -like "$wordToComplete*" } |
         ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterName', $_) }
 }
-Register-ArgumentCompleter -CommandName ea, wiki, sbic, sysupdate -ScriptBlock $WsAgentCompleter
+Register-ArgumentCompleter -CommandName ea, wiki, sysupdate -ScriptBlock $WsAgentCompleter
 
 function practice {
     $WorkspaceDir = "$HOME\Documents\EA\exercises\workspace"

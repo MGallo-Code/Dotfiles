@@ -12,7 +12,7 @@ Claude `.md` is the SOURCE OF TRUTH (never written here). Per source command we 
                                                claude !`cmd` shell-injection -> gemini !{cmd})
 
 Sources + namespacing are passed as argv pairs "prefix:dir" (prefix "" = bare name,
-"sbic" = sbic-<name>). Each generated file carries a provenance marker; on every run we
+"x" = x-<name>). Each generated file carries a provenance marker; on every run we
 remove ONLY previously-generated files (by marker) that no longer have a source, so
 renames/removals don't leave orphans. User-authored prompts (no marker) are never touched.
 """
@@ -131,7 +131,7 @@ def write_index(directory, names, kind):
         "",
         "Mirrors of Michael's Claude Code slash-commands, REGENERATED on every `sync` from",
         "the Claude `.md` sources - do not hand-edit (changes are overwritten). Source of",
-        "truth: `EA/claude-config/global-commands` (+ `SBIC/.claude/commands`, namespaced `sbic-`).",
+        "truth: `EA/claude-config/global-commands`.",
         "",
         "## How to invoke",
         how,

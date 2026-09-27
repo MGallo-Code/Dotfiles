@@ -375,6 +375,14 @@ function Copy-ProjectSkill {
 # Prune generated links and materialized copies whose recorded source no longer exists.
 # User-authored real directories have no marker and are never touched. Idempotent.
 # (parity-checked: scripts/ci/check-parity.py)
+function Test-SkillSourceArchived {
+    param([string]$Source)
+    foreach ($entry in $ArchivedProjectSkills) {
+        $dir = [IO.Path]::GetFullPath($entry.Dir).TrimEnd('\', '/')
+        if ([IO.Path]::GetFullPath($Source).StartsWith($dir + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
 function Clean-StaleSkillSymlinks {
     $targets = @($AgentSkillsTargets + $ProjectSkillsTargets) | Select-Object -Unique
     foreach ($tgtRoot in $targets) {
@@ -382,14 +390,14 @@ function Clean-StaleSkillSymlinks {
         foreach ($item in (Get-ChildItem -Path $tgtRoot -Force -ErrorAction SilentlyContinue)) {
             if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
                 $target = (Get-Item $item.FullName -Force).Target
-                if (-not $target -or -not (Test-Path $target)) {
+                if (-not $target -or -not (Test-Path $target) -or (Test-SkillSourceArchived $target)) {
                     Remove-Item $item.FullName -Force
                     Write-Ok "skills: pruned stale link $($item.Name) (source archived/removed)"
                 }
             }
             elseif (Test-Path (Join-Path $item.FullName ".dotfiles-skill-source")) {
                 $source = (Get-Content (Join-Path $item.FullName ".dotfiles-skill-source") -Raw).Trim()
-                if (-not $source -or -not (Test-Path $source)) {
+                if (-not $source -or -not (Test-Path $source) -or (Test-SkillSourceArchived $source)) {
                     Remove-Item $item.FullName -Recurse -Force
                     Write-Ok "skills: pruned stale materialized skill $($item.Name) (source archived/removed)"
                 }
@@ -399,7 +407,7 @@ function Clean-StaleSkillSymlinks {
 }
 
 # Vendor/global skills go to all agents. Project skills come from the native source
-# declared for Codex or Gemini; Codex-native SBIC skills are distinct materialized copies.
+# declared for Codex or Gemini; Codex-native (copy-mode) skills are distinct materialized copies.
 function Update-AgentSkillsLinks {
     Link-SkillDirs (Join-Path $AgentSkillsDir "skills") "" $AgentSkillsTargets
     Link-SkillDirs $GlobalSkillsDir "" $AgentSkillsTargets

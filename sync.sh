@@ -344,20 +344,29 @@ PY
     ok "skills: materialized ${namespaced} -> $(basename "$(dirname "$dst")")"
 }
 
-# Prune generated links or materialized copies whose recorded source is gone. Real
-# user-authored directories have no .dotfiles-skill-source marker and are never touched.
+# Prune generated links or materialized copies whose recorded source is gone, or lies inside
+# an ARCHIVED_PROJECT_SKILLS dir (repo kept, skills retired). Real user-authored directories
+# have no .dotfiles-skill-source marker and are never touched.
+skill_source_archived() {
+    local src="$1" entry dir
+    for entry in "${ARCHIVED_PROJECT_SKILLS[@]+"${ARCHIVED_PROJECT_SKILLS[@]}"}"; do
+        dir="$(expand "${entry#*|}")"
+        case "$src" in "$dir"/*) return 0 ;; esac
+    done
+    return 1
+}
 clean_stale_skill_symlinks() {
     local tgt_root link marker source
     for tgt_root in "${AGENT_SKILLS_TARGETS[@]}" "${PROJECT_SKILLS_TARGETS[@]}"; do
         tgt_root="$(expand "$tgt_root")"
         [ -d "$tgt_root" ] || continue
         for link in "$tgt_root"/*; do
-            if [ -L "$link" ] && [ ! -e "$link" ]; then
+            if [ -L "$link" ] && { [ ! -e "$link" ] || skill_source_archived "$(readlink "$link")"; }; then
                 rm -f "$link" && ok "skills: pruned stale link $(basename "$link") (source archived/removed)"
             elif [ -d "$link" ] && [ -f "$link/.dotfiles-skill-source" ]; then
                 marker="$link/.dotfiles-skill-source"
                 source="$(cat "$marker" 2>/dev/null || true)"
-                if [ -z "$source" ] || [ ! -d "$source" ]; then
+                if [ -z "$source" ] || [ ! -d "$source" ] || skill_source_archived "$source"; then
                     rm -rf "$link" && ok "skills: pruned stale materialized skill $(basename "$link") (source archived/removed)"
                 fi
             fi
@@ -366,7 +375,7 @@ clean_stale_skill_symlinks() {
 }
 
 # Wire vendor/global skills into all agents, then project skills from each agent's
-# declared native source. Codex-native SBIC skills are materialized so suppressing the
+# declared native source. Codex-native (copy-mode) skills are materialized so suppressing the
 # repo-local duplicate cannot also hide a symlink that resolves to the same file.
 regen_agent_skills_links() {
     link_skill_dirs "$AGENT_SKILLS_DIR/skills" "" "${AGENT_SKILLS_TARGETS[@]}"

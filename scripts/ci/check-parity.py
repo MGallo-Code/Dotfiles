@@ -377,7 +377,7 @@ FEATURES = [
         "ps1": ("sync.ps1", r"GEMINI_CROSS_CHECK_SETUP|setup-gemini-cross-check"),
     },
     # --- Workspace launchers (shell/ea.zsh <-> shell/windows/ea.ps1). These convenience
-    #     functions (ea/wiki/sbic/sysupdate) are the ONLY interactive codex/gemini launch
+    #     functions (ea/wiki/sysupdate) are the ONLY interactive codex/gemini launch
     #     surface and were previously ungated, so a one-OS drift shipped silently. ---
     {
         # codex launches must carry the bypass-approvals-and-sandbox flag on BOTH OSes, else
@@ -393,10 +393,16 @@ FEATURES = [
         "ps1": ("shell/windows/ea.ps1", r"gemini --yolo"),
     },
     {
-        # The sbic launcher (cd ~/Documents/SBIC + open an agent) exists on both OSes.
-        "name": "sbic workspace launcher present",
-        "sh": ("shell/ea.zsh", r"\bsbic\b"),
-        "ps1": ("shell/windows/ea.ps1", r"\bsbic\b"),
+        # ADR-0004: an archived project-skill source is pruned from every generated target.
+        "name": "archived project-skill sources pruned",
+        "sh": ("sync.sh", r"skill_source_archived"),
+        "ps1": ("sync.ps1", r"Test-SkillSourceArchived"),
+    },
+    {
+        # ADR-0004: former Codex disable roots are stripped by path on every machine.
+        "name": "retired Codex skill-disable roots stripped",
+        "sh": ("manifest.sh", r"CODEX_RETIRED_SKILL_DISABLE_ROOTS"),
+        "ps1": ("manifest.ps1", r"CodexRetiredSkillDisableRoots"),
     },
     {
         "name": "remote PC PowerShell/WSL shortcuts present",

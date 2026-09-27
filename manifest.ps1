@@ -203,6 +203,9 @@ function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     foreach ($root in $CodexLocalSkillDisableRoots) {
         $argsList += @("--codex-disable-root", $root)
     }
+    foreach ($root in $CodexRetiredSkillDisableRoots) {
+        $argsList += @("--codex-retired-disable-root", $root)
+    }
     & $python @pythonPrefix $AgentNotifyConfigurator @argsList
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "agent integrations: configuration failed; existing files were preserved"
@@ -264,25 +267,28 @@ $NexusRemoted = $true
 $GlobalSkillsDir = "$HOME\Documents\EA\claude-config\global-skills"
 
 # ── Project skills -> each agent's native source, namespaced globally ────────
-# SBIC has deliberately different Codex-native and Claude/Gemini implementations.
 $CodexProjectSkills = @(
     @{ Label = "ea";   Dir = "$HOME\Documents\EA\.claude\skills";   Mode = "link" }
     @{ Label = "wiki"; Dir = "$HOME\Documents\Wiki\.claude\skills"; Mode = "link" }
-    @{ Label = "sbic"; Dir = "$HOME\Documents\SBIC\.codex\skills";  Mode = "copy" }
 )
 $GeminiProjectSkills = @(
     @{ Label = "ea";   Dir = "$HOME\Documents\EA\.claude\skills" }
     @{ Label = "wiki"; Dir = "$HOME\Documents\Wiki\.claude\skills" }
+)
+# Archived project skills (role: archive-project-skills): repos stay on disk, their generated
+# skills are pruned everywhere. SBIC retired 2026-09-27 (ADR-0004). Parity: manifest.sh ARCHIVED_PROJECT_SKILLS.
+$ArchivedProjectSkills = @(
+    @{ Label = "sbic"; Dir = "$HOME\Documents\SBIC\.codex\skills" }
     @{ Label = "sbic"; Dir = "$HOME\Documents\SBIC\.claude\skills" }
 )
-# Archived project skills (role: archive-project-skills). Currently EMPTY: IT-Worker skills
-# removed with its local copy 2026-06-19. Parity: manifest.sh ARCHIVED_PROJECT_SKILLS.
-$ArchivedProjectSkills = @()
 $ProjectSkillsTargets = @(
     "$HOME\.codex\skills"
     "$HOME\.gemini\skills"
 )
-$CodexLocalSkillDisableRoots = @(
+# Empty since the SBIC copies were retired (ADR-0004); an empty list removes the managed block.
+$CodexLocalSkillDisableRoots = @()
+# Tombstone: former disable roots, stripped by path because Codex can drop the block marker.
+$CodexRetiredSkillDisableRoots = @(
     "$HOME\Documents\SBIC\.codex\skills"
     "$HOME\Documents\SBIC\.agents\skills"
 )
@@ -291,7 +297,6 @@ $CodexLocalSkillDisableRoots = @(
 # Source of truth stays the tracked Claude `.md`. Empty prefix = bare name.
 $CommandSources = @(
     @{ Prefix = "";     Dir = "$HOME\Documents\EA\claude-config\global-commands" }
-    @{ Prefix = "sbic"; Dir = "$HOME\Documents\SBIC\.claude\commands" }
 )
 
 $Directories = @(

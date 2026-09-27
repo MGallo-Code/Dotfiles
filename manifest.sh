@@ -130,8 +130,12 @@ configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
         --account "$AGENT_NOTIFY_ACCOUNT"
     )
     local root
-    for root in "${CODEX_LOCAL_SKILL_DISABLE_ROOTS[@]}"; do
+    # `${a[@]+"${a[@]}"}`: bash 3.2 aborts on an EMPTY array expansion under set -u.
+    for root in ${CODEX_LOCAL_SKILL_DISABLE_ROOTS[@]+"${CODEX_LOCAL_SKILL_DISABLE_ROOTS[@]}"}; do
         args+=(--codex-disable-root "$(expand "$root")")
+    done
+    for root in ${CODEX_RETIRED_SKILL_DISABLE_ROOTS[@]+"${CODEX_RETIRED_SKILL_DISABLE_ROOTS[@]}"}; do
+        args+=(--codex-retired-disable-root "$(expand "$root")")
     done
     "${python_argv[@]}" "$configurator" "${args[@]}"
 }
@@ -235,7 +239,7 @@ AGENT_SKILLS_UPSTREAM="https://github.com/addyosmani/agent-skills.git"
 
 # Each tool reads global skills from its own dir; sync symlinks every
 # skills/<name> from the vendor repo into each (idempotent, never clobbers
-# existing real skill dirs like calendar/contact/dev-update).
+# existing real skill dirs like calendar/contact).
 AGENT_SKILLS_TARGETS=(
   "~/.claude/skills"
   "~/.codex/skills"
@@ -290,32 +294,31 @@ NEXUS_TOKEN_FILE="~/.config/nexus/auth-token"
 NEXUS_REMOTED="true"
 
 # ── Custom global skills (tracked in EA) ─────────────────────────────
-# Custom skills authored in EA (calendar, contact, dev-update), linked into all 3
+# Custom skills authored in EA (calendar, contact), linked into all 3
 # agents alongside the vendor agent-skills, into the SAME AGENT_SKILLS_TARGETS dirs.
 # Linked by sync's regen_agent_skills_links (idempotent; never clobbers real dirs).
 GLOBAL_SKILLS_DIR="~/Documents/EA/claude-config/global-skills"
 
 # ── Project skills -> each agent's native source, namespaced globally ────────
-# Claude reads repo-local .claude skills itself. Codex and Gemini have global skill
-# dirs, but SBIC intentionally authors DIFFERENT native implementations for them:
-# Codex consumes .codex, Gemini consumes .claude. The third Codex field is the
-# propagation mode: link for ordinary Claude-compatible sources, copy for Codex-native
-# SBIC sources. Copying makes the global copy a distinct file, so Codex can suppress the
-# repo-local duplicate without canonical-path suppression also hiding the global copy.
+# Claude reads repo-local .claude skills itself; Codex and Gemini get namespaced global
+# copies. The third Codex field is the propagation mode: link for Claude-compatible
+# sources, copy for a Codex-native source whose repo-local duplicate Codex must suppress.
 CODEX_PROJECT_SKILLS=(
   "ea|~/Documents/EA/.claude/skills|link"
   "wiki|~/Documents/Wiki/.claude/skills|link"
-  "sbic|~/Documents/SBIC/.codex/skills|copy"
 )
 GEMINI_PROJECT_SKILLS=(
   "ea|~/Documents/EA/.claude/skills"
   "wiki|~/Documents/Wiki/.claude/skills"
+)
+# Archived project skills (role: archive-project-skills): sources whose repo stays on disk
+# but whose skills must no longer be generated anywhere. sync prunes every generated link
+# or copy that points into one of these dirs; check-skill-targets.py --machine asserts none
+# survive. SBIC dev tooling retired 2026-09-27 (ADR-0004); the SBIC repo itself stays.
+ARCHIVED_PROJECT_SKILLS=(
+  "sbic|~/Documents/SBIC/.codex/skills"
   "sbic|~/Documents/SBIC/.claude/skills"
 )
-# Archived project skills (role: archive-project-skills). Currently EMPTY: IT-Worker's skills
-# went with its local copy (removed 2026-06-19). sync's stale-skill cleanup +
-# scripts/ci/check-skill-targets.py still guard against any dangling generated skill link.
-ARCHIVED_PROJECT_SKILLS=()
 # codex + gemini global skills dirs (AGENT_SKILLS_TARGETS minus Claude - Claude keeps
 # the un-namespaced project-scoped originals).
 PROJECT_SKILLS_TARGETS=(
@@ -325,7 +328,11 @@ PROJECT_SKILLS_TARGETS=(
 # Codex discovers repo-local .codex and converted .agents skills in addition to the
 # dotfiles-generated global copies. Disable those exact SKILL.md paths in user config so
 # each capability appears once, while leaving every source file untouched in the shared repo.
-CODEX_LOCAL_SKILL_DISABLE_ROOTS=(
+# Empty since the SBIC copies were retired (ADR-0004); an empty list removes the managed block.
+CODEX_LOCAL_SKILL_DISABLE_ROOTS=()
+# Tombstone: former disable roots. Codex rewrites config.toml and can drop the managed block's
+# begin marker, so their [[skills.config]] entries are also stripped by path on every machine.
+CODEX_RETIRED_SKILL_DISABLE_ROOTS=(
   "~/Documents/SBIC/.codex/skills"
   "~/Documents/SBIC/.agents/skills"
 )
@@ -333,10 +340,9 @@ CODEX_LOCAL_SKILL_DISABLE_ROOTS=(
 # ── Claude slash-commands -> codex prompts + gemini TOML ──────────────
 # Source of truth stays the tracked Claude `.md`. sync regenerates a per-tool copy
 # into ~/.codex/prompts/*.md and ~/.gemini/commands/*.toml (different formats).
-# "prefix|commands_dir" - empty prefix = bare name; "sbic" = sbic-<name>.
+# "prefix|commands_dir" - empty prefix = bare name; a prefix namespaces it as <prefix>-<name>.
 COMMAND_SOURCES=(
   "|~/Documents/EA/claude-config/global-commands"
-  "sbic|~/Documents/SBIC/.claude/commands"
 )
 
 # Directories to ensure exist

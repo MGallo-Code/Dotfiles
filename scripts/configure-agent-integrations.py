@@ -201,6 +201,52 @@ def _strip_skill_block(text: str) -> str:
     return stripped
 
 
+SKILL_TABLE = re.compile(r"^\[\[\s*skills\s*\.\s*config\s*\]\]\s*(?:#.*)?$")
+SKILL_PATH = re.compile(r"""^\s*path\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')""")
+
+
+def _under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _strip_retired_skill_entries(text: str, retired_roots: list[Path]) -> str:
+    """Drop [[skills.config]] tables under a retired disable root, plus orphaned block markers.
+
+    Codex rewrites config.toml and can drop the begin marker or move tables into the managed
+    block, so a marker-only strip would leave retired entries behind. The intact block has
+    already been stripped by the caller, so any marker still present is an orphan.
+    """
+    lines = text.splitlines(keepends=True)
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if stripped in (SKILLS_BEGIN, SKILLS_END):
+            index += 1
+            continue
+        if retired_roots and SKILL_TABLE.match(stripped):
+            end = index + 1
+            while end < len(lines) and not lines[end].lstrip().startswith(("[", "#")):
+                end += 1
+            recorded = None
+            for line in lines[index + 1 : end]:
+                match = SKILL_PATH.match(line)
+                if match:
+                    recorded = match.group(1) if match.group(1) is not None else match.group(2)
+                    recorded = recorded.replace('\\"', '"').replace("\\\\", "\\")
+                    break
+            if recorded is not None and any(_under(Path(recorded), root) for root in retired_roots):
+                index = end
+                continue
+        kept.append(lines[index])
+        index += 1
+    return "".join(kept)
+
+
 def _validate_passthrough(value: Any) -> list[str]:
     if not isinstance(value, list) or not value or len(value) > MAX_CODEX_PASSTHROUGH_ARGS:
         raise ConfigError("Codex notify passthrough must be a non-empty string array")
@@ -252,7 +298,11 @@ def _skill_files(roots: list[Path]) -> list[Path]:
 
 
 def _configure_codex(
-    original: str, path: Path, notify_argv: list[str], disabled_skills: list[Path]
+    original: str,
+    path: Path,
+    notify_argv: list[str],
+    disabled_skills: list[Path],
+    retired_roots: list[Path] | None = None,
 ) -> str:
     parsed = _toml_loads(original, path)
     existing_notify = parsed.get("notify")
@@ -268,7 +318,7 @@ def _configure_codex(
             passthrough = _validate_passthrough(existing_notify)
 
     body = _strip_top_level_notify(original, existing_notify is not None)
-    body = _strip_skill_block(body).strip()
+    body = _strip_retired_skill_entries(_strip_skill_block(body), retired_roots or []).strip()
     managed_argv = list(notify_argv)
     if passthrough:
         managed_argv.extend([CODEX_PASSTHROUGH_FLAG, _encode_passthrough(passthrough)])
@@ -352,6 +402,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--from-address", required=True)
     parser.add_argument("--account", required=True)
     parser.add_argument("--codex-disable-root", type=Path, action="append", default=[])
+    parser.add_argument("--codex-retired-disable-root", type=Path, action="append", default=[])
     return parser
 
 
@@ -391,7 +442,8 @@ def main(argv: list[str] | None = None) -> int:
     gemini = _configure_gemini(_json_object(gemini_path), _shell_command(gemini_argv))
     codex_original = codex_path.read_text(encoding="utf-8") if codex_path.exists() else ""
     disabled = _skill_files([root.expanduser().resolve() for root in args.codex_disable_root])
-    codex = _configure_codex(codex_original, codex_path, codex_argv, disabled)
+    retired = [root.expanduser().resolve() for root in args.codex_retired_disable_root]
+    codex = _configure_codex(codex_original, codex_path, codex_argv, disabled, retired)
     state = {
         "account": args.account,
         "courier_token_file": str(args.courier_token_file.expanduser().resolve()),

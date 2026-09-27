@@ -184,10 +184,24 @@ def main(argv):
             if not os.path.isdir(d):
                 continue
             scanned += 1
+            archived_dirs = [os.path.realpath(os.path.expanduser(skill_dir(e))) for e in archived_skills]
             for name in sorted(os.listdir(d)):
                 p = os.path.join(d, name)
                 if os.path.islink(p) and not os.path.exists(p):
                     failures.append(f"dangling skill link (source gone): {p}  - run `sync` to prune")
+                    continue
+                # (a2) ARCHIVED: a generated link/copy still sourced from an archived dir.
+                source = None
+                if os.path.islink(p):
+                    source = os.path.realpath(p)
+                elif os.path.isfile(os.path.join(p, ".dotfiles-skill-source")):
+                    try:
+                        with open(os.path.join(p, ".dotfiles-skill-source"), encoding="utf-8") as f:
+                            source = os.path.realpath(f.read().strip())
+                    except OSError:
+                        source = None
+                if source and any(source.startswith(a + os.sep) for a in archived_dirs):
+                    failures.append(f"archived skill still generated: {p} (from {source}) - run `sync` to prune")
 
         # Source buckets, mirroring regen_agent_skills_links:
         #   bucket A: vendor + global skills -> agent_t (claude/codex/gemini), un-namespaced

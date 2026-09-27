@@ -55,22 +55,6 @@ Register-ArgumentCompleter -CommandName proj -ParameterName Name -ScriptBlock {
     }
 }
 
-# Launch Claude Code with local models on remote PC via Tailscale
-function _ollama_claude {
-    param([string]$Model, [Parameter(ValueFromRemainingArguments)]$Args)
-    $env:ANTHROPIC_AUTH_TOKEN = "ollama"
-    $env:ANTHROPIC_API_KEY = ""
-    $env:ANTHROPIC_BASE_URL = "http://100.124.149.107:11434"
-    & claude --model $Model @Args
-    Remove-Item Env:\ANTHROPIC_AUTH_TOKEN -ErrorAction SilentlyContinue
-    Remove-Item Env:\ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
-    Remove-Item Env:\ANTHROPIC_BASE_URL -ErrorAction SilentlyContinue
-}
-
-function qwen { _ollama_claude "qwen3.6:27b" @args }
-function gemma { _ollama_claude "gemma4:26b" @args }
-function gemma31b { _ollama_claude "gemma4:31b" @args }
-
 if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {
     try {
         Set-PSReadLineOption -PredictionSource HistoryAndPlugin -PredictionViewStyle ListView -ErrorAction Stop

@@ -51,23 +51,6 @@ proj() {
     fi
 }
 
-# Launch Claude Code with local models on remote PC via Tailscale
-_ollama_claude() {
-    ANTHROPIC_AUTH_TOKEN=ollama \
-    ANTHROPIC_API_KEY="" \
-    ANTHROPIC_BASE_URL=http://100.124.149.107:11434 \
-    claude --model "$1" "${@:2}"
-}
-
-# Default local model - 77.2% SWE-bench Verified, working tool calling
-qwen() { _ollama_claude "qwen3.6:27b" "$@"; }
-
-# Default local model - 117 tok/s, fast for daily use
-gemma() { _ollama_claude "gemma4:26b" "$@"; }
-
-# Higher quality, slower (13 tok/s, 32K max context)
-gemma31b() { _ollama_claude "gemma4:31b" "$@"; }
-
 # Remote PC shells
 pcpwsh() { ssh pc-pwsh "$@"; }
 pcwsl() { ssh pc-wsl "$@"; }

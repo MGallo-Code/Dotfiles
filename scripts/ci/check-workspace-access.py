@@ -217,6 +217,73 @@ def check_codex_defaults(root: Path, findings: list[str]) -> None:
             findings.append("Codex defaults writer did not fail closed on a multiline managed value")
 
 
+def check_codex_hook_dedupe(root: Path, findings: list[str]) -> None:
+    """Repeated identical PreToolUse blocks collapse to one; positional trust follows its hook."""
+    with tempfile.TemporaryDirectory(prefix="workspace-access-codex-hooks-") as raw_home:
+        home = Path(raw_home)
+        config = home / ".codex/config.toml"
+        config.parent.mkdir(parents=True)
+
+        def block(command: str, marker: str = "") -> str:
+            return (
+                f"{marker}[[hooks.PreToolUse]]\nmatcher = \"^Bash$\"\n\n"
+                f"  [[hooks.PreToolUse.hooks]]\n  type = \"command\"\n  command = \"{command}\"\n  timeout = 30\n\n"
+            )
+
+        def state(path: str, entry: int, digest: str) -> str:
+            return f'[hooks.state."{path}:pre_tool_use:{entry}:0"]\ntrusted_hash = "sha256:{digest}"\n\n'
+
+        own = str(config)
+        config.write_text(
+            'model = "x"\n\n'
+            + block("/h/stacked.sh") + block("/h/stacked.sh")
+            + '[projects."/p"]\ntrust_level = "trusted"\n\n'
+            + block("/h/stacked.sh", "# dotfiles: flat-PR stacked-push guard\n")
+            + block("/h/forge.sh", "# dotfiles: Forge action guard\n")
+            + "[hooks.state]\n\n"
+            + state(own, 0, "aaa") + state(own, 1, "aaa") + state(own, 2, "aaa") + state(own, 3, "fff")
+            + state("/elsewhere/.codex/config.toml", 3, "zzz"),
+            encoding="utf-8",
+        )
+        command = [sys.executable, str(root / "scripts/configure-codex-defaults.py"), "--home", str(home)]
+        first = run(command)
+        if first.returncode != 0:
+            findings.append("Codex hook dedupe fixture failed: " + first.stderr.strip())
+            return
+        once = config.read_text(encoding="utf-8")
+        second = run(command)
+        if second.returncode != 0 or config.read_text(encoding="utf-8") != once:
+            findings.append("Codex hook dedupe is not idempotent")
+        expected_state = {
+            f"{own}:pre_tool_use:0:0": "sha256:aaa",
+            f"{own}:pre_tool_use:1:0": "sha256:fff",
+            "/elsewhere/.codex/config.toml:pre_tool_use:3:0": "sha256:zzz",
+        }
+        if (
+            once.count('command = "/h/stacked.sh"') != 1
+            or once.count('command = "/h/forge.sh"') != 1
+            or once.index("/h/stacked.sh") > once.index("/h/forge.sh")
+            or "# dotfiles: Forge action guard" not in once
+            or 'trust_level = "trusted"' not in once
+        ):
+            findings.append("Codex hook dedupe did not keep exactly one of each hook in order")
+        try:
+            try:
+                import tomllib as toml_reader
+            except ImportError:
+                import tomli as toml_reader  # type: ignore[no-redef]
+        except ImportError:
+            return
+        try:
+            parsed = toml_reader.loads(once)
+        except Exception as exc:  # pragma: no cover - exact parser exception varies
+            findings.append(f"Codex hook dedupe output is not valid TOML: {exc}")
+            return
+        trust = {key: value.get("trusted_hash") for key, value in parsed["hooks"]["state"].items()}
+        if trust != expected_state:
+            findings.append(f"Codex hook dedupe did not carry positional trust with its hook: {trust}")
+
+
 def write_stub(path: Path) -> None:
     path.write_text(
         "#!/bin/sh\n"
@@ -427,6 +494,7 @@ def main() -> int:
     check_diagnostic_self_test(ROOT, findings)
     check_claude_defaults(ROOT, findings)
     check_codex_defaults(ROOT, findings)
+    check_codex_hook_dedupe(ROOT, findings)
     check_zsh_behavior(ROOT, findings)
     if findings:
         for finding in findings:

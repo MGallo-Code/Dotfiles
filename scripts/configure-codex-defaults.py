@@ -169,7 +169,93 @@ def scalar_assignment_end(lines: list[str], start: int) -> int:
     return end
 
 
-def render(content: str) -> str:
+STATE_KEY = re.compile(
+    r'^hooks[ \t]*\.[ \t]*state[ \t]*\.[ \t]*"(?P<path>(?:[^"\\]|\\.)*):pre_tool_use:(?P<entry>\d+):(?P<hook>\d+)"$'
+)
+
+
+def last_content_line(lines: list[str], start: int, end: int) -> int:
+    last = start
+    for index in range(start, end):
+        stripped = lines[index].strip()
+        if stripped and not stripped.startswith("#"):
+            last = index
+    return last
+
+
+def normalized_path(path: str) -> str:
+    return os.path.normcase(os.path.normpath(path))
+
+
+def same_file(recorded: str, config_path: str) -> bool:
+    unescaped = recorded.replace('\\"', '"').replace("\\\\", "\\")
+    candidates = {normalized_path(config_path), normalized_path(os.path.realpath(config_path))}
+    return normalized_path(unescaped) in candidates
+
+
+def dedupe_pretooluse_hooks(content: str, config_path: str | None) -> str:
+    """Drop repeated identical [[hooks.PreToolUse]] entries, keeping the first.
+
+    Codex records hook trust by position (`<config>:pre_tool_use:<entry>:<hook>`), so the
+    trust keys of surviving entries are renumbered to their new positions and the keys of
+    removed entries are dropped. A trusted hook stays trusted; nothing new becomes trusted.
+    """
+    lines = content.splitlines(keepends=True)
+    _safe, headers = layout(lines)
+    entries: list[tuple[int, int, int]] = []  # (ordinal, start, end)
+    for position, (start, name) in enumerate(headers):
+        compact = re.sub(r"[ \t]", "", name)
+        if compact != "hooks.PreToolUse" or not lines[start].lstrip().startswith("[["):
+            continue
+        end = len(lines)
+        for next_start, next_name in headers[position + 1 :]:
+            if not re.sub(r"[ \t]", "", next_name).startswith("hooks.PreToolUse."):
+                end = next_start
+                break
+        entries.append((len(entries), start, end))
+
+    seen: set[tuple[str, ...]] = set()
+    removed: set[int] = set()
+    drop: set[int] = set()
+    for ordinal, start, end in entries:
+        signature = tuple(
+            line.strip() for line in lines[start:end] if line.strip() and not line.strip().startswith("#")
+        )
+        if signature not in seen:
+            seen.add(signature)
+            continue
+        removed.add(ordinal)
+        drop.update(range(start, last_content_line(lines, start, end) + 1))
+        above = start - 1
+        while above >= 0 and lines[above].strip().startswith("# dotfiles:"):
+            drop.add(above)
+            above -= 1
+        if above >= 0 and not lines[above].strip():
+            drop.add(above)
+    if not removed:
+        return content
+
+    for position, (start, name) in enumerate(headers):
+        match = STATE_KEY.match(name.strip())
+        if match is None or config_path is None or not same_file(match.group("path"), config_path):
+            continue
+        old = int(match.group("entry"))
+        if old in removed or old >= len(entries):
+            end = headers[position + 1][0] if position + 1 < len(headers) else len(lines)
+            drop.update(range(start, last_content_line(lines, start, end) + 1))
+            if start > 0 and not lines[start - 1].strip():
+                drop.add(start - 1)
+            continue
+        new = old - sum(1 for gone in removed if gone < old)
+        if new != old:
+            lines[start] = lines[start].replace(
+                f":pre_tool_use:{old}:{match.group('hook')}\"", f":pre_tool_use:{new}:{match.group('hook')}\"", 1
+            )
+    return "".join(line for index, line in enumerate(lines) if index not in drop)
+
+
+def render(content: str, config_path: str | None = None) -> str:
+    content = dedupe_pretooluse_hooks(content, config_path)
     lines = content.splitlines(keepends=True)
     safe_at_start, headers = layout(lines)
     first_table = headers[0][0] if headers else len(lines)
@@ -219,7 +305,7 @@ def configure(home: Path) -> Path:
     if config.is_symlink():
         raise RuntimeError(f"refusing to replace symlink: {config}")
     original = config.read_text(encoding="utf-8") if config.exists() else ""
-    rendered = render(original)
+    rendered = render(original, str(config))
     if rendered == original:
         os.chmod(config, 0o600)
         return config

@@ -227,10 +227,6 @@ compdef _ws_agent_completion ea wiki sbic sysupdate
 [ -r "$HOME/.config/calendar/auth-token" ] && export CALENDAR_BEARER="$(< "$HOME/.config/calendar/auth-token")"
 [ -r "$HOME/.config/nexus/auth-token" ]    && export NEXUS_BEARER="$(< "$HOME/.config/nexus/auth-token")"
 
-# The EA Hub's services as one command (ea-hub/scripts/hub): `hub up` starts whatever is not
-# running and touches nothing that is, `hub status` reads, `hub restart` bounces everything.
-hub() { "$HOME/Documents/EA/ea-hub/scripts/hub" "$@"; }
-
 # Drop into practice workspace with venv active
 practice() {
     mkdir -p ~/Documents/EA/exercises/workspace

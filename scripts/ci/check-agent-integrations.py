@@ -73,10 +73,11 @@ def run_configurator(
     disable_roots: list[Path],
     courier_url: str = "https://notify.invalid/mcp",
     retired_roots: list[Path] | None = None,
+    configurator: Path | None = None,
 ):
     argv = [
         sys.executable,
-        str(root() / "scripts" / "configure-agent-integrations.py"),
+        str(configurator or root() / "scripts" / "configure-agent-integrations.py"),
         "--home",
         str(home),
         "--hook",
@@ -263,6 +264,145 @@ def load_hook(path: Path):
     return module
 
 
+CONTEXT_EVENTS = {
+    "SessionStart": "startup|resume|clear|compact",
+    "PreCompact": None,
+    "PreToolUse": "mcp__ccd_session_mgmt__clear_session",
+}
+
+
+def context_entries(data: dict, event: str) -> list[tuple[int, dict, str]]:
+    found = []
+    raw = data.get("hooks", {}).get(event, [])
+    for index, entry in enumerate(raw if isinstance(raw, list) else []):
+        for hook in entry.get("hooks", []) if isinstance(entry, dict) else []:
+            command = hook.get("command") if isinstance(hook, dict) else None
+            if isinstance(command, str) and "context-card.py" in command:
+                found.append((index, entry, command))
+    return found
+
+
+def context_fixtures(findings: list[str], configurator: Path | None = None) -> None:
+    """dotfiles INV-16: resume-card hooks converge in place, fail closed, and leave others alone."""
+    with tempfile.TemporaryDirectory(prefix="context-hooks-check-") as raw:
+        base = Path(raw)
+        hook = base / "hooks" / "agent-notify.py"
+        context = hook.parent / "context-card.py"
+        runner = base / "python"
+        hook.parent.mkdir()
+        for path in (hook, context, runner):
+            path.write_text("# fixture\n", encoding="utf-8")
+        keep_bash = {"matcher": "Bash", "hooks": [{"type": "command", "command": "keep-bash"}]}
+
+        def fresh_home(name: str, claude: dict) -> Path:
+            home = base / name
+            (home / ".claude").mkdir(parents=True)
+            (home / ".claude" / "settings.json").write_text(json.dumps(claude, indent=2) + "\n", encoding="utf-8")
+            return home
+
+        def load(home: Path) -> dict:
+            return json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
+
+        def run(home: Path):
+            return run_configurator(home, hook, runner, [], configurator=configurator)
+
+        home = fresh_home("fresh", {"hooks": {"PreToolUse": [keep_bash]}})
+        result = run(home)
+        require(result.returncode == 0, f"context fixture failed: {result.stderr.strip()}", findings)
+        data = load(home)
+        for event, matcher in CONTEXT_EVENTS.items():
+            found = context_entries(data, event)
+            require(len(found) == 1, f"{event}: expected one resume-card hook, found {len(found)}", findings)
+            if found:
+                require(found[0][1].get("matcher") == matcher, f"{event}: wrong matcher {found[0][1].get('matcher')!r}", findings)
+        guard = context_entries(data, "PreToolUse")
+        require(bool(guard) and "exit 2" in guard[0][2] and guard[0][2].split('"')[1] == str(runner.resolve()).replace("\\", "/"),
+                "clear guard is not wrapped fail-closed on the configured runner", findings)
+        require(any("keep-bash" in c for c in commands(data, "PreToolUse")), "unrelated PreToolUse hook was dropped", findings)
+        before = (home / ".claude" / "settings.json").read_bytes()
+        run(home)
+        require(before == (home / ".claude" / "settings.json").read_bytes(), "resume-card registration is not byte-idempotent", findings)
+
+        stale = {"type": "command", "command": 'python3 "/old/context-card.py" clear-guard'}
+        home = fresh_home("in-place", {"hooks": {"PreToolUse": [
+            {"matcher": "mcp__ccd_session_mgmt__clear_session", "hooks": [stale]}, keep_bash]}})
+        run(home)
+        found = context_entries(load(home), "PreToolUse")
+        require(len(found) == 1 and found[0][0] == 0 and "/old/" not in found[0][2],
+                "a stale resume-card hook was not replaced in place", findings)
+
+        home = fresh_home("embedded", {"hooks": {"PreToolUse": [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "keep-bash"}, stale]}]}})
+        run(home)
+        data = load(home)
+        first = data["hooks"]["PreToolUse"][0]
+        found = context_entries(data, "PreToolUse")
+        require(first.get("matcher") == "Bash" and [h["command"] for h in first["hooks"]] == ["keep-bash"]
+                and len(found) == 1 and found[0][1].get("matcher") == CONTEXT_EVENTS["PreToolUse"],
+                "a resume-card hook inside a shared entry was not moved to its own entry", findings)
+
+        home = fresh_home("odd", {"hooks": {"SessionStart": "not-an-array", "PreToolUse": [keep_bash]}})
+        result = run(home)
+        data = load(home)
+        require(result.returncode == 0 and data["hooks"]["SessionStart"] == "not-an-array"
+                and len(context_entries(data, "PreCompact")) == 1,
+                "a malformed unrelated event blocked or was rewritten by resume-card registration", findings)
+
+        context.unlink()
+        home = fresh_home("removed", {"hooks": {"PreToolUse": [
+            {"matcher": "mcp__ccd_session_mgmt__clear_session", "hooks": [stale]}, keep_bash]}})
+        run(home)
+        data = load(home)
+        require(not any(context_entries(data, event) for event in CONTEXT_EVENTS)
+                and any("keep-bash" in c for c in commands(data, "PreToolUse")),
+                "resume-card hooks survived with no context-card.py beside the hook", findings)
+
+    if os.name == "posix":
+        spec = importlib.util.spec_from_file_location("configure_ai", str(configurator or root() / "scripts" / "configure-agent-integrations.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        require(module._hook_quote("C:\\Users\\moses\\x y\\context-card.py") == '"C:/Users/moses/x y/context-card.py"',
+                "hook paths are not forward-slash, double-quoted", findings)
+        with tempfile.TemporaryDirectory(prefix="guard-wrapper-") as raw:
+            for exit_code, want in ((0, 0), (2, 2), (1, 2), (127, 2)):
+                stub = Path(raw) / f"exit{exit_code}.sh"
+                stub.write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
+                stub.chmod(0o755)
+                command = module._context_command([str(stub)], "clear-guard")
+                got = subprocess.run(["/bin/sh", "-c", command], capture_output=True).returncode
+                require(got == want, f"guard wrapper: a guard exiting {exit_code} gave {got}, want {want}", findings)
+            missing = module._context_command([str(Path(raw) / "missing-runner")], "clear-guard")
+            got = subprocess.run(["/bin/sh", "-c", missing], capture_output=True).returncode
+            require(got == 2, f"guard wrapper: a missing runner gave {got}, want 2 (fail closed)", findings)
+
+
+def machine_context(findings: list[str], home: Path, claude: dict) -> None:
+    script = home / "Documents" / "EA" / "claude-config" / "global-hooks" / "context-card.py"
+    if not script.is_file():
+        require(not any(context_entries(claude, event) for event in CONTEXT_EVENTS),
+                "live resume-card hooks are registered but EA context-card.py is missing", findings)
+        return
+    for event, matcher in CONTEXT_EVENTS.items():
+        found = context_entries(claude, event)
+        require(len(found) == 1, f"live {event}: expected one resume-card hook, found {len(found)}", findings)
+    guard = context_entries(claude, "PreToolUse")
+    if len(guard) != 1:
+        return
+    command = guard[0][2]
+    runner = command.split('"')[1] if command.startswith('"') else ""
+    require(bool(runner) and Path(runner).exists(), f"live clear guard runner is missing: {runner or command[:60]}", findings)
+    if os.name != "posix":
+        return
+    with tempfile.TemporaryDirectory(prefix="guard-live-") as raw:
+        transcript = Path(raw) / "t.jsonl"
+        transcript.write_text(json.dumps({"type": "user", "origin": {"kind": "human"},
+                                          "message": {"role": "user", "content": "please clear"}}) + "\n", encoding="utf-8")
+        payload = json.dumps({"tool_input": {"session_id": "self"}, "transcript_path": str(transcript)})
+        env = {**os.environ, "CONTEXT_CARD_STATE": str(Path(raw) / "state")}
+        got = subprocess.run(["/bin/sh", "-c", command], input=payload, text=True, capture_output=True, env=env)
+        require(got.returncode == 2, f"live clear guard did not block a self-clear without /wrap (exit {got.returncode})", findings)
+
+
 def machine(findings: list[str]) -> None:
     home = Path.home()
     hook_path = home / "Documents" / "EA" / "claude-config" / "global-hooks" / "agent-notify.py"
@@ -278,6 +418,7 @@ def machine(findings: list[str]) -> None:
         return
     require(sum("agent-notify.py" in value for value in commands(claude, "Stop")) == 1,
             "live Claude Stop hook is not converged", findings)
+    machine_context(findings, home, claude)
     require(not any("agent-notify.py" in value or "notify-claude.sh" in value for value in commands(claude, "Notification")),
             "live Claude still has a Notification email hook", findings)
     require(sum("agent-notify.py" in value for value in commands(gemini, "AfterAgent")) == 1,
@@ -450,10 +591,29 @@ def static_wiring(findings: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--machine", action="store_true")
+    parser.add_argument("--revert-test", action="store_true",
+                        help="the resume-card fixtures must FAIL against a configurator that skips registration")
     args = parser.parse_args()
+    if args.revert_test:
+        source = (root() / "scripts" / "configure-agent-integrations.py").read_text(encoding="utf-8")
+        needle = "    claude = _configure_claude_context(claude, context_prefix)\n"
+        if needle not in source:
+            print("revert-test: registration call not found", file=sys.stderr)
+            return 1
+        with tempfile.TemporaryDirectory(prefix="context-revert-") as raw:
+            mutant = Path(raw) / "configure-agent-integrations.py"
+            mutant.write_text(source.replace(needle, "", 1), encoding="utf-8")
+            caught: list[str] = []
+            context_fixtures(caught, configurator=mutant)
+        if caught:
+            print(f"revert-test ok: skipping registration fails {len(caught)} resume-card fixture(s)")
+            return 0
+        print("revert-test FAILED: fixtures passed without registration", file=sys.stderr)
+        return 1
     findings: list[str] = []
     static_wiring(findings)
     hermetic(findings)
+    context_fixtures(findings)
     if args.machine:
         machine(findings)
     if findings:

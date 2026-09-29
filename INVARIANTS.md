@@ -36,6 +36,7 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 | INV-13 | Completion email is strictly a per-session, per-turn opt-in across Claude, Codex, and Gemini: ordinary events never email or log payloads; only the native completion event may consume an arm; one acknowledged send disarms it; a failed send retains only the explicit request for retry; Notification/action-needed events never email; prompt, response, cwd, and session id never enter the email. Setup and routine sync converge the same behavior on macOS/Linux and Windows without overwriting unrelated hooks; because Codex exposes one notify command, an existing Codex Desktop callback is preserved as an argument-safe passthrough. | EA `agent-notify.py` state machine + dotfiles `configure-agent-integrations.py`, called through the shared manifest functions by all four setup/sync entrypoints. | `scripts/ci/check-agent-integrations.py` (hermetic migration/idempotence/fail-closed fixtures in pre-commit + CI; `--machine` live three-agent wiring + stubbed state transitions during sync) | local-green (pending merge) | 1 |
 | INV-14 | A named Michael Workspace agent launcher never silently continues with the wrong access context: only the fixed trusted roots receive autonomous Claude/Codex modes; workspace cwd is child-scoped; missing, stale, denied, redirected, or read-only roots fail loudly; the parent recovers to HOME; and automatic reports distinguish child sandbox, TCC, cwd/File Provider, read-only mount, Unix permission, and Zsh history/prompt evidence without storing private content or raw paths. | `shell/ea.zsh` + `shell/windows/ea.ps1`, `configure-{claude,codex}-defaults.py`, and `workspace-access-diagnostics.py`; all four setup/sync entrypoints converge user defaults. | `scripts/ci/check-workspace-access.py` + `.ps1` (pre-commit + Linux/Windows CI: static wiring, config preservation/idempotence/fail-closed fixtures, real Zsh/PowerShell launcher behavior, diagnostic classifier/privacy probes, plus revert-test) | CI-green | 3 |
 | INV-15 | Codex runs on the same global rules Claude reads: `~/.codex/AGENTS.md` is regenerated from every `global-rules/*.md` in EA's main working tree (the files `~/.claude/rules` points at) whenever EA commits, pulls or checks out, not only at the next sync; they stay read-only and are written by rename, never partially. An empty or unreadable source never replaces them. A differing copy whose body still matches the checksum in its generated header is stale and replaced; any other (hand-edited whatever its mode, or legacy) is saved under its own timestamped `.sync-backup-*` name, never over an earlier backup, and never replaced when that save fails. A retired target (`~/.gemini/GEMINI.md`, ADR-0004) is removed while it carries our header, saved first when hand-edited, and never touched otherwise. | `regen_combined_agent_rules` / `Regen-CombinedAgentRules` (manifest), called by setup/sync and by EA's `.githooks/post-commit`/`post-merge`/`post-checkout` through `scripts/regen-agent-rules.{sh,ps1}`. | `scripts/ci/check-combined-rules.sh` (pre-commit + CI) + `check-combined-rules.ps1` (Windows CI, pwsh + Windows PowerShell); EA `scripts/ci/check-agent-rules-hooks.sh` (EA CI: hooks tracked executable, calling the entrypoint); parity rows for the diff-guard, the entrypoint and the retired targets | local-green (pending CI) | 2 |
+| INV-16 | Claude's resume-card hooks (EA `context-card.py`, EA ADR-0004 / EA INV-11) are registered on every managed machine exactly once per event (SessionStart `startup|resume|clear|compact`, PreCompact, PreToolUse `mcp__ccd_session_mgmt__clear_session`), in place, on an unresolved runner path that survives `brew upgrade`, with forward-slash double-quoted paths; the clear guard's command is wrapped so a missing runner/script or crash still exits 2 (fail closed); they are removed when the script is gone; unrelated hooks and event order are untouched, and a second run is byte-identical. | `_configure_claude_context` in `scripts/configure-agent-integrations.py`, the shared Bash/PowerShell chokepoint (INV-13), called by all four setup/sync entrypoints. | `scripts/ci/check-agent-integrations.py` (hermetic in-place/embedded/removal/malformed-event/idempotence/quoting/wrapper fixtures: pre-commit + CI; `--revert-test` in CI; `--machine` during sync: one hook per event, runner exists, and the live guard blocks a self-clear without `/wrap`) | local-green (pending CI) | 0 |
 
 <!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the trigger
      to promote it from prose to a gate, not the third. -->
@@ -267,6 +268,25 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
   main working tree, uncommitted edits included, which is what Claude already reads live.
 - **Escape hatch**: none for the diff-guard. The hooks fail open (no dotfiles checkout or a regen
   error never blocks git; a missing entrypoint prints one line); the next sync regenerates.
+
+### INV-16 - resume-card hooks are registered once, in place, and fail closed
+
+EA owns the hook (`claude-config/global-hooks/context-card.py`) and its behaviour (EA INV-11,
+ADR-0004: resume cards, card-aware compaction, the `/wrap`-only clear guard). Dotfiles owns
+only the machine-local registration, through the same configurator as the completion email
+(INV-13), so macOS and Windows cannot diverge and no manifest change was needed: the script
+is found beside `--hook` in EA `global-hooks`.
+
+- **Why the runner is not resolved:** `shutil.which("uv")` resolved to the Cellar path
+  (`/opt/homebrew/Cellar/uv/<version>/bin/uv`), which a `brew upgrade uv` deletes; every
+  registered hook would then fail until the next sync. The unresolved `/opt/homebrew/bin/uv`
+  survives upgrades. This also changed the completion-email Stop hook's runner path.
+- **Why the guard is wrapped:** Claude Code treats a hook that cannot run as a non-blocking
+  error, so an unwrapped guard would fail open. The wrapper turns any exit other than 0 into 2.
+- **Event order:** removing and re-adding the managed Stop hook used to move `Stop` to the end,
+  so a second run rewrote `settings.json` once other events followed it. `_keep_order` fixes it.
+- **Limit:** the guard matches the Desktop tool name; an app rename unguards it silently
+  (EA INV-11). Re-run the live guard test after major Desktop updates.
 
 ### INV-9 - no `local` references a same-statement variable (set -u footgun)
 - **Surfaces**: every tracked `*.sh`; highest-risk is `sync.sh` (runs under `set -uo pipefail`

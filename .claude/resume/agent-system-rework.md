@@ -29,11 +29,12 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-1. EA CI cannot run: GitHub reports "recent account payments have failed or your spending limit needs to be increased", on `2f00ac66` and on the commit before it. Michael fixes this under Billing & plans. Until then the proof is verify_tree GREEN on `2f00ac66`, which runs every CI check. Mark EA INV-11 CI-green only after a real run.
-2. Ask Michael:
-   - push dotfiles' 3 local commits (F8 `40e2255`, card, INV-16 CI-green `09b2021`)?
-   - when to `git pull` the live EA checkout? It is 67 behind and fast-forwardable; the pull changes the hub's running code.
-The live card test passed (2026-09-29 22:32): bind, card-only commit, guarded clear, card reloaded after the clear and after `/compact`.
+Michael picks the next thread. Recommended: orchestration (queued item 4), then `/magic-prompt` (item 5).
+State as of 2026-09-30:
+- The context system is live on the mini.
+- Dotfiles is pushed (CI green); EA is pushed as `2f00ac66`, with verify_tree GREEN. EA's GitHub CI is blocked by billing: Michael fixes it under Billing & plans, then mark EA INV-11 CI-green after a real run.
+- The live EA checkout was fast-forwarded to `1439f0f1`. Hub and nexus processes still run the old code until restarted; nothing was restarted.
+- The prototype worktrees went to the Trash. The archived test sessions were left for Michael to delete from the sidebar if he wants.
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.
@@ -46,5 +47,5 @@ The live card test passed (2026-09-29 22:32): bind, card-only commit, guarded cl
    - Prose rules become hooks; model and effort are set per role; A/B pilot plus metrics.
 5. `/magic-prompt` upgrade: fold in `/prompt-audit`'s doc-grounded routers, add a refresh mode, and own `model-profiles/compact`. Retire `/prompt-audit` unless Michael objects.
 6. Codex: test compaction hooks (does SessionStart fire after a compaction?) and give cards a session identity.
-7. [ask] Cleanup: the POC worktrees `~/Documents/Worktrees/refresh-poc{,-a,-b,-fable}`, `refresher`, and `card-test` after the test; the Refresher and test Desktop sessions.
+7. Done 2026-09-30: the POC worktrees went to the Trash; the test sessions stay archived.
 8. After major Desktop updates, recheck the guard's tool name, `mcp__ccd_session_mgmt__clear_session` (INV-11 limit).

@@ -126,6 +126,12 @@ def check_claude_defaults(root: Path, findings: list[str]) -> None:
             findings.append("Claude defaults did not set permissions.defaultMode=auto (F8, 2026-09-29)")
         if permissions.get("skipDangerousModePermissionPrompt") is not True:
             findings.append("Claude defaults did not set skipDangerousModePermissionPrompt=true")
+        if data.get("model") != "opus":
+            findings.append("Claude defaults did not set model=opus")
+        ms = data.get("modelSettings", {})
+        if (ms.get("claude-opus-5-5", {}).get("effortLevel") != "medium"
+                or ms.get("claude-fable-5-1", {}).get("effortLevel") != "high"):
+            findings.append("Claude defaults did not set per-model effort (Opus 5.5 medium, Fable 5.1 high)")
         if data.get("hooks") != original["hooks"] or data.get("unrelated") != original["unrelated"]:
             findings.append("Claude defaults writer did not preserve unrelated settings")
 

@@ -4,6 +4,13 @@
 The user default is `auto` (Michael, 2026-09-29, F8): no prompts for routine work, with the
 auto-mode safety check on risky actions. The `ea` launcher still starts trusted roots in
 `bypassPermissions` per launch (INV-14); `skipDangerousModePermissionPrompt` serves that path.
+
+Model defaults (Michael, 2026-09-27: "opus default, fable for orchestration prompts"; research
+in Wiki "Fable 5.1 and Opus 5.5: Model and Effort Selection"): the default model is `opus`
+(Opus 5.5), with per-model effort in `modelSettings` (Opus 5.5 `medium`, its API default;
+Fable 5.1 `high`, its default and the level Anthropic says to start from). The top-level
+`effortLevel` is left alone: it still applies to models without an entry, such as the EA
+hub's pinned `claude-opus-4-8`, whose owner lane inherits user settings.
 """
 
 from __future__ import annotations
@@ -74,6 +81,15 @@ def configure(home: Path) -> Path:
         raise RuntimeError("Claude permissions setting must be a JSON object")
     permissions["defaultMode"] = "auto"
     permissions["skipDangerousModePermissionPrompt"] = True
+    data["model"] = "opus"
+    model_settings = data.setdefault("modelSettings", {})
+    if not isinstance(model_settings, dict):
+        raise RuntimeError("Claude modelSettings must be a JSON object")
+    for model_id, effort in (("claude-opus-5-5", "medium"), ("claude-fable-5-1", "high")):
+        entry = model_settings.setdefault(model_id, {})
+        if not isinstance(entry, dict):
+            raise RuntimeError(f"Claude modelSettings.{model_id} must be a JSON object")
+        entry["effortLevel"] = effort
     drop_retired_hooks(data)
 
     rendered = json.dumps(data, indent=2, ensure_ascii=False) + "\n"

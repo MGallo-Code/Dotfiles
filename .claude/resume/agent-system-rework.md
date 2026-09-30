@@ -34,7 +34,10 @@ Everything is pushed (2026-09-30).
 - Dotfiles is pushed.
 Now: the context diet, read-only. Plan: EA `docs/plans/context-diet.md` (uncommitted in the main checkout, which is 46 behind; commit it after Michael pulls, or through a worktree).
 - EA project skills (plan records each): relink, note, inbox-zero archived (EA `dc5bfed1`, `ae87e70e`, plan `b7478f2e`; local, main is 3 ahead and 47 behind, so push via the ea-push worktree handshake on Michael's go). Hub inbox gaps sent to Learning. Learning retires practice, write-practice, check and addskill as the hub covers them and will message; then drop the dotfiles `practice` function. checkin and refresh: undecided.
-- Open finding: `setup --dev`/`--minimal` skip cloning EA, so those machines get no global commands, rules, hooks or agents (all sourced from EA `claude-config/`). Raised with Michael 2026-09-30.
+- refresh: keep. checkin: undecided. The `--dev` gap is parked (Michael: probably no such machine) and folds into the EA cleanup.
+- Next: the EA cleanup. Map and 4-step proposal in EA `docs/plans/ea-cleanup.md` (`62cde51d`): 1 quick wins, 2 structure ADR (claude-config to dotfiles? ea-hub own repo?), 3 CLAUDE.md to pointers, 4 Michael's own content. Waiting on his picks.
+- Unpushed: EA main 7 local commits (via the ea-push handshake), dotfiles 2. Pushes wait for his go.
+- Running chats pick up new rules only via `/wrap` or a new chat (docs: rules load at start; skills, agents and hooks hot-reload; commands undocumented).
 - Then the connectors, EA's CLAUDE.md, the rules, and the kit, item by item.
 - Principle (Michael): keep Claude and Codex the same, or as close as possible.
 

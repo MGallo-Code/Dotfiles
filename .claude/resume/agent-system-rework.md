@@ -35,6 +35,7 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
 - Commits: EA `55d0151a`, `957edb25`, `7e38d348` (local). Fixtures pass on 3.9 and 3.14; 5 revert plants are caught.
 Next: Michael's go to push EA (worktree merge, verify_tree, tell Learning first; origin is 43 ahead) and dotfiles (card).
 Also noted: `/autocompact` is Claude Code's built-in and writes USER settings. Use `/wrap project on` or `/orchestrate on` instead.
+Decision (Michael, 2026-09-30): no folder gets 350K now; he turns it on per project himself (`/wrap project on`, or `/orchestrate on`).
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.

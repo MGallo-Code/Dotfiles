@@ -59,6 +59,45 @@ def drop_retired_hooks(data: dict) -> None:
                 del hooks[event]
 
 
+MODEL_DEFAULTS = (
+    (("model",), "opus"),
+    (("modelSettings", "claude-opus-5-5", "effortLevel"), "medium"),
+    (("modelSettings", "claude-fable-5-1", "effortLevel"), "high"),
+)
+
+
+def converge_model_defaults(data: dict, state_path: Path) -> None:
+    """Set each default only when it is absent or still what dotfiles last wrote.
+
+    `/model` and `/effort` save Michael's choice into these same keys ("as your default for new
+    sessions"); a value that differs from dotfiles' last write is his, and sync leaves it. The
+    last-written values live in `~/.claude/.dotfiles-defaults.json`.
+    """
+    try:
+        last = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(last, dict):
+            last = {}
+    except (OSError, ValueError):
+        last = {}
+    written = {}
+    for keys, value in MODEL_DEFAULTS:
+        node = data
+        for key in keys[:-1]:
+            child = node.setdefault(key, {})
+            if not isinstance(child, dict):
+                raise RuntimeError(f"Claude settings {'.'.join(keys[:-1])} must be a JSON object")
+            node = child
+        dotted = ".".join(keys)
+        current = node.get(keys[-1])
+        if current is None or current == value or current == last.get(dotted):
+            node[keys[-1]] = value
+            written[dotted] = value
+        elif dotted in last:
+            written[dotted] = last[dotted]  # his value stands; remember what we last wrote
+    if written != last:
+        state_path.write_text(json.dumps(written, indent=2) + "\n", encoding="utf-8")
+
+
 def configure(home: Path) -> Path:
     settings_dir = home / ".claude"
     settings = settings_dir / "settings.json"
@@ -81,15 +120,7 @@ def configure(home: Path) -> Path:
         raise RuntimeError("Claude permissions setting must be a JSON object")
     permissions["defaultMode"] = "auto"
     permissions["skipDangerousModePermissionPrompt"] = True
-    data["model"] = "opus"
-    model_settings = data.setdefault("modelSettings", {})
-    if not isinstance(model_settings, dict):
-        raise RuntimeError("Claude modelSettings must be a JSON object")
-    for model_id, effort in (("claude-opus-5-5", "medium"), ("claude-fable-5-1", "high")):
-        entry = model_settings.setdefault(model_id, {})
-        if not isinstance(entry, dict):
-            raise RuntimeError(f"Claude modelSettings.{model_id} must be a JSON object")
-        entry["effortLevel"] = effort
+    converge_model_defaults(data, settings_dir / ".dotfiles-defaults.json")
     drop_retired_hooks(data)
 
     rendered = json.dumps(data, indent=2, ensure_ascii=False) + "\n"

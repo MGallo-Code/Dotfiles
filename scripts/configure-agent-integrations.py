@@ -43,13 +43,13 @@ SKILLS_BEGIN = "# dotfiles: begin Codex duplicate skill suppression"
 CONTEXT_SCRIPT = "context-card.py"
 CONTEXT_TIMEOUT = 15
 # (event, matcher, subcommand). The clear guard keys on the Desktop tool's name (EA INV-11
-# limit). The role guard fires on every edit and shell call, so it runs on plain Python (fast)
-# and is silent for sessions without an orchestration role.
+# limit). The role guard fires on every edit and shell call and is silent for sessions without
+# an orchestration role; it runs on the same stable runner as the others (uv, about 30 ms).
 CONTEXT_HOOKS = (
     ("SessionStart", "startup|resume|clear|compact", "session-start"),
     ("PreCompact", None, "pre-compact"),
     ("PreToolUse", "mcp__ccd_session_mgmt__clear_session", "clear-guard"),
-    ("PreToolUse", "Edit|Write|NotebookEdit|Bash", "role-guard"),
+    ("PreToolUse", "Edit|Write|NotebookEdit|Bash|PowerShell", "role-guard"),
 )
 _CONTEXT_SUB = re.compile(r"""context-card\.py["']?\s+(session-start|pre-compact|clear-guard|role-guard)\b""")
 _CONTEXT_TOKEN = re.compile(r"""(?:^|[\s"'/\\])context-card\.py(?=["'\s]|$)""")
@@ -169,9 +169,10 @@ def _context_command(prefix: list[str], subcommand: str) -> str:
             f'echo "clear blocked: the resume-card guard could not run (exit $rc)" >&2; exit 2; }}'
         )
     if subcommand == "role-guard":
-        # Only the guard's own block (exit 2) blocks. A broken or missing runner must never
-        # stop every edit and shell call in sessions that have no role.
-        return f'{base}; [ "$?" -eq 2 ] && exit 2; exit 0'
+        # Only the guard's own block (exit 3, mapped to Claude's 2) blocks. Python and uv exit 2
+        # themselves when the script is missing or unreadable, and that must never stop every
+        # edit and shell call in sessions that have no role.
+        return f'{base}; [ "$?" -eq 3 ] && exit 2; exit 0'
     return f"{base} || true"
 
 
@@ -435,6 +436,8 @@ def _strip_codex_context_hooks(text: str) -> str:
             # TOML escapes the command's quotes (\\"), so match the script name on the raw line.
             if any(line.strip().startswith("command") and CONTEXT_SCRIPT in line for line in group):
                 i = j
+                while out and out[-1].strip() == "" and i < len(lines) and lines[i].strip() == "":
+                    i += 1  # close the seam: drop one blank line, touch nothing else
                 continue
             out.extend(group)
             i = j
@@ -469,8 +472,7 @@ def _configure_codex(
             passthrough = _validate_passthrough(existing_notify)
 
     body = _strip_top_level_notify(original, existing_notify is not None)
-    body = _strip_retired_skill_entries(_strip_skill_block(body), retired_roots or [])
-    body = re.sub(r"\n{3,}", "\n\n", _strip_codex_context_hooks(body)).strip()
+    body = _strip_codex_context_hooks(_strip_retired_skill_entries(_strip_skill_block(body), retired_roots or [])).strip()
     managed_argv = list(notify_argv)
     if passthrough:
         managed_argv.extend([CODEX_PASSTHROUGH_FLAG, _encode_passthrough(passthrough)])
@@ -491,6 +493,9 @@ def _configure_codex(
             )
         lines.append(SKILLS_END)
         chunks.append("\n".join(lines))
+    if context_argv and re.search(r"(?m)^\s*(hooks\.)?SessionStart\s*=", body):
+        print("agent integrations: Codex hooks.SessionStart is an inline array; resume-card hook not registered for Codex", file=sys.stderr)
+        context_argv = None
     if context_argv:
         # Codex reloads the card after compaction through SessionStart(compact); it ignores
         # PreCompact output and has no Desktop clear tool, so only this hook applies. Codex
@@ -604,11 +609,9 @@ def main(argv: list[str] | None = None) -> int:
         ([str(runner), "run", "--no-project", str(context_script)] if uses_uv else [str(runner), str(context_script)])
         if context_script.is_file() else None
     )
-    fast_python = shutil.which("python3") or shutil.which("python")
-    context_prefixes = {
-        sub: ([str(Path(fast_python).absolute()), str(context_script)] if sub == "role-guard" and fast_python else context_prefix)
-        for _event, _matcher, sub in CONTEXT_HOOKS
-    } if context_prefix else None
+    # One stable runner for every hook. Never `shutil.which("python3")`: under the manifest's
+    # uv fallback that resolves to a throwaway environment deleted after the run.
+    context_prefixes = {sub: context_prefix for _event, _matcher, sub in CONTEXT_HOOKS} if context_prefix else None
     claude_argv = [*prefix, "hook", "--agent", "claude"]
     codex_argv = [*prefix, "hook", "--agent", "codex"]
     gemini_argv = [*prefix, "hook", "--agent", "gemini"]
@@ -626,8 +629,7 @@ def main(argv: list[str] | None = None) -> int:
     disabled = _skill_files([root.expanduser().resolve() for root in args.codex_disable_root])
     retired = [root.expanduser().resolve() for root in args.codex_retired_disable_root]
     # POSIX only: how Codex runs a hook command on Windows is unverified (dotfiles INV-16).
-    codex_context = ([str(Path(fast_python).absolute()), str(context_script)]
-                     if context_prefix and fast_python and os.name == "posix" else None)
+    codex_context = context_prefix if context_prefix and os.name == "posix" else None
     codex = _configure_codex(codex_original, codex_path, codex_argv, disabled, retired, codex_context)
     state = {
         "account": args.account,

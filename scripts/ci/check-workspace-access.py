@@ -135,6 +135,19 @@ def check_claude_defaults(root: Path, findings: list[str]) -> None:
         if data.get("hooks") != original["hooks"] or data.get("unrelated") != original["unrelated"]:
             findings.append("Claude defaults writer did not preserve unrelated settings")
 
+        # A /model or /effort choice (saved into the same keys) survives the next sync, and a
+        # value still equal to dotfiles' last write keeps converging.
+        chosen = json.loads(settings.read_text(encoding="utf-8"))
+        chosen["model"] = "fable"
+        chosen["modelSettings"]["claude-fable-5-1"]["effortLevel"] = "xhigh"
+        settings.write_text(json.dumps(chosen), encoding="utf-8")
+        run(command)
+        after = json.loads(settings.read_text(encoding="utf-8"))
+        if after.get("model") != "fable" or after["modelSettings"]["claude-fable-5-1"]["effortLevel"] != "xhigh":
+            findings.append("sync overwrote Michael's own /model or /effort choice")
+        if after["modelSettings"]["claude-opus-5-5"]["effortLevel"] != "medium":
+            findings.append("an untouched default stopped converging after another key was changed")
+
         before = b"{ malformed\n"
         settings.write_bytes(before)
         malformed = run(command)

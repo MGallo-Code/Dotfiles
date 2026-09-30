@@ -5,9 +5,19 @@
 set -e
 
 ROOT="$(git rev-parse --show-toplevel)"
-PY="$(command -v python3 || command -v python || true)"
+# The checks parse TOML, so pick the first Python with tomllib (3.11+) or tomli. Apple's
+# /usr/bin/python3 (3.9) is often first on PATH in agent sessions and has neither; the
+# same probe as manifest.sh's configure_agent_integrations.
+PY=""
+for candidate in python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 python; do
+  command -v "$candidate" >/dev/null 2>&1 || continue
+  if "$candidate" -c 'import importlib.util,sys; sys.exit(not (importlib.util.find_spec("tomllib") or importlib.util.find_spec("tomli")))' >/dev/null 2>&1; then
+    PY="$(command -v "$candidate")"
+    break
+  fi
+done
 if [ -z "$PY" ]; then
-  echo "pre-commit: python not found - failing closed (install python or use --no-verify deliberately)" >&2
+  echo "pre-commit: no Python with tomllib/tomli found - failing closed (install Python 3.11+ or use --no-verify deliberately)" >&2
   exit 2
 fi
 

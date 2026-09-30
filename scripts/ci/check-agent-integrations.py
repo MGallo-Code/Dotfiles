@@ -268,7 +268,7 @@ CONTEXT_SUBS = {
     "session-start": ("SessionStart", "startup|resume|clear|compact"),
     "pre-compact": ("PreCompact", None),
     "clear-guard": ("PreToolUse", "mcp__ccd_session_mgmt__clear_session"),
-    "role-guard": ("PreToolUse", "Edit|Write|NotebookEdit|Bash"),
+    "role-guard": ("PreToolUse", "Edit|Write|NotebookEdit|Bash|PowerShell"),
 }
 CONTEXT_EVENTS = sorted({event for event, _ in CONTEXT_SUBS.values()})
 
@@ -318,8 +318,10 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
             if found:
                 require(found[0][1].get("matcher") == matcher, f"{sub}: wrong matcher {found[0][1].get('matcher')!r}", findings)
         role = context_entries(data, "PreToolUse", "role-guard")
-        require(bool(role) and role[0][2].endswith('[ "$?" -eq 2 ] && exit 2; exit 0'),
-                "role guard is not wrapped so that only its own block blocks", findings)
+        require(bool(role) and role[0][2].endswith('[ "$?" -eq 3 ] && exit 2; exit 0'),
+                "role guard is not wrapped so that only its own block (exit 3) blocks", findings)
+        require(len({c.split('"')[1] for sub in CONTEXT_SUBS for _, _, c in context_entries(data, CONTEXT_SUBS[sub][0], sub)}) == 1,
+                "resume-card hooks do not all use the one configured runner", findings)
         guard = context_entries(data, "PreToolUse", "clear-guard")
         require(bool(guard) and "exit 2" in guard[0][2] and guard[0][2].split('"')[1] == str(runner.resolve()).replace("\\", "/"),
                 "clear guard is not wrapped fail-closed on the configured runner", findings)
@@ -327,6 +329,24 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
         before = (home / ".claude" / "settings.json").read_bytes()
         run(home)
         require(before == (home / ".claude" / "settings.json").read_bytes(), "resume-card registration is not byte-idempotent", findings)
+
+        # A throwaway python3 first on PATH (the manifest's uv fallback does this) must not leak
+        # into the registration: two PATH contexts, byte-identical settings.
+        decoy_bin = base / "decoy-bin"
+        decoy_bin.mkdir()
+        (decoy_bin / "python3").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (decoy_bin / "python3").chmod(0o755)
+        home2 = fresh_home("path-a", {})
+        run(home2)
+        first = (home2 / ".claude" / "settings.json").read_bytes()
+        saved_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = f"{decoy_bin}{os.pathsep}{saved_path}"
+        try:
+            run(home2)
+        finally:
+            os.environ["PATH"] = saved_path
+        require(first == (home2 / ".claude" / "settings.json").read_bytes() and str(decoy_bin) not in first.decode(),
+                "an ephemeral python3 on PATH changed the hook registration", findings)
 
         stale = {"type": "command", "command": 'python3 "/old/context-card.py" clear-guard'}
         home = fresh_home("in-place", {"hooks": {"PreToolUse": [
@@ -374,11 +394,20 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
             before = codex_cfg.read_bytes()
             run(codex_home)
             require(before == codex_cfg.read_bytes(), "Codex: resume-card registration is not byte-idempotent", findings)
-            codex_cfg.write_text("\n".join(l for l in text.splitlines() if not l.startswith("# dotfiles: ")) + "\n", encoding="utf-8")
+            ml = 'note = """a\n\n\n\nb"""\n'
+            codex_cfg.write_text(ml + "\n".join(l for l in text.splitlines() if not l.startswith("# dotfiles: ")) + "\n", encoding="utf-8")
             run(codex_home)
             again = toml_module().loads(codex_cfg.read_text(encoding="utf-8"))
             require(sum("context-card.py" in h.get("command", "") for g in again["hooks"].get("SessionStart", []) for h in g.get("hooks", [])) == 1,
                     "Codex: with its markers dropped (Codex rewrites config.toml) the block was duplicated", findings)
+            require(again.get("note") == "a\n\n\n\nb",
+                    "Codex: a multi-line string outside our block was altered", findings)
+            inline_home = fresh_home("codex-inline", {})
+            (inline_home / ".codex").mkdir()
+            (inline_home / ".codex" / "config.toml").write_text('hooks.SessionStart = []\n', encoding="utf-8")
+            result = run(inline_home)
+            require(result.returncode == 0 and "inline array" in result.stderr,
+                    "Codex: an inline SessionStart array aborted convergence instead of skipping with a warning", findings)
 
         context.unlink()
         home = fresh_home("removed", {"hooks": {"PreToolUse": [
@@ -411,7 +440,11 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
             missing = module._context_command([str(Path(raw) / "missing-runner")], "clear-guard")
             got = subprocess.run(["/bin/sh", "-c", missing], capture_output=True).returncode
             require(got == 2, f"guard wrapper: a missing runner gave {got}, want 2 (fail closed)", findings)
-            for exit_code, want in ((0, 0), (2, 2), (1, 0), (127, 0)):
+            for exit_code in (3,):
+                stub = Path(raw) / f"exit{exit_code}.sh"
+                stub.write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
+                stub.chmod(0o755)
+            for exit_code, want in ((0, 0), (3, 2), (2, 0), (1, 0), (127, 0)):
                 stub = Path(raw) / f"exit{exit_code}.sh"
                 command = module._context_command([str(stub)], "role-guard")
                 got = subprocess.run(["/bin/sh", "-c", command], capture_output=True).returncode
@@ -419,6 +452,9 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
             missing = module._context_command([str(Path(raw) / "missing-runner")], "role-guard")
             got = subprocess.run(["/bin/sh", "-c", missing], capture_output=True).returncode
             require(got == 0, f"role-guard wrapper: a missing runner gave {got}, want 0 (never lock up role-less sessions)", findings)
+            gone = module._context_command([sys.executable, str(Path(raw) / "missing-context-card.py")], "role-guard")
+            got = subprocess.run(["/bin/sh", "-c", gone], capture_output=True).returncode
+            require(got == 0, f"role-guard wrapper: a real Python with the script missing gave {got}, want 0 (Python itself exits 2)", findings)
 
 
 def machine_context(findings: list[str], home: Path, claude: dict) -> None:

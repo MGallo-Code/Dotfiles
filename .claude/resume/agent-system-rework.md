@@ -29,13 +29,13 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Live card test. Michael opens a new Desktop session in `~/Documents/Worktrees/card-test`, then:
-1. commit a file;
-2. `/wrap`;
-3. ask for the state;
-4. say "clear yourself" (it should be blocked);
-5. `/compact`.
-Then verify against `~/.claude/resume-state/log.txt` and the transcript.
+Michael decides item 1 (pushes) and item 2 (F8). The live card test passed on 2026-09-29 22:32, in `~/Documents/Worktrees/card-test`:
+- bind, then a card-only commit `fab3b41`;
+- the guard allowed the typed `/wrap`;
+- the card reloaded after the clear;
+- `/compact` used the Opus profile and the card reloaded again.
+In that test the model refused "clear yourself" by the rule, so the hook was not exercised; it was proven live earlier.
+Cosmetic: new cards are created 0600 (mkstemp); in-repo cards should be 0644.
 
 ## Queued after that
 1. [go] Push dotfiles (1 ahead), Wiki (2 ahead: `09d16e8`, `c644aba`) and EA. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.

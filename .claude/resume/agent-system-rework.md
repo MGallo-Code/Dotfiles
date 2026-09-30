@@ -29,12 +29,13 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Commands renamed to Michael's model (2026-09-30), EA `07b0c9a3` (local):
-- `/wrap [keep]`: refresh now.
-- `/autowrap on|off|status|limit <tokens>`: automatic refresh per project; 350K by default, 150k-1000k custom; `off` restores the previous limit and unbinds.
-- `/orchestrate new|on|off|end|status`: `new` is the interview plus setup; `off`/`on` pause and resume (paused: a normal chat, Builders idle); `end` tears down.
-There is no custom `/autocompact`: the one Michael sees is Claude Code's built-in, which writes USER settings.
-Next: a quick fresh review of `07b0c9a3`, then Michael's go to push EA (4 local commits; worktree merge, verify_tree, tell Learning first) and dotfiles (card).
+Everything is pushed (2026-09-30).
+- EA `a2e2c820` (verify_tree GREEN, Learning notified): `/wrap [keep]`, `/autowrap on|off|status|limit`, and `/orchestrate new|on|off|end|status`. A pause holds Builders idle, and one window record per folder is shared by autowrap and orchestrations.
+- Dotfiles is pushed.
+Now: the context diet, read-only. Plan: EA `docs/plans/context-diet.md` (uncommitted in the main checkout, which is 46 behind; commit it after Michael pulls, or through a worktree).
+- Michael decides the EA project skills one by one (keep, archive or delete) from the table in the plan.
+- Then the connectors, EA's CLAUDE.md, the rules, and the kit, item by item.
+- Principle (Michael): keep Claude and Codex the same, or as close as possible.
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.

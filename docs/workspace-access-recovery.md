@@ -13,10 +13,12 @@ The named `ea`, `wiki`, `sbic`, and `sysupdate` launchers are trusted boundaries
 - reject Codex cwd, additional-write-root, profile, config, and remote overrides; use raw `codex`
   when intentionally changing those boundaries.
 
-Claude's user setting is also converged to `permissions.defaultMode: "bypassPermissions"` with
-`permissions.skipDangerousModePermissionPrompt: true`. Anthropic documents that user settings apply
-across projects, that `defaultMode` includes `bypassPermissions` and is labeled in the desktop app,
-and that a CLI `--permission-mode` overrides it for one session. See [Claude Code settings and
+Claude's user setting is converged to `permissions.defaultMode: "auto"` (Michael, 2026-09-29, F8):
+routine work needs no prompts and the auto-mode safety check screens risky actions. The `ea`
+launcher above still requests `bypassPermissions` for its trusted roots on each launch, and
+`permissions.skipDangerousModePermissionPrompt: true` keeps that launch from prompting.
+Anthropic documents that user settings apply across projects and that a CLI `--permission-mode`
+overrides them for one session. See [Claude Code settings and
 precedence](https://code.claude.com/docs/en/settings#permission-settings).
 
 Codex uses the stable `approval_policy = "never"` and `sandbox_mode = "danger-full-access"` user

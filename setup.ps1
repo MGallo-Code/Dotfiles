@@ -148,7 +148,7 @@ matcher = "^Bash`$"
 
     & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-claude-defaults.py") --home $HOME | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Claude settings are malformed or inaccessible; defaults were not changed" }
-    Write-Ok "Claude: autonomous user default set (bypassPermissions)"
+    Write-Ok "Claude: user default permission mode set (auto)"
 
     $geminiDir = Join-Path $HOME ".gemini"
     $geminiSettings = Join-Path $geminiDir "settings.json"

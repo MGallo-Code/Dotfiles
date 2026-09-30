@@ -74,7 +74,7 @@ EOF
         err "Claude settings are malformed or inaccessible; defaults were not changed"
         return 1
     fi
-    ok "Claude: autonomous user default set (bypassPermissions)"
+    ok "Claude: user default permission mode set (auto)"
 
     local gemini_settings="$HOME/.gemini/settings.json"
     mkdir -p "$HOME/.gemini"

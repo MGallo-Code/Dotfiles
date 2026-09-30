@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Converge Michael's documented Claude permission defaults without clobbering settings."""
+"""Converge Michael's documented Claude permission defaults without clobbering settings.
+
+The user default is `auto` (Michael, 2026-09-29, F8): no prompts for routine work, with the
+auto-mode safety check on risky actions. The `ea` launcher still starts trusted roots in
+`bypassPermissions` per launch (INV-14); `skipDangerousModePermissionPrompt` serves that path.
+"""
 
 from __future__ import annotations
 
@@ -67,7 +72,7 @@ def configure(home: Path) -> Path:
     permissions = data.setdefault("permissions", {})
     if not isinstance(permissions, dict):
         raise RuntimeError("Claude permissions setting must be a JSON object")
-    permissions["defaultMode"] = "bypassPermissions"
+    permissions["defaultMode"] = "auto"
     permissions["skipDangerousModePermissionPrompt"] = True
     drop_retired_hooks(data)
 

@@ -122,8 +122,8 @@ def check_claude_defaults(root: Path, findings: list[str]) -> None:
             return
         data = json.loads(once)
         permissions = data.get("permissions", {})
-        if permissions.get("defaultMode") != "bypassPermissions":
-            findings.append("Claude defaults did not set permissions.defaultMode=bypassPermissions")
+        if permissions.get("defaultMode") != "auto":
+            findings.append("Claude defaults did not set permissions.defaultMode=auto (F8, 2026-09-29)")
         if permissions.get("skipDangerousModePermissionPrompt") is not True:
             findings.append("Claude defaults did not set skipDangerousModePermissionPrompt=true")
         if data.get("hooks") != original["hooks"] or data.get("unrelated") != original["unrelated"]:

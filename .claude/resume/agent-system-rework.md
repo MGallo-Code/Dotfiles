@@ -29,10 +29,12 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-`/orchestrate on|off` is built, reviewed and fixed (EA `55d0151a`, `957edb25`; local). The review found 1 blocker (activation hijacking running or bound sessions) and about 10 should-fixes, all fixed with fixtures and 5 revert plants.
-- Activation: only brand-new, unbound, role-less sessions, and only while the Orchestrator's role is live (30-day expiry).
-- State and Builder cards live outside the repos. `off` works from the role files and restores the old windows.
-Next: Michael's go to push EA (2 commits; origin moved: worktree merge, verify_tree, tell Learning first) and dotfiles (card commits).
+`/orchestrate` is now what Michael described (2026-09-30):
+- `on`: phase 1 interviews him (interview-me or idea-refine) and writes the brief and a kickoff prompt for the chat's current model. On his yes, the transition creates the Builder worktree, the Challenger folder and RESUME.md, and switches everything on. He types `/wrap` for a clean phase 2, then "go". If he skips it, the first auto-compaction drops the interview.
+- `status` and `off`, as before.
+- Commits: EA `55d0151a`, `957edb25`, `7e38d348` (local). Fixtures pass on 3.9 and 3.14; 5 revert plants are caught.
+Next: Michael's go to push EA (worktree merge, verify_tree, tell Learning first; origin is 43 ahead) and dotfiles (card).
+Also noted: `/autocompact` is Claude Code's built-in and writes USER settings. Use `/wrap project on` or `/orchestrate on` instead.
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.

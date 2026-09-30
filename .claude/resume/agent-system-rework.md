@@ -29,11 +29,12 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Ask Michael to push EA (about 6 local commits ahead) and dotfiles (5 ahead). Phase 2 is built, reviewed, fixed and active on the mini:
-- Checks: EA check-context-card (92 fixtures, 3 revert mutants); dotfiles checks green plus `--machine`; skill links clean.
-- Codex asks Michael once to trust the new SessionStart hook.
-Detail: EA `docs/plans/agent-system-phase-2.md` (Outcome).
-After the push, CI proves the Windows side, and the PC gets everything at its next sync. EA CI stays blocked until GitHub billing is fixed.
+Phase 2 is pushed (2026-09-30): dotfiles `9c54aa7`, and EA `c4a40376` after verify_tree GREEN, with the Learning session notified.
+Next:
+1. Confirm the dotfiles CI run is green and mark INV-16 CI-green.
+2. Michael pulls the live EA checkout when he chooses (39 behind, fast-forward).
+3. The orchestration A/B pilot runs on his next orchestrated project.
+4. EA CI waits on GitHub billing.
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.

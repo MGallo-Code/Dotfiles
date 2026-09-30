@@ -29,27 +29,22 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Phase 2 (Michael, 2026-09-30: "Do them all") is built and committed locally, but not activated. A fresh-context review of the diffs is running.
-Fix what it finds, then activate on the mini:
-1. Run the configurator directly, diffing first. It adds the role guard and Codex's SessionStart hook; Codex asks Michael once to trust that hook.
-2. Link the `orchestrate` skill via sync's link step.
-3. Ask to push EA and dotfiles.
-Plan: EA `docs/plans/agent-system-phase-2.md`.
-- D (done): CLI 2.1.285, hub smoke-tested; defaults `opus` plus modelSettings (dotfiles `8b3cbb3`).
-- B (done): `/magic-prompt` compose/audit/refresh over `model-profiles/`; `/prompt-audit` retired (EA `c0738f94`).
-- A (built): challenger agent, orchestrate skill, roles and role guard, RESUME.md as the Orchestrator's card (EA `1ea6fac8`, dotfiles `7388896`). The pilot runs on the next real orchestrated project.
-- C (built): Codex card reload after compaction, proven live with a scratch repo and `codex exec` (EA `1ea6fac8`).
+Ask Michael to push EA (about 6 local commits ahead) and dotfiles (5 ahead). Phase 2 is built, reviewed, fixed and active on the mini:
+- Checks: EA check-context-card (92 fixtures, 3 revert mutants); dotfiles checks green plus `--machine`; skill links clean.
+- Codex asks Michael once to trust the new SessionStart hook.
+Detail: EA `docs/plans/agent-system-phase-2.md` (Outcome).
+After the push, CI proves the Windows side, and the PC gets everything at its next sync. EA CI stays blocked until GitHub billing is fixed.
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.
 2. Done (dotfiles `40e2255`, local): F8. Sync now sets `permissions.defaultMode=auto` (Michael: "Auto"). The `ea` launcher still starts in bypass per launch (INV-14).
 3. Done 2026-09-30: CLI 2.1.285, and model defaults via dotfiles `8b3cbb3`.
-4. Orchestration (GAN) phase 2: Wiki "Orchestrated Build-Critique System (Lab Note)", steps 1-8. The pinned handoff is Wiki `raw/orchestrated-build-critique-handoff-2026-09-27.md`.
+4. Orchestration phase 2 is built (skill `orchestrate`). What remains is the A/B pilot on Michael's next orchestrated project, and the design detail below: Wiki "Orchestrated Build-Critique System (Lab Note)", steps 1-8. The pinned handoff is Wiki `raw/orchestrated-build-critique-handoff-2026-09-27.md`.
    - Challenger: a fresh subagent per revision.
    - Builder: one per slice, with a lessons file.
    - Orchestrator: rotated from `RESUME.md`.
    - Prose rules become hooks; model and effort are set per role; A/B pilot plus metrics.
-5. `/magic-prompt` upgrade: fold in `/prompt-audit`'s doc-grounded routers, add a refresh mode, and own `model-profiles/compact`. Retire `/prompt-audit` unless Michael objects.
-6. Codex: test compaction hooks (does SessionStart fire after a compaction?) and give cards a session identity.
+5. Done 2026-09-30, `/magic-prompt` upgrade: fold in `/prompt-audit`'s doc-grounded routers, add a refresh mode, and own `model-profiles/compact`. Retire `/prompt-audit` unless Michael objects.
+6. Done 2026-09-30 (card reload after compaction; no card-aware summary, because Codex ignores PreCompact). Codex: test compaction hooks (does SessionStart fire after a compaction?) and give cards a session identity.
 7. Done 2026-09-30: the POC worktrees went to the Trash; the test sessions stay archived.
 8. After major Desktop updates, recheck the guard's tool name, `mcp__ccd_session_mgmt__clear_session` (INV-11 limit).

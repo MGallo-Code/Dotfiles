@@ -33,7 +33,8 @@ Everything is pushed (2026-09-30).
 - EA `a2e2c820` (verify_tree GREEN, Learning notified): `/wrap [keep]`, `/autowrap on|off|status|limit`, and `/orchestrate new|on|off|end|status`. A pause holds Builders idle, and one window record per folder is shared by autowrap and orchestrations.
 - Dotfiles is pushed.
 Now: the context diet, read-only. Plan: EA `docs/plans/context-diet.md` (uncommitted in the main checkout, which is 46 behind; commit it after Michael pulls, or through a worktree).
-- Michael decides the EA project skills one by one (keep, archive or delete) from the table in the plan.
+- EA project skills (plan records each): relink, note, inbox-zero archived (EA `dc5bfed1`, `ae87e70e`, plan `b7478f2e`; local, main is 3 ahead and 47 behind, so push via the ea-push worktree handshake on Michael's go). Hub inbox gaps sent to Learning. Learning retires practice, write-practice, check and addskill as the hub covers them and will message; then drop the dotfiles `practice` function. checkin and refresh: undecided.
+- Open finding: `setup --dev`/`--minimal` skip cloning EA, so those machines get no global commands, rules, hooks or agents (all sourced from EA `claude-config/`). Raised with Michael 2026-09-30.
 - Then the connectors, EA's CLAUDE.md, the rules, and the kit, item by item.
 - Principle (Michael): keep Claude and Codex the same, or as close as possible.
 

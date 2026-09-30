@@ -29,17 +29,21 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Michael picks the next thread. Recommended: orchestration (queued item 4), then `/magic-prompt` (item 5).
-State as of 2026-09-30:
-- The context system is live on the mini.
-- Dotfiles is pushed (CI green); EA is pushed as `2f00ac66`, with verify_tree GREEN. EA's GitHub CI is blocked by billing: Michael fixes it under Billing & plans, then mark EA INV-11 CI-green after a real run.
-- The live EA checkout was fast-forwarded to `1439f0f1`. Hub and nexus processes still run the old code until restarted; nothing was restarted.
-- The prototype worktrees went to the Trash. The archived test sessions were left for Michael to delete from the sidebar if he wants.
+Phase 2 (Michael, 2026-09-30: "Do them all") is built and committed locally, but not activated. A fresh-context review of the diffs is running.
+Fix what it finds, then activate on the mini:
+1. Run the configurator directly, diffing first. It adds the role guard and Codex's SessionStart hook; Codex asks Michael once to trust that hook.
+2. Link the `orchestrate` skill via sync's link step.
+3. Ask to push EA and dotfiles.
+Plan: EA `docs/plans/agent-system-phase-2.md`.
+- D (done): CLI 2.1.285, hub smoke-tested; defaults `opus` plus modelSettings (dotfiles `8b3cbb3`).
+- B (done): `/magic-prompt` compose/audit/refresh over `model-profiles/`; `/prompt-audit` retired (EA `c0738f94`).
+- A (built): challenger agent, orchestrate skill, roles and role guard, RESUME.md as the Orchestrator's card (EA `1ea6fac8`, dotfiles `7388896`). The pilot runs on the next real orchestrated project.
+- C (built): Codex card reload after compaction, proven live with a scratch repo and `codex exec` (EA `1ea6fac8`).
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.
 2. Done (dotfiles `40e2255`, local): F8. Sync now sets `permissions.defaultMode=auto` (Michael: "Auto"). The `ea` launcher still starts in bypass per launch (INV-14).
-3. [go] Deferred: npm CLI 2.1.266 → current, and move settings to `modelSettings` (Opus 5.5 default medium, Fable 5.1 high), done through an ea-hub session. Steps are in the trim doc.
+3. Done 2026-09-30: CLI 2.1.285, and model defaults via dotfiles `8b3cbb3`.
 4. Orchestration (GAN) phase 2: Wiki "Orchestrated Build-Critique System (Lab Note)", steps 1-8. The pinned handoff is Wiki `raw/orchestrated-build-critique-handoff-2026-09-27.md`.
    - Challenger: a fresh subagent per revision.
    - Builder: one per slice, with a lessons file.

@@ -264,20 +264,22 @@ def load_hook(path: Path):
     return module
 
 
-CONTEXT_EVENTS = {
-    "SessionStart": "startup|resume|clear|compact",
-    "PreCompact": None,
-    "PreToolUse": "mcp__ccd_session_mgmt__clear_session",
+CONTEXT_SUBS = {
+    "session-start": ("SessionStart", "startup|resume|clear|compact"),
+    "pre-compact": ("PreCompact", None),
+    "clear-guard": ("PreToolUse", "mcp__ccd_session_mgmt__clear_session"),
+    "role-guard": ("PreToolUse", "Edit|Write|NotebookEdit|Bash"),
 }
+CONTEXT_EVENTS = sorted({event for event, _ in CONTEXT_SUBS.values()})
 
 
-def context_entries(data: dict, event: str) -> list[tuple[int, dict, str]]:
+def context_entries(data: dict, event: str, sub: str | None = None) -> list[tuple[int, dict, str]]:
     found = []
     raw = data.get("hooks", {}).get(event, [])
     for index, entry in enumerate(raw if isinstance(raw, list) else []):
         for hook in entry.get("hooks", []) if isinstance(entry, dict) else []:
             command = hook.get("command") if isinstance(hook, dict) else None
-            if isinstance(command, str) and "context-card.py" in command:
+            if isinstance(command, str) and "context-card.py" in command and (sub is None or f" {sub}" in command):
                 found.append((index, entry, command))
     return found
 
@@ -310,12 +312,15 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
         result = run(home)
         require(result.returncode == 0, f"context fixture failed: {result.stderr.strip()}", findings)
         data = load(home)
-        for event, matcher in CONTEXT_EVENTS.items():
-            found = context_entries(data, event)
-            require(len(found) == 1, f"{event}: expected one resume-card hook, found {len(found)}", findings)
+        for sub, (event, matcher) in CONTEXT_SUBS.items():
+            found = context_entries(data, event, sub)
+            require(len(found) == 1, f"{sub}: expected one resume-card hook, found {len(found)}", findings)
             if found:
-                require(found[0][1].get("matcher") == matcher, f"{event}: wrong matcher {found[0][1].get('matcher')!r}", findings)
-        guard = context_entries(data, "PreToolUse")
+                require(found[0][1].get("matcher") == matcher, f"{sub}: wrong matcher {found[0][1].get('matcher')!r}", findings)
+        role = context_entries(data, "PreToolUse", "role-guard")
+        require(bool(role) and role[0][2].endswith('[ "$?" -eq 2 ] && exit 2; exit 0'),
+                "role guard is not wrapped so that only its own block blocks", findings)
+        guard = context_entries(data, "PreToolUse", "clear-guard")
         require(bool(guard) and "exit 2" in guard[0][2] and guard[0][2].split('"')[1] == str(runner.resolve()).replace("\\", "/"),
                 "clear guard is not wrapped fail-closed on the configured runner", findings)
         require(any("keep-bash" in c for c in commands(data, "PreToolUse")), "unrelated PreToolUse hook was dropped", findings)
@@ -327,7 +332,7 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
         home = fresh_home("in-place", {"hooks": {"PreToolUse": [
             {"matcher": "mcp__ccd_session_mgmt__clear_session", "hooks": [stale]}, keep_bash]}})
         run(home)
-        found = context_entries(load(home), "PreToolUse")
+        found = context_entries(load(home), "PreToolUse", "clear-guard")
         require(len(found) == 1 and found[0][0] == 0 and "/old/" not in found[0][2],
                 "a stale resume-card hook was not replaced in place", findings)
 
@@ -336,17 +341,44 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
         run(home)
         data = load(home)
         first = data["hooks"]["PreToolUse"][0]
-        found = context_entries(data, "PreToolUse")
+        found = context_entries(data, "PreToolUse", "clear-guard")
         require(first.get("matcher") == "Bash" and [h["command"] for h in first["hooks"]] == ["keep-bash"]
-                and len(found) == 1 and found[0][1].get("matcher") == CONTEXT_EVENTS["PreToolUse"],
+                and len(found) == 1 and found[0][1].get("matcher") == CONTEXT_SUBS["clear-guard"][1],
                 "a resume-card hook inside a shared entry was not moved to its own entry", findings)
 
         home = fresh_home("odd", {"hooks": {"SessionStart": "not-an-array", "PreToolUse": [keep_bash]}})
         result = run(home)
         data = load(home)
         require(result.returncode == 0 and data["hooks"]["SessionStart"] == "not-an-array"
-                and len(context_entries(data, "PreCompact")) == 1,
+                and len(context_entries(data, "PreCompact")) == 1 and len(context_entries(data, "PreToolUse")) == 2,
                 "a malformed unrelated event blocked or was rewritten by resume-card registration", findings)
+
+        if os.name == "posix":
+            codex_home = fresh_home("codex", {})
+            codex_cfg = codex_home / ".codex" / "config.toml"
+            codex_cfg.parent.mkdir(parents=True)
+            keep_codex = ('[[hooks.PreToolUse]]\nmatcher = "^Bash$"\n\n[[hooks.PreToolUse.hooks]]\ntype = "command"\n'
+                          'command = "/x/warn.sh"\ntimeout = 30\n\n[hooks.state."/x:pre_tool_use:0:0"]\ntrusted_hash = "sha256:abc"\n')
+            codex_cfg.write_text(keep_codex, encoding="utf-8")
+            run(codex_home)
+            text = codex_cfg.read_text(encoding="utf-8")
+            parsed = toml_module().loads(text)
+            groups = parsed.get("hooks", {}).get("SessionStart", [])
+            ours = [g for g in groups for h in g.get("hooks", []) if "context-card.py" in h.get("command", "")]
+            require(len(ours) == 1 and "session-start --agent codex" in ours[0]["hooks"][0]["command"]
+                    and ours[0]["hooks"][0].get("additionalContextLimit") == 0,
+                    "Codex: expected one resume-card SessionStart hook with no context cap", findings)
+            require(parsed["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "/x/warn.sh"
+                    and parsed["hooks"]["state"]["/x:pre_tool_use:0:0"]["trusted_hash"] == "sha256:abc",
+                    "Codex: the existing PreToolUse hook or its trust state was disturbed", findings)
+            before = codex_cfg.read_bytes()
+            run(codex_home)
+            require(before == codex_cfg.read_bytes(), "Codex: resume-card registration is not byte-idempotent", findings)
+            codex_cfg.write_text("\n".join(l for l in text.splitlines() if not l.startswith("# dotfiles: ")) + "\n", encoding="utf-8")
+            run(codex_home)
+            again = toml_module().loads(codex_cfg.read_text(encoding="utf-8"))
+            require(sum("context-card.py" in h.get("command", "") for g in again["hooks"].get("SessionStart", []) for h in g.get("hooks", [])) == 1,
+                    "Codex: with its markers dropped (Codex rewrites config.toml) the block was duplicated", findings)
 
         context.unlink()
         home = fresh_home("removed", {"hooks": {"PreToolUse": [
@@ -356,6 +388,11 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
         require(not any(context_entries(data, event) for event in CONTEXT_EVENTS)
                 and any("keep-bash" in c for c in commands(data, "PreToolUse")),
                 "resume-card hooks survived with no context-card.py beside the hook", findings)
+        if os.name == "posix":
+            run(codex_home)
+            left = toml_module().loads((codex_home / ".codex" / "config.toml").read_text(encoding="utf-8"))
+            require(not any("context-card.py" in h.get("command", "") for g in left.get("hooks", {}).get("SessionStart", []) for h in g.get("hooks", [])),
+                    "Codex: the resume-card hook survived with no context-card.py", findings)
 
     if os.name == "posix":
         spec = importlib.util.spec_from_file_location("configure_ai", str(configurator or root() / "scripts" / "configure-agent-integrations.py"))
@@ -374,6 +411,14 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
             missing = module._context_command([str(Path(raw) / "missing-runner")], "clear-guard")
             got = subprocess.run(["/bin/sh", "-c", missing], capture_output=True).returncode
             require(got == 2, f"guard wrapper: a missing runner gave {got}, want 2 (fail closed)", findings)
+            for exit_code, want in ((0, 0), (2, 2), (1, 0), (127, 0)):
+                stub = Path(raw) / f"exit{exit_code}.sh"
+                command = module._context_command([str(stub)], "role-guard")
+                got = subprocess.run(["/bin/sh", "-c", command], capture_output=True).returncode
+                require(got == want, f"role-guard wrapper: a guard exiting {exit_code} gave {got}, want {want}", findings)
+            missing = module._context_command([str(Path(raw) / "missing-runner")], "role-guard")
+            got = subprocess.run(["/bin/sh", "-c", missing], capture_output=True).returncode
+            require(got == 0, f"role-guard wrapper: a missing runner gave {got}, want 0 (never lock up role-less sessions)", findings)
 
 
 def machine_context(findings: list[str], home: Path, claude: dict) -> None:
@@ -382,10 +427,10 @@ def machine_context(findings: list[str], home: Path, claude: dict) -> None:
         require(not any(context_entries(claude, event) for event in CONTEXT_EVENTS),
                 "live resume-card hooks are registered but EA context-card.py is missing", findings)
         return
-    for event, matcher in CONTEXT_EVENTS.items():
-        found = context_entries(claude, event)
-        require(len(found) == 1, f"live {event}: expected one resume-card hook, found {len(found)}", findings)
-    guard = context_entries(claude, "PreToolUse")
+    for sub, (event, _matcher) in CONTEXT_SUBS.items():
+        found = context_entries(claude, event, sub)
+        require(len(found) == 1, f"live {sub}: expected one resume-card hook, found {len(found)}", findings)
+    guard = context_entries(claude, "PreToolUse", "clear-guard")
     if len(guard) != 1:
         return
     command = guard[0][2]
@@ -596,7 +641,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.revert_test:
         source = (root() / "scripts" / "configure-agent-integrations.py").read_text(encoding="utf-8")
-        needle = "    claude = _configure_claude_context(claude, context_prefix)\n"
+        needle = "    claude = _configure_claude_context(claude, context_prefixes)\n"
         if needle not in source:
             print("revert-test: registration call not found", file=sys.stderr)
             return 1

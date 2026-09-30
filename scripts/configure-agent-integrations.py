@@ -42,12 +42,16 @@ MAX_CODEX_PASSTHROUGH_TOKEN_CHARS = 12_000
 SKILLS_BEGIN = "# dotfiles: begin Codex duplicate skill suppression"
 CONTEXT_SCRIPT = "context-card.py"
 CONTEXT_TIMEOUT = 15
-# (event, matcher, subcommand). The guard keys on the Desktop tool's name (EA INV-11 limit).
+# (event, matcher, subcommand). The clear guard keys on the Desktop tool's name (EA INV-11
+# limit). The role guard fires on every edit and shell call, so it runs on plain Python (fast)
+# and is silent for sessions without an orchestration role.
 CONTEXT_HOOKS = (
     ("SessionStart", "startup|resume|clear|compact", "session-start"),
     ("PreCompact", None, "pre-compact"),
     ("PreToolUse", "mcp__ccd_session_mgmt__clear_session", "clear-guard"),
+    ("PreToolUse", "Edit|Write|NotebookEdit|Bash", "role-guard"),
 )
+_CONTEXT_SUB = re.compile(r"""context-card\.py["']?\s+(session-start|pre-compact|clear-guard|role-guard)\b""")
 _CONTEXT_TOKEN = re.compile(r"""(?:^|[\s"'/\\])context-card\.py(?=["'\s]|$)""")
 SKILLS_END = "# dotfiles: end Codex duplicate skill suppression"
 
@@ -164,59 +168,71 @@ def _context_command(prefix: list[str], subcommand: str) -> str:
             f'{base}; rc=$?; [ "$rc" -eq 0 ] || {{ [ "$rc" -eq 2 ] || '
             f'echo "clear blocked: the resume-card guard could not run (exit $rc)" >&2; exit 2; }}'
         )
+    if subcommand == "role-guard":
+        # Only the guard's own block (exit 2) blocks. A broken or missing runner must never
+        # stop every edit and shell call in sessions that have no role.
+        return f'{base}; [ "$?" -eq 2 ] && exit 2; exit 0'
     return f"{base} || true"
 
 
-def _configure_claude_context(original: dict[str, Any], prefix: list[str] | None) -> dict[str, Any]:
-    """Register (prefix given) or remove (None) the three resume-card hooks, in place.
+def _configure_claude_context(original: dict[str, Any], prefixes: dict[str, list[str]] | None) -> dict[str, Any]:
+    """Register (prefixes given, one per subcommand) or remove (None) the resume-card hooks.
 
-    Our hook is recognised by the ``context-card.py`` token in its command. It keeps its
-    position when it sits alone in an entry (so other writers appending after it do not make
-    the file flip-flop); anywhere else it is removed and re-added as its own entry. Events that
-    are not arrays are left untouched rather than failing the whole convergence.
+    Our hook is recognised by the ``context-card.py <subcommand>`` token in its command. A hook
+    sitting alone in its entry keeps its position (so other writers appending after it do not
+    make the file flip-flop); anywhere else it is removed and re-added as its own entry. Events
+    that are not arrays are left untouched rather than failing the whole convergence.
     """
     data = json.loads(json.dumps(original))
     hooks = _hooks_object(data)
-    wanted = {event: (matcher, _context_command(prefix, sub)) for event, matcher, sub in CONTEXT_HOOKS} if prefix else {}
+    wanted = {
+        sub: (event, matcher, _context_command(prefixes[sub], sub))
+        for event, matcher, sub in CONTEXT_HOOKS
+    } if prefixes else {}
     for event in list(hooks):
         raw = hooks[event]
         if not isinstance(raw, list):
-            if event in wanted:
+            if any(w[0] == event for w in wanted.values()):
                 print(f"agent integrations: hooks.{event} is not an array; resume-card hook not registered there", file=sys.stderr)
-                wanted.pop(event)
+                wanted = {s: w for s, w in wanted.items() if w[0] != event}
             continue
-        matcher, command = wanted.get(event, (None, None))
-        placed = False
+        placed: set[str] = set()
         kept: list[Any] = []
         for entry in raw:
             inner = entry.get("hooks") if isinstance(entry, dict) else None
             if not isinstance(inner, list) or not any(isinstance(h, dict) and _is_context_command(h.get("command")) for h in inner):
                 kept.append(entry)
                 continue
+            ours = [h for h in inner if isinstance(h, dict) and _is_context_command(h.get("command"))]
             others = [h for h in inner if not (isinstance(h, dict) and _is_context_command(h.get("command")))]
-            if command and not placed and not others:
-                replacement = {k: v for k, v in entry.items() if k not in ("matcher", "hooks")}
-                if matcher is not None:
-                    replacement["matcher"] = matcher
-                replacement["hooks"] = [{"type": "command", "command": command, "timeout": CONTEXT_TIMEOUT}]
-                kept.append(replacement)
-                placed = True
-            elif others:
+            if not others and len(ours) == 1:
+                found = _CONTEXT_SUB.search(str(ours[0].get("command")))
+                sub = found.group(1) if found else None
+                want = wanted.get(sub) if sub else None
+                if want and want[0] == event and sub not in placed:
+                    replacement = {k: v for k, v in entry.items() if k not in ("matcher", "hooks")}
+                    if want[1] is not None:
+                        replacement["matcher"] = want[1]
+                    replacement["hooks"] = [{"type": "command", "command": want[2], "timeout": CONTEXT_TIMEOUT}]
+                    kept.append(replacement)
+                    placed.add(sub)
+                continue
+            if others:
                 kept.append({**entry, "hooks": others})
-        if command and not placed:
-            fresh: dict[str, Any] = {} if matcher is None else {"matcher": matcher}
-            fresh["hooks"] = [{"type": "command", "command": command, "timeout": CONTEXT_TIMEOUT}]
-            kept.append(fresh)
-            placed = True
+        for sub, (want_event, matcher, command) in wanted.items():
+            if want_event == event and sub not in placed:
+                fresh: dict[str, Any] = {} if matcher is None else {"matcher": matcher}
+                fresh["hooks"] = [{"type": "command", "command": command, "timeout": CONTEXT_TIMEOUT}]
+                kept.append(fresh)
         if kept:
             hooks[event] = kept
         else:
             hooks.pop(event)
-        wanted.pop(event, None)
-    for event, (matcher, command) in wanted.items():
+        wanted = {s: w for s, w in wanted.items() if w[0] != event}
+    for sub, (event, matcher, command) in wanted.items():
         fresh = {} if matcher is None else {"matcher": matcher}
         fresh["hooks"] = [{"type": "command", "command": command, "timeout": CONTEXT_TIMEOUT}]
-        hooks[event] = [fresh]
+        hooks.setdefault(event, []).append(fresh)
     if not hooks:
         data.pop("hooks", None)
     return data
@@ -400,12 +416,44 @@ def _skill_files(roots: list[Path]) -> list[Path]:
     return sorted(result, key=lambda path: str(path))
 
 
+CODEX_CONTEXT_BEGIN = "# dotfiles: begin resume-card hooks (EA context-card.py)"
+CODEX_CONTEXT_END = "# dotfiles: end resume-card hooks"
+
+
+def _strip_codex_context_hooks(text: str) -> str:
+    """Drop every [[hooks.SessionStart]] group whose handler runs context-card.py, by content:
+    Codex rewrites config.toml itself and can drop the marker comments around the block."""
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == "[[hooks.SessionStart]]":
+            j = i + 1
+            while j < len(lines) and not (lines[j].startswith("[") and not lines[j].startswith("[[hooks.SessionStart.hooks]]")):
+                j += 1
+            group = lines[i:j]
+            # TOML escapes the command's quotes (\\"), so match the script name on the raw line.
+            if any(line.strip().startswith("command") and CONTEXT_SCRIPT in line for line in group):
+                i = j
+                continue
+            out.extend(group)
+            i = j
+            continue
+        if lines[i].strip() in (CODEX_CONTEXT_BEGIN, CODEX_CONTEXT_END):
+            i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 def _configure_codex(
     original: str,
     path: Path,
     notify_argv: list[str],
     disabled_skills: list[Path],
     retired_roots: list[Path] | None = None,
+    context_argv: list[str] | None = None,
 ) -> str:
     parsed = _toml_loads(original, path)
     existing_notify = parsed.get("notify")
@@ -421,7 +469,8 @@ def _configure_codex(
             passthrough = _validate_passthrough(existing_notify)
 
     body = _strip_top_level_notify(original, existing_notify is not None)
-    body = _strip_retired_skill_entries(_strip_skill_block(body), retired_roots or []).strip()
+    body = _strip_retired_skill_entries(_strip_skill_block(body), retired_roots or [])
+    body = re.sub(r"\n{3,}", "\n\n", _strip_codex_context_hooks(body)).strip()
     managed_argv = list(notify_argv)
     if passthrough:
         managed_argv.extend([CODEX_PASSTHROUGH_FLAG, _encode_passthrough(passthrough)])
@@ -442,6 +491,23 @@ def _configure_codex(
             )
         lines.append(SKILLS_END)
         chunks.append("\n".join(lines))
+    if context_argv:
+        # Codex reloads the card after compaction through SessionStart(compact); it ignores
+        # PreCompact output and has no Desktop clear tool, so only this hook applies. Codex
+        # asks Michael once to trust a new hook (hooks.state); dotfiles never writes trust.
+        command = " ".join(_hook_quote(part) for part in context_argv) + " session-start --agent codex"
+        chunks.append("\n".join([
+            CODEX_CONTEXT_BEGIN,
+            "[[hooks.SessionStart]]",
+            'matcher = "^(startup|resume|clear|compact)$"',
+            "",
+            "[[hooks.SessionStart.hooks]]",
+            'type = "command"',
+            f"command = {_toml_string(command)}",
+            f"timeout = {CONTEXT_TIMEOUT}",
+            "additionalContextLimit = 0",
+            CODEX_CONTEXT_END,
+        ]))
     candidate = "\n\n".join(chunks).rstrip() + "\n"
     _toml_loads(candidate, path)
     return candidate
@@ -538,6 +604,11 @@ def main(argv: list[str] | None = None) -> int:
         ([str(runner), "run", "--no-project", str(context_script)] if uses_uv else [str(runner), str(context_script)])
         if context_script.is_file() else None
     )
+    fast_python = shutil.which("python3") or shutil.which("python")
+    context_prefixes = {
+        sub: ([str(Path(fast_python).absolute()), str(context_script)] if sub == "role-guard" and fast_python else context_prefix)
+        for _event, _matcher, sub in CONTEXT_HOOKS
+    } if context_prefix else None
     claude_argv = [*prefix, "hook", "--agent", "claude"]
     codex_argv = [*prefix, "hook", "--agent", "codex"]
     gemini_argv = [*prefix, "hook", "--agent", "gemini"]
@@ -549,12 +620,15 @@ def main(argv: list[str] | None = None) -> int:
 
     # Build and validate every candidate before writing any of them.
     claude = _configure_claude(_json_object(claude_path), _shell_command(claude_argv))
-    claude = _configure_claude_context(claude, context_prefix)
+    claude = _configure_claude_context(claude, context_prefixes)
     gemini = _configure_gemini(_json_object(gemini_path), _shell_command(gemini_argv))
     codex_original = codex_path.read_text(encoding="utf-8") if codex_path.exists() else ""
     disabled = _skill_files([root.expanduser().resolve() for root in args.codex_disable_root])
     retired = [root.expanduser().resolve() for root in args.codex_retired_disable_root]
-    codex = _configure_codex(codex_original, codex_path, codex_argv, disabled, retired)
+    # POSIX only: how Codex runs a hook command on Windows is unverified (dotfiles INV-16).
+    codex_context = ([str(Path(fast_python).absolute()), str(context_script)]
+                     if context_prefix and fast_python and os.name == "posix" else None)
+    codex = _configure_codex(codex_original, codex_path, codex_argv, disabled, retired, codex_context)
     state = {
         "account": args.account,
         "courier_token_file": str(args.courier_token_file.expanduser().resolve()),

@@ -29,12 +29,10 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Phase 2 is pushed (2026-09-30): dotfiles `9c54aa7`, and EA `c4a40376` after verify_tree GREEN, with the Learning session notified.
-Next:
-1. Confirm the dotfiles CI run is green and mark INV-16 CI-green.
-2. Michael pulls the live EA checkout when he chooses (39 behind, fast-forward).
-3. The orchestration A/B pilot runs on his next orchestrated project.
-4. EA CI waits on GitHub billing.
+Michael, 2026-09-30: "orchestration should also have auto context clearing in the orchestrator and/or its running agents, all activated by a command in the orchestrator only". Answered with "Build it".
+- **Built:** `/orchestrate on <name> --builder-worktree <path>` sets up the Orchestrator's card (RESUME.md), role and 350K compaction. It writes an activation file so every session opened in the Builder worktree becomes the Builder (role, guard, card, 350K). `/orchestrate off` undoes it all. EA `55d0151a`, local; the skill is renamed `build-orchestration`.
+- **Now:** a fresh-context review of the switch is running. Fix what it finds, then ask Michael to push EA; origin moved to `2c39840e` (Learning), so use the worktree merge, the verify_tree gate, and tell Learning first.
+- **Already pushed:** everything else (dotfiles CI green, EA `c4a40376`).
 
 ## Queued after that
 1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.

@@ -29,11 +29,10 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-1. Confirm EA CI green for `2f00ac66` (pushed 2026-09-29 after verify_tree GREEN; Learning notified), then mark EA INV-11 CI-green.
+1. EA CI cannot run: GitHub reports "recent account payments have failed or your spending limit needs to be increased", on `2f00ac66` and on the commit before it. Michael fixes this under Billing & plans. Until then the proof is verify_tree GREEN on `2f00ac66`, which runs every CI check. Mark EA INV-11 CI-green only after a real run.
 2. Ask Michael:
    - push dotfiles' 3 local commits (F8 `40e2255`, card, INV-16 CI-green `09b2021`)?
    - when to `git pull` the live EA checkout? It is 67 behind and fast-forwardable; the pull changes the hub's running code.
-3. Remove `~/Documents/Worktrees/ea-push` once CI is green.
 The live card test passed (2026-09-29 22:32): bind, card-only commit, guarded clear, card reloaded after the clear and after `/compact`.
 
 ## Queued after that

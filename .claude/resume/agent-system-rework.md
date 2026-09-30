@@ -29,7 +29,7 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Michael decides item 1 (pushes) and item 2 (F8). The live card test passed on 2026-09-29 22:32, in `~/Documents/Worktrees/card-test`:
+Finish the EA push: when verify_tree is GREEN on `02853ed1`, run `git -C ~/Documents/Worktrees/ea-push push origin HEAD:main`, then message the Learning session the sha. After that, confirm dotfiles and EA CI are green and mark INV-16 and INV-11 CI-green. The live card test passed on 2026-09-29 22:32, in `~/Documents/Worktrees/card-test`:
 - bind, then a card-only commit `fab3b41`;
 - the guard allowed the typed `/wrap`;
 - the card reloaded after the clear;
@@ -38,8 +38,8 @@ In that test the model refused "clear yourself" by the rule, so the hook was not
 Cosmetic: new cards are created 0600 (mkstemp); in-repo cards should be 0644.
 
 ## Queued after that
-1. [go] Push dotfiles (1 ahead), Wiki (2 ahead: `09d16e8`, `c644aba`) and EA. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.
-2. [decide] F8: a full `sync` forces `permissions.defaultMode=bypassPermissions`, but the mini runs `auto`.
+1. Pushes: dotfiles and Wiki pushed 2026-09-29 (dotfiles CI run 36660742569). EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.
+2. Done (dotfiles `40e2255`, local): F8. Sync now sets `permissions.defaultMode=auto` (Michael: "Auto"). The `ea` launcher still starts in bypass per launch (INV-14).
 3. [go] Deferred: npm CLI 2.1.266 → current, and move settings to `modelSettings` (Opus 5.5 default medium, Fable 5.1 high), done through an ea-hub session. Steps are in the trim doc.
 4. Orchestration (GAN) phase 2: Wiki "Orchestrated Build-Critique System (Lab Note)", steps 1-8. The pinned handoff is Wiki `raw/orchestrated-build-critique-handoff-2026-09-27.md`.
    - Challenger: a fresh subagent per revision.

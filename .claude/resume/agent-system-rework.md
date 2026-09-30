@@ -29,16 +29,15 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
-Finish the EA push: when verify_tree is GREEN on `02853ed1`, run `git -C ~/Documents/Worktrees/ea-push push origin HEAD:main`, then message the Learning session the sha. After that, confirm dotfiles and EA CI are green and mark INV-16 and INV-11 CI-green. The live card test passed on 2026-09-29 22:32, in `~/Documents/Worktrees/card-test`:
-- bind, then a card-only commit `fab3b41`;
-- the guard allowed the typed `/wrap`;
-- the card reloaded after the clear;
-- `/compact` used the Opus profile and the card reloaded again.
-In that test the model refused "clear yourself" by the rule, so the hook was not exercised; it was proven live earlier.
-Cosmetic: new cards are created 0600 (mkstemp); in-repo cards should be 0644.
+1. Confirm EA CI green for `2f00ac66` (pushed 2026-09-29 after verify_tree GREEN; Learning notified), then mark EA INV-11 CI-green.
+2. Ask Michael:
+   - push dotfiles' 3 local commits (F8 `40e2255`, card, INV-16 CI-green `09b2021`)?
+   - when to `git pull` the live EA checkout? It is 67 behind and fast-forwardable; the pull changes the hub's running code.
+3. Remove `~/Documents/Worktrees/ea-push` once CI is green.
+The live card test passed (2026-09-29 22:32): bind, card-only commit, guarded clear, card reloaded after the clear and after `/compact`.
 
 ## Queued after that
-1. Pushes: dotfiles and Wiki pushed 2026-09-29 (dotfiles CI run 36660742569). EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.
+1. Pushes done 2026-09-29: dotfiles and Wiki (dotfiles CI 36660742569 green, 15/15), and EA `2f00ac66`. EA: Michael said go, coordinated with the Learning session: merge `02853ed1` in `~/Documents/Worktrees/ea-push`, pushed only on verify_tree GREEN, then send Learning the sha. Plain push, never force. EA is about 32 ahead and 65 behind: merge first (the Learning session found a clean trial merge). Then get CI green for EA INV-11 and dotfiles INV-16; the PC picks everything up at its next sync.
 2. Done (dotfiles `40e2255`, local): F8. Sync now sets `permissions.defaultMode=auto` (Michael: "Auto"). The `ea` launcher still starts in bypass per launch (INV-14).
 3. [go] Deferred: npm CLI 2.1.266 → current, and move settings to `modelSettings` (Opus 5.5 default medium, Fable 5.1 high), done through an ea-hub session. Steps are in the trim doc.
 4. Orchestration (GAN) phase 2: Wiki "Orchestrated Build-Critique System (Lab Note)", steps 1-8. The pinned handoff is Wiki `raw/orchestrated-build-critique-handoff-2026-09-27.md`.

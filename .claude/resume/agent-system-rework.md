@@ -59,6 +59,8 @@ Now: the context diet, read-only. Plan: EA `docs/plans/context-diet.md` (uncommi
   - ui-style.md and visual-verification.md are gone, and Design Taste moved into the workflow. Always-on rules are now about 16K;
   - INV-19 ui-nudge.py, PostToolUse Edit|Write|MultiEdit, once per session, fail-open, registered by ensure_claude_hook / Ensure-ClaudeHook (manifest), with check-ui-nudge sh+ps1 and revert tests. Registered on the mini.
   - Open: push on his go; GalloGrid 32 rules after the split; KeepTheCall 4 rules (where is that repo?); the overlap walk; Styling's 3 EA commits await his publish decision.
+- B0 done on main (Learning, a9acd20f and later), apart from the closing promote: kickstart com.ea.calendar-http (Michael's go), then the promote with Michael at the screen.
+- History re-trial 2026-10-01 on EA 09832b0c: 2208 commits, gate 0 hits over 23,156 objects and all messages (54 rules, 3 drop paths, allowed-domains reviewed). Ready for B2 after the drain (B) and the freeze.
 - Calendar identity: (a) ran on the mini 2026-10-01 (Michael: "sure on new 2"); identity.toml present, `identity: present` sent to Learning, which pushes (b) and item 7. Before the B0-closing promote: `launchctl kickstart -k gui/501/com.ea.calendar-http` (needs Michael's go), else the promote preflight refuses.
 - Laptop: Michael asked to pull laptop-only EA files (profile/health etc.). Blocked by macOS TCC; asked him to turn on Remote Login's "Allow full disk access for remote users".
 - Left in place: worktrees `journal` and `music-playlist` (uncommitted changes) and `emailing` and `rating` (their chats are not archived).

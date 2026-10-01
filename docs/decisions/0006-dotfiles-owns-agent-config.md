@@ -85,7 +85,12 @@
    - Codex's `AGENTS.md` matches the new sources;
    - a `claude -p` smoke run shows no hook errors.
 3. **Dotfiles: push** (Michael's go). CI green, including the Windows jobs.
-4. **The PC and WSL: `sync` twice each.** Then `(Get-Item ~\.claude\rules).Target` on the PC, and `readlink ~/.claude/rules` in WSL, show the dotfiles path. WSL (`/root`) has its own dotfiles and EA clone, so it is a third machine.
+4. **The PC and WSL.** Done 2026-09-30 over SSH from the mini, without `sync`.
+   - Both had uncommitted work that `sync` would have auto-committed and pushed: the PC's font edits, its Wiki research and its nvim lockfile, and a WSL EA note. So the cutover steps ran by hand, as on the mini: pull dotfiles and EA, then retarget, rules, integrations and prompts.
+   - The PC font edits and the WSL note were stashed. The note lands in EA with step 5.
+   - Retired leftovers (dangling `dev-update` and `forge` skill links, Gemini skill dirs) wait for each machine's next full `sync`.
+
+   The original step: `sync` twice each. Then `(Get-Item ~\.claude\rules).Target` on the PC, and `readlink ~/.claude/rules` in WSL, show the dotfiles path. WSL (`/root`) has its own dotfiles and EA clone, so it is a third machine.
 5. **EA: remove, in one push with the hub session.** EA's `ci.yml` steps, the hub's `verify_tree.sh` blocks and its `test_manifest_consistency` step map are locked to each other, so removing any one alone turns the gate RED.
    - Confirm EA's copy is unchanged since the move.
    - Mine: remove `claude-config/` (and its ignored `__pycache__`), the trigger hooks, the two checks and their `ci.yml` steps. Point CLAUDE.md, INV-11, the INV-15 trigger and ADR-0004 at dotfiles.

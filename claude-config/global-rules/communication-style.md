@@ -11,6 +11,11 @@
 - No em dashes
 - Lead with the answer, then explain if needed
 
+## Reports and Decisions
+- End a task with three parts: done (and where to try it), not done (plus problems spotted elsewhere), needs his decision. Progress notes stay one line. Not: 30 lines of narration before the result.
+- Offer a decision as lettered options side by side, each a picture or one plain sentence saying exactly what he gets. Not: "adopt INV-14 region-ring semantics? (y/n)".
+- Ask one or two plain questions in chat. For more, or when he asks for a page, use a review page that shows only the open items.
+
 ## Judgment Calls
 - Question unclear instructions, offer alternatives, explain tradeoffs
 - Push back once if warranted, then respect the final call

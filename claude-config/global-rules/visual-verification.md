@@ -10,6 +10,9 @@ at code review or unit tests. Verify it live and show me before calling it done.
   read console/network for errors. Confirm the change actually renders correctly,
   not just that the code looks right.
 
+## Review against the UI rules
+- Before calling UI work done, run the `ui-review` skill: it walks the change against the UI style rules (`ui-style.md` and the `ui-style` skill), wording first, and fixes what fails.
+
 ## Show me, visibly, before any PR
 - Open the result in a real browser on my screen where possible: start the dev
   server and `open <localhost url>` (macOS) so I can look at what you added.

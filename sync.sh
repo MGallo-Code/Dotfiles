@@ -715,9 +715,7 @@ if [ ${#DIRTY[@]} -gt 0 ]; then
         echo -e "$CHANGES"
 
         # Pull remote changes before committing to avoid non-fast-forward
-        git stash -q 2>/dev/null
-        git pull --ff-only 2>/dev/null
-        git stash pop -q 2>/dev/null
+        pull_keeping_changes
 
         if $HAS_CLAUDE; then
             # Ask Claude for a commit message (or a review flag)
@@ -732,10 +730,10 @@ Respond with ONLY one of:
 Nothing else. No explanation."
 
             info "$name: asking Claude for commit message..."
-            MSG=$(claude -p "$PROMPT" 2>/dev/null)
+            MSG=$(claude -p "$PROMPT" 2>/dev/null); MSG_RC=$?
 
-            if [ -z "$MSG" ]; then
-                warn "$name: Claude returned empty response - skipping"
+            if ! usable_commit_message "$MSG" "$MSG_RC"; then
+                warn "$name: no usable commit message from Claude (exit $MSG_RC; is it logged in?) - commit manually"
                 continue
             fi
 

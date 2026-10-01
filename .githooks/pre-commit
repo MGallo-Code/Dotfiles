@@ -80,6 +80,10 @@ bash "$ROOT/scripts/ci/check-code-root.sh" >/dev/null || {
 bash "$ROOT/scripts/ci/check-ui-nudge.sh" >/dev/null || {
   echo "pre-commit: check-ui-nudge failed - run: bash scripts/ci/check-ui-nudge.sh" >&2; exit 1; }
 
+# INV-20: sync's dirty-repo commit path keeps unrelated stashes and never commits an error message.
+bash "$ROOT/scripts/ci/check-sync-commit.sh" >/dev/null || {
+  echo "pre-commit: check-sync-commit failed - run: bash scripts/ci/check-sync-commit.sh" >&2; exit 1; }
+
 # INV-17: resume-card hooks and the clear guard. About 10s, so only when their surface is staged.
 if git -C "$ROOT" diff --cached --name-only | grep -qE '^(claude-config/global-hooks/context-card\.py|claude-config/model-profiles/compact/|scripts/ci/check-context-card\.py)'; then
   "$PY" "$ROOT/scripts/ci/check-context-card.py" >/dev/null || {

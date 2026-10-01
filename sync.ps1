@@ -765,9 +765,7 @@ if ($Dirty.Count -gt 0) {
         Write-Host $changes
 
         # Pull remote changes before committing to avoid non-fast-forward
-        git stash -q 2>$null
-        git pull --ff-only 2>$null
-        git stash pop -q 2>$null
+        Invoke-PullKeepingChanges
 
         if ($hasClaude) {
             $prompt = @"
@@ -784,9 +782,10 @@ Nothing else. No explanation.
 
             Write-Info "$name`: asking Claude for commit message..."
             $msg = & claude -p $prompt 2>$null
+            $msgExit = $LASTEXITCODE
 
-            if (-not $msg) {
-                Write-Warn "$name`: Claude returned empty response - skipping"
+            if (-not (Test-UsableCommitMessage $msg $msgExit)) {
+                Write-Warn "$name`: no usable commit message from Claude (exit $msgExit; is it logged in?) - commit manually"
                 Pop-Location
                 continue
             }

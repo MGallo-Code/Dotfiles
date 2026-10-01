@@ -168,6 +168,17 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"function Test-NeedsLocalNexus[\s\S]*function Test-McpWiringReady"),
     },
     {
+        # INV-20: sync's dirty-repo commit path pops only its own stash and commits only a usable message.
+        "name": "sync pull keeps unrelated stashes (INV-20)",
+        "sh": ("manifest.sh", r"pull_keeping_changes\(\) \{"),
+        "ps1": ("manifest.ps1", r"function Invoke-PullKeepingChanges"),
+    },
+    {
+        "name": "sync commits only a usable generated message (INV-20)",
+        "sh": ("sync.sh", r'usable_commit_message "\$MSG" "\$MSG_RC"'),
+        "ps1": ("sync.ps1", r"Test-UsableCommitMessage \$msg \$msgExit"),
+    },
+    {
         # INV-19: one shared helper registers the UI-workflow nudge on both platforms.
         "name": "UI-workflow nudge registered (INV-19)",
         "sh": ("manifest.sh", r"ensure_claude_hook\(\) \{[\s\S]*UI_NUDGE_HOOK_CMD"),

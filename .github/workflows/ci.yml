@@ -111,6 +111,10 @@ jobs:
         run: bash scripts/ci/check-ui-nudge.sh
       - name: check-ui-nudge revert-test
         run: bash scripts/ci/check-ui-nudge.sh --revert-test
+      - name: check-sync-commit (INV-20)
+        run: bash scripts/ci/check-sync-commit.sh
+      - name: check-sync-commit revert-test
+        run: bash scripts/ci/check-sync-commit.sh --revert-test
 
   agent-config-windows:
     # ADR-0006 cutover, PowerShell half: Update-MovedLinks repoints symlinks and junctions, live
@@ -130,6 +134,15 @@ jobs:
       - name: check-moved-links Windows PowerShell revert-test
         shell: powershell
         run: ./scripts/ci/check-moved-links.ps1 -RevertTest
+      - name: check-sync-commit PowerShell
+        shell: pwsh
+        run: ./scripts/ci/check-sync-commit.ps1
+      - name: check-sync-commit PowerShell revert-test
+        shell: pwsh
+        run: ./scripts/ci/check-sync-commit.ps1 -RevertTest
+      - name: check-sync-commit Windows PowerShell
+        shell: powershell
+        run: ./scripts/ci/check-sync-commit.ps1
       - name: check-code-root PowerShell
         shell: pwsh
         run: ./scripts/ci/check-code-root.ps1

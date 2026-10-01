@@ -143,6 +143,30 @@ PYEOF
     done
 }
 
+# Sync's dirty-repo commit path (INV-20, 2026-10-01). Pull before committing while keeping local
+# changes: stash them, fast-forward, and pop ONLY a stash this call made. With untracked-only
+# changes `git stash` saves nothing, so a bare pop applied an older, unrelated stash (it consumed
+# the laptop's set-aside edits). Runs in the current directory.
+pull_keeping_changes() {
+    local before after
+    before="$(git rev-parse -q --verify refs/stash 2>/dev/null || true)"
+    git stash -q 2>/dev/null
+    after="$(git rev-parse -q --verify refs/stash 2>/dev/null || true)"
+    git pull -q --ff-only 2>/dev/null
+    if [ "$after" != "$before" ]; then git stash pop -q 2>/dev/null; fi
+}
+
+# A generated commit message is usable only from a clean exit and as one non-empty line. A
+# logged-out `claude -p` exits 1 printing "Not logged in · Please run /login", which sync once
+# committed and pushed as the message (EA c22d3ffb).
+usable_commit_message() {
+    local msg="$1" rc="$2"
+    [ "$rc" = 0 ] || return 1
+    [ -n "${msg//[[:space:]]/}" ] || return 1
+    case "$msg" in *$'\n'*) return 1 ;; esac
+    return 0
+}
+
 # Combined global rules for single-file agent tools.
 # Codex loads ONE global instruction file (AGENTS.md), not a directory. You can't
 # symlink a dir into a file, so we GENERATE that file by concatenating every

@@ -12,6 +12,7 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
 - No helper sessions: "don't like the idea of wasting process on a refresher."
 - Keep ea-hub-specific things on the mini, outside dotfiles.
 - Machines (2026-10-01): PC and laptop stay agent machines; WSL keeps syncing ("Why would we stop syncing it? It's practically free"); clients keep the coding setup, skills and references but no central-tool code or builds (docgen is the one local tool); EA keeps syncing through git.
+- 2026-10-01 laptop follow-ups (Michael: "delete sbic learning, skip backup for now", "Let's move them out of documents everywhere"): sbic-learning skill trashed on the laptop (~/.Trash/sbic-learning-skill-2026-10-01; ~/Documents/Learning/sbic data untouched). No backup for now, so the laptop's health/legal copies stay. Repos move out of ~/Documents on every machine: plan + ADR first (B3-scale: GalloGrid 97 files/350 lines name Documents paths, EA 36/256, dotfiles 30/138, Wiki 17/33; on the mini 13 Claude memory dirs, 5 EA + 2 GalloGrid worktrees, live LaunchAgents, agent configs).
 - Private files (health, legal, anything never for GitHub): Syncthing over Tailscale with the mini as the always-on hub ("Yes on tailscale"); GitHub stays for the git repos. Needs an ADR first, plus an off-site encrypted backup of that folder.
 
 ## Discoveries paid for

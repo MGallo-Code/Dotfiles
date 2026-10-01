@@ -211,9 +211,10 @@ def hermetic(findings: list[str]) -> None:
         user_skill = base / "elsewhere" / "mine" / "SKILL.md"
         retired_codex.write_text(
             '[unrelated]\nvalue = "keep"\n\n'
-            f'[[skills.config]]\npath = "{(codex_root / "native" / "SKILL.md").resolve()}"\nenabled = false\n\n'
-            f'[[skills.config]]\npath = "{user_skill}"\nenabled = false\n\n'
-            f'[[skills.config]]\npath = "{(agents_root / "converted" / "SKILL.md").resolve()}"\nenabled = false\n\n'
+            # json.dumps quotes each path as a valid TOML basic string, backslashes included (Windows).
+            f'[[skills.config]]\npath = {json.dumps(str((codex_root / "native" / "SKILL.md").resolve()))}\nenabled = false\n\n'
+            f'[[skills.config]]\npath = {json.dumps(str(user_skill))}\nenabled = false\n\n'
+            f'[[skills.config]]\npath = {json.dumps(str((agents_root / "converted" / "SKILL.md").resolve()))}\nenabled = false\n\n'
             '[moved]\nx = 1\n\n# dotfiles: end Codex duplicate skill suppression\n',
             encoding="utf-8",
         )

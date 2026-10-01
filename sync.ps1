@@ -456,9 +456,10 @@ if (-not (Acquire-GitSyncLock "manual-sync")) { exit 0 }
 try {
 
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
-$NexusDb = $NexusLiveDb   # pinned live store, not a checkout link
-if ((Test-Path $NexusDb) -and (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
-    & sqlite3 $NexusDb "PRAGMA wal_checkpoint(TRUNCATE);" 2>$null | Out-Null
+# The host's live store by its real path (INV-18); a client has none, so this skips there.
+$checkpointDb = $NexusHostStore
+if ((Test-Path $checkpointDb) -and (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
+    & sqlite3 $checkpointDb "PRAGMA wal_checkpoint(TRUNCATE);" 2>$null | Out-Null
     Write-Ok "Nexus DB: WAL checkpointed"
 }
 

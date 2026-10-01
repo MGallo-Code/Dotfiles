@@ -158,8 +158,8 @@ FEATURES = [
     },
     {
         "name": "sync uses the code root and the pinned nexus store",
-        "sh": ("sync.sh", r'CODE_ROOT="\$\(resolve_code_root\)"[\s\S]*NEXUS_LIVE_DB|NEXUS_LIVE_DB[\s\S]*CODE_ROOT="\$\(resolve_code_root\)"'),
-        "ps1": ("sync.ps1", r"\$NexusLiveDb[\s\S]*Resolve-CodeRoot"),
+        "sh": ("sync.sh", r'CODE_ROOT="\$\(resolve_code_root\)"[\s\S]*NEXUS_HOST_STORE|NEXUS_HOST_STORE[\s\S]*CODE_ROOT="\$\(resolve_code_root\)"'),
+        "ps1": ("sync.ps1", r"\$NexusHostStore[\s\S]*Resolve-CodeRoot"),
     },
     {
         "name": "WezTerm config linked",

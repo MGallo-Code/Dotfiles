@@ -122,7 +122,7 @@ function Update-MovedLinks {
 # machine is stranded whatever order it pulls in. The live nexus store is pinned.
 $CodeRootNew = "$HOME\Documents\GalloGrid"
 $CodeRootOld = "$HOME\Documents\EA"
-$NexusLiveDb = "$HOME\.local\share\nexus\nexus.db"
+$NexusHostStore = "$HOME\.local\share\nexus\nexus.db"
 function Resolve-CodeRoot {
     if (Test-Path (Join-Path $CodeRootNew ".git")) { return $CodeRootNew }
     if (-not ((Test-Path (Join-Path $CodeRootOld "nexus")) -or (Test-Path (Join-Path $CodeRootOld "courier")))) {

@@ -423,9 +423,10 @@ source "$DOTFILES_DIR/scripts/git-sync-lock.sh"
 git_sync_lock_acquire "manual-sync" || exit 0
 
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
-NEXUS_DB="$(expand "$NEXUS_LIVE_DB")"   # pinned live store, not a checkout link
-if [ -f "$NEXUS_DB" ] && command -v sqlite3 &>/dev/null; then
-    sqlite3 "$NEXUS_DB" "PRAGMA wal_checkpoint(TRUNCATE);" >/dev/null 2>&1
+# The host's live store by its real path (INV-18). Not named NEXUS_DB: that is nexus's own env var.
+checkpoint_db="$(expand "$NEXUS_HOST_STORE")"
+if [ -f "$checkpoint_db" ] && command -v sqlite3 &>/dev/null; then
+    sqlite3 "$checkpoint_db" "PRAGMA wal_checkpoint(TRUNCATE);" >/dev/null 2>&1
     ok "Nexus DB: WAL checkpointed"
 fi
 

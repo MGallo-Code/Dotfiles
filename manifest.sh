@@ -74,11 +74,14 @@ MOVED_LINK_SOURCES=(
 # ── Code root (GalloGrid split, EA docs/plans/gallogrid-split.md) ──────
 # The services' code (nexus, courier, calendar, docgen, agent, ea_mcp_remote, ea-hub) moves from
 # EA into its own repo. Each machine resolves the root itself: GalloGrid once that checkout
-# exists, else EA, so no machine is stranded whatever order it pulls in. The live nexus store is
-# pinned, never found through a checkout's nexus.db link. Parity: manifest.ps1 Resolve-CodeRoot.
+# exists, else EA, so no machine is stranded whatever order it pulls in. NEXUS_HOST_STORE is the
+# host's live store by its real path, for dotfiles' own checkpoint and backup only. It is never
+# exported: nexus's test harness treats a NEXUS_LIVE_DB in its environment as "copy his live
+# store", and the per-checkout nexus.db link is what keeps worktrees hermetic (hub session,
+# 2026-09-30). Parity: manifest.ps1 Resolve-CodeRoot.
 CODE_ROOT_NEW="~/Documents/GalloGrid"
 CODE_ROOT_OLD="~/Documents/EA"
-NEXUS_LIVE_DB="~/.local/share/nexus/nexus.db"
+NEXUS_HOST_STORE="~/.local/share/nexus/nexus.db"
 resolve_code_root() {
     local new old
     new="$(expand "$CODE_ROOT_NEW")"; old="$(expand "$CODE_ROOT_OLD")"

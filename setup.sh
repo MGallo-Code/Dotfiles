@@ -417,12 +417,14 @@ if [[ "$MODE" == "--full" ]]; then
     CALENDAR_SRC="$CALENDAR_PATH/src"
     DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
 
-    # Build nexus (TypeScript). nexus is stdio-wired on EVERY machine until it is remoted (Phase D),
-    # so a client needs it built too. Two `set -euo pipefail` aborts to avoid so a client run COMPLETES:
-    # (1) a MISSING npm returns 127 -> gate on `command -v npm`; (2) a present-but-FAILING install/build
-    # returns non-zero (the 2>/dev/null hides stderr, not the exit code) -> warn-and-continue, never
-    # abort. An unbuilt nexus is surfaced loudly, not silently fatal to the whole setup.
-    if [ -f "$NEXUS_PATH/package.json" ]; then
+    # Build nexus (TypeScript) only where it is stdio-wired (needs_local_nexus: the host, or every box
+    # before the Phase-D cutover); a client reaches it over http. Two `set -euo pipefail` aborts to
+    # avoid so a run COMPLETES: (1) a MISSING npm returns 127 -> gate on `command -v npm`; (2) a
+    # present-but-FAILING install/build returns non-zero (the 2>/dev/null hides stderr, not the exit
+    # code) -> warn-and-continue, never abort. An unbuilt nexus is surfaced loudly, not silently fatal.
+    if ! needs_local_nexus; then
+        ok "Nexus: served by $MCP_HOST, not built here"
+    elif [ -f "$NEXUS_PATH/package.json" ]; then
         if command -v npm >/dev/null 2>&1; then
             cd "$NEXUS_PATH"
             if npm install --silent 2>/dev/null && npm run build 2>/dev/null; then
@@ -440,8 +442,11 @@ if [[ "$MODE" == "--full" ]]; then
 
     # Sync Python deps for courier + docgen + calendar (uv)
     if command -v uv >/dev/null 2>&1; then
-        [ -d "$COURIER_PATH" ] && (cd "$COURIER_PATH" && uv sync --quiet 2>/dev/null) && ok "Courier: deps synced"
-        [ -d "$CALENDAR_PATH" ] && (cd "$CALENDAR_PATH" && uv sync --quiet 2>/dev/null) && ok "Calendar: deps synced"
+        # courier and calendar run only on the host; a client reaches them over http.
+        if is_mcp_host; then
+            [ -d "$COURIER_PATH" ] && (cd "$COURIER_PATH" && uv sync --quiet 2>/dev/null) && ok "Courier: deps synced"
+            [ -d "$CALENDAR_PATH" ] && (cd "$CALENDAR_PATH" && uv sync --quiet 2>/dev/null) && ok "Calendar: deps synced"
+        fi
         if [ -d "$DOCGEN_PATH" ]; then
             (cd "$DOCGEN_PATH" && uv sync --quiet 2>/dev/null) && ok "Docgen: deps synced"
             PLAYWRIGHT_BROWSERS_PATH="$DOCGEN_BROWSERS" \

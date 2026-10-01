@@ -549,7 +549,7 @@ fi
 CODE_ROOT="$(resolve_code_root)"
 NEXUS_PATH="$CODE_ROOT/nexus"
 is_mcp_host && ensure_host_store_link "$CODE_ROOT"
-if [ -f "$NEXUS_PATH/package.json" ]; then
+if needs_local_nexus && [ -f "$NEXUS_PATH/package.json" ]; then
     cd "$NEXUS_PATH"
     npm install --silent 2>/dev/null
     npm run build 2>/dev/null
@@ -569,8 +569,11 @@ CALENDAR_SRC="$CALENDAR_PATH/src"
 DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
 
 if command -v uv >/dev/null 2>&1; then
-    [ -d "$COURIER_PATH" ] && (cd "$COURIER_PATH" && uv sync --quiet 2>/dev/null) && ok "Courier: deps synced"
-    [ -d "$CALENDAR_PATH" ] && (cd "$CALENDAR_PATH" && uv sync --quiet 2>/dev/null) && ok "Calendar: deps synced"
+    # courier and calendar run only on the host; a client reaches them over http.
+    if is_mcp_host; then
+        [ -d "$COURIER_PATH" ] && (cd "$COURIER_PATH" && uv sync --quiet 2>/dev/null) && ok "Courier: deps synced"
+        [ -d "$CALENDAR_PATH" ] && (cd "$CALENDAR_PATH" && uv sync --quiet 2>/dev/null) && ok "Calendar: deps synced"
+    fi
     if [ -d "$DOCGEN_PATH" ]; then
         (cd "$DOCGEN_PATH" && uv sync --quiet 2>/dev/null) && ok "Docgen: deps synced"
         PLAYWRIGHT_BROWSERS_PATH="$DOCGEN_BROWSERS" \
@@ -581,7 +584,7 @@ else
     warn "uv not found - skipping courier/docgen/calendar dep sync"
 fi
 
-if [ -f "$NEXUS_SERVER" ]; then
+if mcp_wiring_ready; then
     # Hubs are wired per-ROLE through register_all_hub_mcp / register_hub_mcp (manifest.sh,
     # sourced at the top) - ONE copy shared with setup.sh; check-hub-wiring (INV-5) proves no
     # script wires a hub directly. CLIENT machines: token on disk before the http courier entry.
@@ -658,7 +661,8 @@ if [ -f "$NEXUS_SERVER" ]; then
     }
     trust_gemini_managed_repos
 else
-    warn "MCP wiring skipped - Nexus server not built at $NEXUS_SERVER"
+    if needs_local_nexus; then warn "MCP wiring skipped - Nexus server not built at $NEXUS_SERVER"
+    else warn "MCP wiring skipped - docgen not found at $DOCGEN_PATH (is the code root cloned?)"; fi
 fi
 ensure_gemini_cross_check_setup
 

@@ -67,6 +67,26 @@ run_fixtures() {
         if grep -q '\$HOME/Documents/EA' "$ROOT/hubs.json"; then echo "  FAIL  hubs.json still names EA"; exit 1; else echo "  ok    hubs.json names the code root token"; fi
         sh "$ROOT/scripts/hub-host-bootstrap.sh" courier 8765 '/usr/bin/env $CODE_ROOT/courier/x' "$T/tok" "" /mcp >/dev/null 2>&1
         check "$?" "2" "bootstrap refuses an unresolved \$CODE_ROOT"
+
+        # Clients never build or run the central services (2026-10-01): nexus only where it is stdio,
+        # courier and calendar deps only on the host, and a client's wiring needs only docgen.
+        yn() { if "$@"; then echo yes; else echo no; fi; }
+        is_mcp_host() { return 1; }; NEXUS_REMOTED=true
+        check "$(yn needs_local_nexus)" "no" "a remoted client does not build nexus"
+        NEXUS_REMOTED=false
+        check "$(yn needs_local_nexus)" "yes" "a pre-cutover client builds nexus"
+        is_mcp_host() { return 0; }; NEXUS_REMOTED=true
+        check "$(yn needs_local_nexus)" "yes" "the host builds nexus"
+        is_mcp_host() { return 1; }
+        NEXUS_SERVER="$T/none/server.js"; DOCGEN_PATH="$T/docgen"; mkdir -p "$DOCGEN_PATH"
+        check "$(yn mcp_wiring_ready)" "yes" "a client wires with docgen and no nexus build"
+        rm -rf "$DOCGEN_PATH"
+        check "$(yn mcp_wiring_ready)" "no" "a client without docgen skips the wiring"
+        for f in sync.sh setup.sh; do
+            check "$(grep -B14 'npm run build' "$ROOT/$f" | grep -v '^ *#' | grep -c needs_local_nexus)" "1" "$f builds nexus only under needs_local_nexus"
+            check "$(grep -B1 '\[ -d "\$COURIER_PATH" \] && (cd' "$ROOT/$f" | head -1 | grep -c 'if is_mcp_host; then')" "1" "$f syncs courier and calendar deps only on the host"
+        done
+        check "$(grep -c '^if mcp_wiring_ready; then' "$ROOT/sync.sh")" "1" "sync gates the wiring on mcp_wiring_ready"
     ) || rc=1
     rm -rf "$T"
     return "$rc"

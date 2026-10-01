@@ -597,7 +597,7 @@ Set-AgentDefaults
 # ── Rebuild Nexus from the code root ─────────────────────────────────
 $CodeRoot = Resolve-CodeRoot
 $NexusPath = "$CodeRoot\nexus"
-if (Test-Path "$NexusPath\package.json") {
+if ((Test-NeedsLocalNexus) -and (Test-Path "$NexusPath\package.json")) {
     Push-Location $NexusPath
     npm install --silent 2>$null | Out-Null
     npm run build 2>$null | Out-Null
@@ -618,14 +618,8 @@ $DocgenBrowsers = "$DocgenPath\.playwright-browsers"
 
 $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
 if ($uvCmd) {
-    # Courier runs ONLY on the MCP host (macOS); Windows is always a client reaching it
-    # over http, so syncing courier's Python deps here is wasted work - skip it. (ADR-0002.)
-    if (Test-Path $CalendarPath) {
-        Push-Location $CalendarPath
-        uv sync --quiet 2>$null
-        Pop-Location
-        Write-Ok "Calendar: deps synced"
-    }
+    # Courier and calendar run ONLY on the MCP host (macOS); Windows is always a client reaching
+    # them over http, so syncing their Python deps here is wasted work - skip both. (ADR-0002.)
     if (Test-Path $DocgenPath) {
         Push-Location $DocgenPath
         uv sync --quiet 2>$null
@@ -646,7 +640,7 @@ else {
 # Hubs are wired per-ROLE through Register-AllHubMcp / Register-HubMcp (manifest.ps1, dot-sourced
 # at the top) - ONE copy shared with setup.ps1; check-hub-wiring (INV-5) proves no script wires a
 # hub directly. Windows is always a CLIENT (no macOS login keychain): courier http, the rest stdio.
-if (Test-Path $NexusServer) {
+if (Test-McpWiringReady) {
     Initialize-AllClientTokens   # Windows is always a CLIENT of every hub (ADR-0002)
     Register-AllHubMcp "claude"
     Register-AllHubMcp "codex"
@@ -721,7 +715,8 @@ if (Test-Path $NexusServer) {
     Trust-GeminiManagedRepos
 }
 else {
-    Write-Warn "MCP wiring skipped - Nexus server not built at $NexusServer"
+    if (Test-NeedsLocalNexus) { Write-Warn "MCP wiring skipped - Nexus server not built at $NexusServer" }
+    else { Write-Warn "MCP wiring skipped - docgen not found at $DocgenPath (is the code root cloned?)" }
 }
 Ensure-GeminiCrossCheckSetup
 

@@ -52,6 +52,28 @@ function Invoke-Fixtures {
         Set-Content -Path $mcp -Value '{"mcpServers":{"docgen":{"args":["docgen.server"]},"mine":{"command":"x"}}}'
         Remove-RetiredProjectMcp
         Expect "edited .mcp.json kept" (Test-Path $mcp)
+
+        # Clients never build or run the central services (2026-10-01): Windows builds nexus only
+        # before the cutover, syncs no courier/calendar deps, and wires with docgen alone.
+        $NexusRemoted = $true
+        Expect "a remoted client does not build nexus" (-not (Test-NeedsLocalNexus))
+        $NexusRemoted = $false
+        Expect "a pre-cutover client builds nexus" (Test-NeedsLocalNexus)
+        $NexusRemoted = $true
+        $NexusServer = Join-Path $T 'none\server.js'
+        $DocgenPath = Join-Path $T 'docgen'
+        New-Item -ItemType Directory -Path $DocgenPath -Force | Out-Null
+        Expect "a client wires with docgen and no nexus build" (Test-McpWiringReady)
+        Remove-Item -Path $DocgenPath -Recurse -Force
+        Expect "a client without docgen skips the wiring" (-not (Test-McpWiringReady))
+        foreach ($f in @('sync.ps1', 'setup.ps1')) {
+            $lines = Get-Content (Join-Path $Root $f)
+            $i = ($lines | Select-String -SimpleMatch 'npm run build' | Select-Object -First 1).LineNumber - 1
+            $before = $lines[[Math]::Max(0, $i - 14)..$i] | Where-Object { $_ -notmatch '^\s*#' }
+            Expect "$f builds nexus only under Test-NeedsLocalNexus" ([bool]($before | Where-Object { $_ -match 'Test-NeedsLocalNexus' }))
+            Expect "$f syncs no calendar deps" (-not ($lines | Where-Object { $_ -match 'Push-Location \$CalendarPath' }))
+            Expect "$f gates the wiring on Test-McpWiringReady" ([bool]($lines | Where-Object { $_ -match '^\s*if \(Test-McpWiringReady\)' }))
+        }
     }
     finally {
         Remove-Item -Path $T -Recurse -Force -ErrorAction SilentlyContinue

@@ -530,6 +530,19 @@ is_mcp_host() {
     [ "$lh" = "$MCP_HOST" ]
 }
 
+# Clients never build or run the central services (2026-10-01): nexus, courier and calendar run on
+# the MCP host and a client reaches them over http, keeping docgen as its one local server. nexus
+# is built only where it is stdio-wired: the host, or every box before the Phase-D cutover.
+needs_local_nexus() {
+    is_mcp_host || [ "${NEXUS_REMOTED:-false}" != "true" ]
+}
+
+# The global MCP wiring needs what this box runs locally: the built nexus where nexus is stdio,
+# else the code root's docgen. Reads NEXUS_SERVER/DOCGEN_PATH, set by setup/sync's MCP section.
+mcp_wiring_ready() {
+    if needs_local_nexus; then [ -f "$NEXUS_SERVER" ]; else [ -d "$DOCGEN_PATH" ]; fi
+}
+
 # stdio add for one hub on one CLI (host/local role; no token). Per-hub env flags + exec command
 # are literal arrays (NOT a word-split string). The `--` exec separator is cli-specific:
 # claude/codex take it, gemini does NOT. Empty arrays use the bash-3.2 `set -u`-safe

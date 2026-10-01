@@ -522,7 +522,12 @@ if ($Mode -eq "full") {
     $CalendarSrc = "$CalendarPath\src"
     $DocgenBrowsers = "$DocgenPath\.playwright-browsers"
 
-    if (Test-Path "$NexusPath\package.json") {
+    # Nexus is built only where it is stdio-wired (Test-NeedsLocalNexus): before the Phase-D cutover.
+    # After it, Windows reaches nexus over http and docgen is its one local server.
+    if (-not (Test-NeedsLocalNexus)) {
+        Write-Ok "Nexus: served by $McpHost, not built here"
+    }
+    elseif (Test-Path "$NexusPath\package.json") {
         if (Get-Command npm -ErrorAction SilentlyContinue) {
             Push-Location $NexusPath
             npm install --silent 2>$null
@@ -540,15 +545,9 @@ if ($Mode -eq "full") {
 
     $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
     if ($uvCmd) {
-        # Courier runs ONLY on the MCP host (macOS, login keychain). Windows is always a
-        # client that reaches it over http, so syncing courier's Python deps here is wasted
-        # work (and a misleading "deps synced") - skip it. (ADR-0002 review.)
-        if (Test-Path $CalendarPath) {
-            Push-Location $CalendarPath
-            uv sync --quiet 2>$null
-            Pop-Location
-            Write-Ok "Calendar: deps synced"
-        }
+        # Courier and calendar run ONLY on the MCP host (macOS, login keychain). Windows is always
+        # a client that reaches them over http, so syncing their Python deps here is wasted work
+        # (and a misleading "deps synced") - skip both. (ADR-0002 review.)
         if (Test-Path $DocgenPath) {
             Push-Location $DocgenPath
             uv sync --quiet 2>$null
@@ -575,7 +574,7 @@ if ($Mode -eq "full") {
     # dot-sourced at the top) so setup AND sync share ONE copy of the wiring and check-hub-wiring
     # (INV-5) can prove no script wires a hub directly. Windows is always a CLIENT (no macOS login
     # keychain): courier is wired http, the rest local stdio.
-    if (Test-Path $NexusServer) {
+    if (Test-McpWiringReady) {
         Initialize-AllClientTokens   # Windows is always a CLIENT of every hub (ADR-0002)
         Register-AllHubMcp "claude"
         Register-AllHubMcp "codex"

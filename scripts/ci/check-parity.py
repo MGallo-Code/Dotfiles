@@ -162,6 +162,12 @@ FEATURES = [
         "ps1": ("sync.ps1", r"\$NexusHostStore[\s\S]*Resolve-CodeRoot"),
     },
     {
+        # INV-18: clients never build or run the central services; docgen is their one local server.
+        "name": "clients never build the central services",
+        "sh": ("manifest.sh", r"needs_local_nexus\(\) \{[\s\S]*mcp_wiring_ready\(\) \{"),
+        "ps1": ("manifest.ps1", r"function Test-NeedsLocalNexus[\s\S]*function Test-McpWiringReady"),
+    },
+    {
         # INV-19: one shared helper registers the UI-workflow nudge on both platforms.
         "name": "UI-workflow nudge registered (INV-19)",
         "sh": ("manifest.sh", r"ensure_claude_hook\(\) \{[\s\S]*UI_NUDGE_HOOK_CMD"),

@@ -422,6 +422,18 @@ $NexusTokenFile = "$HOME\.config\nexus\auth-token"
 # http+bearer nexus client. Do NOT flip it before the drain (handoff §4).
 $NexusRemoted = $true
 
+# Clients never build or run the central services (2026-10-01; mirror of needs_local_nexus in
+# manifest.sh). Windows is always a client, so nexus is built here only before the Phase-D cutover,
+# when it is still stdio-wired; after it, docgen is the one local server.
+function Test-NeedsLocalNexus { return (-not $NexusRemoted) }
+
+# The global MCP wiring needs what this box runs locally: the built nexus where nexus is stdio, else
+# the code root's docgen. Reads $NexusServer/$DocgenPath from the caller (setup/sync's MCP section).
+function Test-McpWiringReady {
+    if (Test-NeedsLocalNexus) { return (Test-Path $NexusServer) }
+    return (Test-Path $DocgenPath)
+}
+
 # ── Custom global skills (tracked in dotfiles), linked into Claude and Codex ──
 $GlobalSkillsDir = "$HOME\.dotfiles\claude-config\global-skills"
 

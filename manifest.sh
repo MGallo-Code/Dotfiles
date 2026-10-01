@@ -15,6 +15,8 @@
 # Active repos to clone/sync: "remote|target_path" (role: active-repo)
 REPOS=(
   "git@github:MGallo-Code/EA.git|~/Documents/EA"
+  # GalloGrid: the services' code, split out of EA 2026-10-01 (EA docs/plans/gallogrid-split.md).
+  "git@github:MGallo-Code/GalloGrid.git|~/Documents/GalloGrid"
   "git@github:MGallo-Code/NVIM-Setup.git|~/.config/nvim"
   "git@github:MGallo-Code/Wiki.git|~/Documents/Wiki"
   "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
@@ -29,6 +31,7 @@ ARCHIVED_REPOS=()
 # EA-only repos (skipped with --dev) - subset of active REPOS above
 EA_REPOS=(
   "git@github:MGallo-Code/EA.git|~/Documents/EA"
+  "git@github:MGallo-Code/GalloGrid.git|~/Documents/GalloGrid"
   "git@github:MGallo-Code/Wiki.git|~/Documents/Wiki"
   "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
 )
@@ -81,12 +84,19 @@ MOVED_LINK_SOURCES=(
 # 2026-09-30). Parity: manifest.ps1 Resolve-CodeRoot.
 CODE_ROOT_NEW="~/Documents/GalloGrid"
 CODE_ROOT_OLD="~/Documents/EA"
+# The machine-local switch: a machine moves to GalloGrid only at its own cutover (EA plan B3/B5),
+# when this file is written to say "GalloGrid". Never by cloning alone: a fresh clone has no
+# venvs or build yet, and a sync that pointed live services at it would break them.
+CODE_ROOT_SWITCH="~/.config/dotfiles/code-root"
 NEXUS_HOST_STORE="~/.local/share/nexus/nexus.db"
 resolve_code_root() {
-    local new old
-    new="$(expand "$CODE_ROOT_NEW")"; old="$(expand "$CODE_ROOT_OLD")"
+    local new old switch
+    new="$(expand "$CODE_ROOT_NEW")"; old="$(expand "$CODE_ROOT_OLD")"; switch="$(expand "$CODE_ROOT_SWITCH")"
+    if [ -d "$new/.git" ] && [ "$(cat "$switch" 2>/dev/null)" = "GalloGrid" ]; then echo "$new"; return 0; fi
+    if [ -d "$old/nexus" ] || [ -d "$old/courier" ]; then echo "$old"; return 0; fi
+    # EA no longer holds the code (after the split): GalloGrid is the only home left.
     if [ -d "$new/.git" ]; then echo "$new"; return 0; fi
-    [ -d "$old/nexus" ] || [ -d "$old/courier" ] || warn "code root: no service code in $new or $old" >&2
+    warn "code root: no service code in $new or $old" >&2
     echo "$old"
 }
 

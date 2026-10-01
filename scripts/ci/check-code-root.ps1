@@ -2,10 +2,11 @@
 #
 # Hermetic: dot-sources the real manifest.ps1, then points $CodeRootNew/$CodeRootOld and
 # $RetiredProjectMcpFiles at a throwaway tree ($HOME is read-only in PowerShell). Asserts that
-# Resolve-CodeRoot picks GalloGrid only once it is a git checkout, else EA (warning when neither
-# holds service code), and that Remove-RetiredProjectMcp removes EA's generated docgen-only
-# .mcp.json and keeps any other. Runs under pwsh 7 and Windows PowerShell 5.1 in CI.
-#   -RevertTest   makes Resolve-CodeRoot always answer EA; the fixtures must then FAIL.
+# Resolve-CodeRoot picks GalloGrid only when the machine's switch file says so, or when EA no
+# longer holds the code (a clone alone never switches), warning when neither holds service code,
+# and that Remove-RetiredProjectMcp removes EA's generated docgen-only .mcp.json and keeps any
+# other. Runs under pwsh 7 and Windows PowerShell 5.1 in CI.
+#   -RevertTest   makes Resolve-CodeRoot switch as soon as GalloGrid is cloned; the fixtures must then FAIL.
 param([switch]$RevertTest)
 $ErrorActionPreference = 'Stop'
 
@@ -25,15 +26,20 @@ function Invoke-Fixtures {
         $CodeRootNew = Join-Path $T 'GalloGrid'
         $CodeRootOld = Join-Path $T 'EA'
         $RetiredProjectMcpFiles = @(Join-Path $CodeRootOld '.mcp.json')
-        if ($RevertTest) { function Resolve-CodeRoot { return $CodeRootOld } }
+        $CodeRootSwitch = Join-Path $T 'config\dotfiles\code-root'
+        if ($RevertTest) { function Resolve-CodeRoot { if (Test-Path (Join-Path $CodeRootNew '.git')) { return $CodeRootNew } return $CodeRootOld } }
 
         New-Item -ItemType Directory -Path (Join-Path $CodeRootOld 'nexus') -Force | Out-Null
         Expect "no GalloGrid: EA" ((Resolve-CodeRoot) -eq $CodeRootOld)
-        New-Item -ItemType Directory -Path (Join-Path $CodeRootNew 'nexus') -Force | Out-Null
-        Expect "GalloGrid without .git: still EA" ((Resolve-CodeRoot) -eq $CodeRootOld)
-        New-Item -ItemType Directory -Path (Join-Path $CodeRootNew '.git') -Force | Out-Null
-        Expect "GalloGrid checkout: GalloGrid" ((Resolve-CodeRoot) -eq $CodeRootNew)
-        Remove-Item -Path $CodeRootNew, (Join-Path $CodeRootOld 'nexus') -Recurse -Force
+        New-Item -ItemType Directory -Path (Join-Path $CodeRootNew 'nexus'), (Join-Path $CodeRootNew '.git') -Force | Out-Null
+        Expect "GalloGrid cloned, no switch: still EA" ((Resolve-CodeRoot) -eq $CodeRootOld)
+        New-Item -ItemType Directory -Path (Split-Path $CodeRootSwitch -Parent) -Force | Out-Null
+        Set-Content -Path $CodeRootSwitch -Value 'GalloGrid'
+        Expect "switch says GalloGrid: GalloGrid" ((Resolve-CodeRoot) -eq $CodeRootNew)
+        Remove-Item -Path $CodeRootSwitch -Force
+        Remove-Item -Path (Join-Path $CodeRootOld 'nexus') -Recurse -Force
+        Expect "EA without code, GalloGrid cloned: GalloGrid" ((Resolve-CodeRoot) -eq $CodeRootNew)
+        Remove-Item -Path $CodeRootNew -Recurse -Force
         $script:Log.Clear()
         $r = @(Resolve-CodeRoot)
         Expect "no code anywhere: one path back" (($r.Count -eq 1) -and ($r[0] -eq $CodeRootOld))
@@ -55,8 +61,8 @@ function Invoke-Fixtures {
 Write-Host "check-code-root (ps1): fixtures$(if ($RevertTest) { ' (revert test)' })"
 Invoke-Fixtures
 if ($RevertTest) {
-    if ($script:Fail) { Write-Host "revert-test ok: an EA-only resolver fails the fixtures"; exit 0 }
-    Write-Host "revert-test FAILED: an EA-only resolver still passes"; exit 1
+    if ($script:Fail) { Write-Host "revert-test ok: a switch-on-clone resolver fails the fixtures"; exit 0 }
+    Write-Host "revert-test FAILED: a switch-on-clone resolver still passes"; exit 1
 }
 if ($script:Fail) { Write-Host "check-code-root (ps1): FAILED"; exit 1 }
 Write-Host "check-code-root (ps1) OK"

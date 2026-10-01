@@ -10,6 +10,7 @@
 # Active managed repos (role: active-repo). Parity: must match manifest.sh REPOS.
 $Repos = @(
     @{ Remote = "git@github:MGallo-Code/EA.git";         Target = "$HOME\Documents\EA" }
+    @{ Remote = "git@github:MGallo-Code/GalloGrid.git";  Target = "$HOME\Documents\GalloGrid" }
     @{ Remote = "git@github:MGallo-Code/NVIM-Setup.git";  Target = "$env:LOCALAPPDATA\nvim" }
     @{ Remote = "git@github:MGallo-Code/Wiki.git";        Target = "$HOME\Documents\Wiki" }
     @{ Remote = "git@github:MGallo-Code/Notes.git";       Target = "$HOME\Documents\Notes" }
@@ -22,6 +23,7 @@ $ArchivedRepos = @()
 # EA-only repos (skipped with --dev) - subset of active $Repos. Parity: manifest.sh EA_REPOS.
 $EARepos = @(
     "EA"
+    "GalloGrid"
     "Wiki"
     "Notes"
 )
@@ -122,12 +124,17 @@ function Update-MovedLinks {
 # machine is stranded whatever order it pulls in. The live nexus store is pinned.
 $CodeRootNew = "$HOME\Documents\GalloGrid"
 $CodeRootOld = "$HOME\Documents\EA"
+# The machine-local switch (mirror of manifest.sh CODE_ROOT_SWITCH): a machine moves to GalloGrid
+# only at its own cutover, when this file says "GalloGrid". Never by cloning alone.
+$CodeRootSwitch = "$HOME\.config\dotfiles\code-root"
 $NexusHostStore = "$HOME\.local\share\nexus\nexus.db"
 function Resolve-CodeRoot {
+    $switched = (Test-Path $CodeRootSwitch) -and ((Get-Content $CodeRootSwitch -Raw -ErrorAction SilentlyContinue).Trim() -eq "GalloGrid")
+    if ((Test-Path (Join-Path $CodeRootNew ".git")) -and $switched) { return $CodeRootNew }
+    if ((Test-Path (Join-Path $CodeRootOld "nexus")) -or (Test-Path (Join-Path $CodeRootOld "courier"))) { return $CodeRootOld }
+    # EA no longer holds the code (after the split): GalloGrid is the only home left.
     if (Test-Path (Join-Path $CodeRootNew ".git")) { return $CodeRootNew }
-    if (-not ((Test-Path (Join-Path $CodeRootOld "nexus")) -or (Test-Path (Join-Path $CodeRootOld "courier")))) {
-        Write-Warn "code root: no service code in $CodeRootNew or $CodeRootOld"
-    }
+    Write-Warn "code root: no service code in $CodeRootNew or $CodeRootOld"
     return $CodeRootOld
 }
 

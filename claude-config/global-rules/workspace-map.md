@@ -17,7 +17,8 @@ guessing or searching for where something lives, consult the authoritative point
 - `~/.dotfiles` — transport/control plane, and the agent setup itself: `claude-config/` holds the
   global rules (this file is one of them), commands, hooks, agents and skills. Change the SYSTEM
   here (`sysupdate` launches an agent scoped to it).
-- `~/Documents/EA` — active personal ops + MCP tools (nexus, courier, docgen, calendar).
+- `~/Documents/EA` — active personal ops (profile, business, meetings, context, personal docs).
+- `~/Documents/GalloGrid` — the code (private repo): the EA hub (`ea-hub/`) and its servers, nexus, courier, calendar, docgen and the agent. Split out of EA 2026-10-01.
 - `~/Documents/Wiki` — LLM-curated research (`Wiki/index.md`).
 - `~/Documents/Notes` — Michael's first-person notes (read-only to the LLM by default).
 - `~/Documents/SBIC` — employer-only work; its own `CLAUDE.md`, `docs/` is the canonical wiki + evidence.

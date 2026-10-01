@@ -221,12 +221,3 @@ Touches: APP-11. Panel close is a corner × wins for a panel's close control.
 Touches: APP-02. Compatible: the × sits top-right and fills and centers in its square button.
 Touches: COMP-18. Menu toggle doubles as close wins for a layer opened by a toggle in view: that toggle becomes its ×; the corner × is for panels with no toggle in view.
 Strength: invariant
-
-### COMP-25 Launch cards end in one wide button
-Applies: Cards that start or resume something (a checklist, a course, a review); all devices
-Do: End a card that starts or resumes something with one full-width main button under its details.
-Why: A launch card has one job; a full-width button makes it obvious and easy to hit.
-Yes: Onboarding checklist · 4 of 7 steps done, then `▶ Resume` spanning the card
-No: `▶ Resume` tucked into the card's bottom-right corner
-Touches: UI-23. Compatible: UI-23 orders action rows; a launch card has a single button.
-Strength: default

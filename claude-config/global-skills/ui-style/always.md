@@ -224,7 +224,6 @@ Why: One fixed spot for the primary action lets people press it without reading.
 Yes: `Discard draft` … `Cancel` `Save` · `Preview` `Publish`, Publish at the far right
 No: `Save` at the left of a form, `Cancel` at the right
 Touches: COMP-17. COMP-17 wins on bottom action bars: most used first from the left, More last.
-Touches: COMP-25. COMP-25 wins on launch cards: one full-width main button.
 Strength: default
 
 ### UI-24 Feature parity across devices

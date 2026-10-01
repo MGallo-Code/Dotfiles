@@ -287,11 +287,17 @@ function Sync-Repo {
 # ════════════════════════════════════════════════════════════════════
 
 function Get-PythonCmd {
+    # Prefer a Python with tomllib (3.11+): the allowlist generator and the agent-integration check
+    # read Codex TOML, and a Windows box can put an older Store `python3` alias ahead of `python`.
+    $first = $null
     foreach ($c in @("python3", "python")) {
         $cmd = Get-Command $c -ErrorAction SilentlyContinue
-        if ($cmd) { return $cmd.Source }
+        if (-not $cmd) { continue }
+        if (-not $first) { $first = $cmd.Source }
+        & $cmd.Source -c "import tomllib" 2>$null
+        if ($LASTEXITCODE -eq 0) { return $cmd.Source }
     }
-    return $null
+    return $first
 }
 
 # Link each skill subdir of $SrcRoot into every $Targets dir as $Prefix<name>, using a

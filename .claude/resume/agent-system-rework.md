@@ -11,6 +11,8 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
 - Orchestrator pilot: "A/B both" (Opus 5.5 high + Fable advisor vs Fable 5.1 high).
 - No helper sessions: "don't like the idea of wasting process on a refresher."
 - Keep ea-hub-specific things on the mini, outside dotfiles.
+- Machines (2026-10-01): PC and laptop stay agent machines; WSL keeps syncing ("Why would we stop syncing it? It's practically free"); clients keep the coding setup, skills and references but no central-tool code or builds (docgen is the one local tool); EA keeps syncing through git.
+- Private files (health, legal, anything never for GitHub): Syncthing over Tailscale with the mini as the always-on hub ("Yes on tailscale"); GitHub stays for the git repos. Needs an ADR first, plus an off-site encrypted backup of that folder.
 
 ## Discoveries paid for
 - In the 2.1.281 build, PreCompact stdout is appended to the compaction instructions, and SessionStart(compact) output reaches the model.
@@ -29,6 +31,13 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
+- 2026-10-01 machine cleanup (Michael: "1. Go for it. 2. Fold it in, sure. 3. Yup 4. Toggled."):
+  - Done: dotfiles 875e719 (clients never build nexus/courier/calendar: `needs_local_nexus`, `mcp_wiring_ready`, ps1 twins, INV-18, parity row, check-code-root fixtures with 4 mutants killed), f70cd2d (Windows `Get-PythonCmd` prefers a Python with tomllib; the PC's `python3` is the Store 3.10), d90cca9 (agent-integration fixture writes TOML-safe Windows paths). CI green on 875e719 and d90cca9.
+  - Done: Wiki f5dd53c (mini's Aug 21 learning pages) + ef7c136 (PC's Aug 28 Wizard101 pages; duplicate log row dropped). PC Wiki reset to origin, backup branch `wiki-pc-backup-20261001`.
+  - Done: PC and WSL full syncs on the new code (docgen only, wiring OK, PC machine check OK). PC lazy-lock (Jun 25, older than origin's Jun 30) discarded, copy at %TEMP%\lazy-lock.pc-20260625.json. Client builds moved: PC -> C:\Users\moses\EA-code-leftovers-2026-10-01\client-builds; WSL -> ~/.local/share/Trash/files/client-builds-2026-10-01.
+  - Known: PC `powershell -File sync.ps1` over SSH exits 1 with an empty summary (no reported failure); WSL Gemini cross-check is keychain-only, so it warns every sync.
+  - Next: laptop (Full Disk Access for remote users is ON; it was asleep at 19:3x): survey repos, write the switch file, pull dotfiles, run sync; confirm the mini holds its profile/health + legal, then offer to Trash the laptop copies. Then the Syncthing ADR.
+  - leads.db is KeepTheCall test data, not prospects: EA/leads.db is empty (schema only); Projects/recoup-calls/leads.db has 3 test leads (Jul 1-2). recoup-calls is a KeepTheCall checkout with remote MGallo-Code/keepthecall (branch handoff/mac-mini-phase2c-wip-20260704, 95 behind), so KeepTheCall DOES have a GitHub repo; the mini's ~/Apps/keepthecall (36 commits, no remote) is the stale one.
 Everything is pushed (2026-09-30).
 - EA `a2e2c820` (verify_tree GREEN, Learning notified): `/wrap [keep]`, `/autowrap on|off|status|limit`, and `/orchestrate new|on|off|end|status`. A pause holds Builders idle, and one window record per folder is shared by autowrap and orchestrations.
 - Dotfiles is pushed.

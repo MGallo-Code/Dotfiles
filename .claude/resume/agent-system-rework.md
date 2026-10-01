@@ -62,6 +62,8 @@ Now: the context diet, read-only. Plan: EA `docs/plans/context-diet.md` (uncommi
 - B0 done on main (Learning, a9acd20f and later), apart from the closing promote: kickstart com.ea.calendar-http (Michael's go), then the promote with Michael at the screen.
 - History re-trial 2026-10-01 on EA 09832b0c: 2208 commits, gate 0 hits over 23,156 objects and all messages (54 rules, 3 drop paths, allowed-domains reviewed). Ready for B2 after the drain (B) and the freeze.
 - Calendar identity: (a) ran on the mini 2026-10-01 (Michael: "sure on new 2"); identity.toml present, `identity: present` sent to Learning, which pushes (b) and item 7. Before the B0-closing promote: `launchctl kickstart -k gui/501/com.ea.calendar-http` (needs Michael's go), else the promote preflight refuses.
+- B3 checklist addition: the `hub` command is a function in Michael's ~/.zshrc (not dotfiles: hub-only things stay on the mini, Michael 2026-10-01). At B3, repoint it to ~/Documents/GalloGrid/ea-hub/scripts/hub (hub status confirmed accurate: 13 services).
+- 2026-10-01: Michael ran the promote with the placeholder EA_HUB_ALLOWED_EMAIL='your-login@gmail.com' (it is not validated, so it would lock him out). Asked him to Ctrl-C; the tab is his, so I can't stop it. Next time give the command without a fake value, or have him set the file.
 - Done 2026-10-01:
   - Laptop pull: profile/health/ (32 files) and profile/legal/ (2 signed PDFs), both gitignored; the .gitignore line is EA 153a86b3, unpushed. leads.db (KeepTheCall prospect data with PII) stays on the laptop; asked Michael whether to keep it.
   - Stale calendar sign-in files removed from the clients, not hard-deleted: the PC's credentials.json went to the Recycle Bin, WSL's ea-calendar dir to ~/.local/share/Trash.

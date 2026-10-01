@@ -85,12 +85,11 @@
    - Codex's `AGENTS.md` matches the new sources;
    - a `claude -p` smoke run shows no hook errors.
 3. **Dotfiles: push** (Michael's go). CI green, including the Windows jobs.
-4. **The PC: Michael runs `sync` twice.** Then `(Get-Item ~\.claude\rules).Target` shows the dotfiles path. WSL too, if it has its own dotfiles.
-5. **Hub:** the hub session removes the two `verify_tree.sh` blocks (found by content, around lines 129-146) once dotfiles CI runs both checks.
-6. **EA: remove.**
+4. **The PC and WSL: `sync` twice each.** Then `(Get-Item ~\.claude\rules).Target` on the PC, and `readlink ~/.claude/rules` in WSL, show the dotfiles path. WSL (`/root`) has its own dotfiles and EA clone, so it is a third machine.
+5. **EA: remove, in one push with the hub session.** EA's `ci.yml` steps, the hub's `verify_tree.sh` blocks and its `test_manifest_consistency` step map are locked to each other, so removing any one alone turns the gate RED.
    - Confirm EA's copy is unchanged since the move.
-   - Remove `claude-config/` (and its ignored `__pycache__`), the trigger hooks, the two checks and their CI steps.
-   - Point CLAUDE.md, INV-11 and ADR-0004 at dotfiles.
-   - `verify_tree` GREEN, then push (Michael's go).
+   - Mine: remove `claude-config/` (and its ignored `__pycache__`), the trigger hooks, the two checks and their `ci.yml` steps. Point CLAUDE.md, INV-11, the INV-15 trigger and ADR-0004 at dotfiles.
+   - The hub session, on top: both `verify_tree.sh` blocks (found by content) and both `CI_STEP_TO_LOCAL_LABEL` entries.
+   - One `verify_tree` GREEN, then one push (Michael's go).
 
-Review: a fresh-context adversarial review on 2026-09-30 found two blockers, both fixed above. One was the self-re-run; the other was the removal order. Its should-fix items are folded into steps 1, 2, 4 and 5.
+Review: a fresh-context adversarial review on 2026-09-30 found two blockers, both fixed above. One was the self-re-run; the other was the removal order. Its should-fix items are folded into steps 1, 2, 4 and 5. Step 5 was merged with the hub's edit after the hub session found the CI-to-gate lock.

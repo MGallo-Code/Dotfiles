@@ -1,6 +1,6 @@
 # 0006 - Dotfiles owns the agent setup: `claude-config` moves from EA
 
-- Status: proposed
+- Status: accepted and done, 2026-09-30. Dotfiles `aaeb9ff` (pushed `ebb3fb3`, CI 36805410899 green); every machine cut over; EA removal pushed as EA `57952754` (with the hub session's gate edit, `verify_tree` GREEN).
 - Date: 2026-09-30
 - Decided by: Michael ("a yes", 2026-09-30, step 2A of EA `docs/plans/ea-cleanup.md`)
 - Supersedes: ADR-0003, in part. The rule-regeneration trigger moves from EA's git hooks to dotfiles' own.

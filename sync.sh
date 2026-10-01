@@ -548,6 +548,7 @@ fi
 # ── Rebuild Nexus from the code root ─────────────────────────────────
 CODE_ROOT="$(resolve_code_root)"
 NEXUS_PATH="$CODE_ROOT/nexus"
+is_mcp_host && ensure_host_store_link "$CODE_ROOT"
 if [ -f "$NEXUS_PATH/package.json" ]; then
     cd "$NEXUS_PATH"
     npm install --silent 2>/dev/null

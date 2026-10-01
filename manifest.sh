@@ -100,6 +100,24 @@ resolve_code_root() {
     echo "$old"
 }
 
+# The host's checkout link to its live store (GalloGrid split, hub session 2026-09-30): the per-checkout
+# nexus/nexus.db link, present only in the host's main checkout, is what keeps worktrees hermetic and
+# what the canonical dev hub and npm test read. Created when missing; a real file or a link elsewhere
+# is never touched, only warned about. Callers run it on the MCP host only (is_mcp_host), so it has no
+# Windows mirror (PARITY_EXEMPT: Windows is always a client).
+ensure_host_store_link() {
+    local root="$1" store link
+    store="$(expand "$NEXUS_HOST_STORE")"; link="$root/nexus/nexus.db"
+    [ -f "$store" ] && [ -d "$root/nexus" ] || return 0
+    if [ -L "$link" ]; then
+        [ "$(readlink "$link")" = "$store" ] || warn "nexus: $link links to $(readlink "$link"), not the host store - left as is"
+    elif [ -e "$link" ]; then
+        warn "nexus: $link is a real file, not a link to the host store - left as is (split-brain risk)"
+    else
+        ln -s "$store" "$link" && ok "nexus: linked $link -> host store"
+    fi
+}
+
 # Retired project MCP files (GalloGrid split review): EA's project .mcp.json only re-declared the
 # global docgen with an EA path, and project scope would shadow the working global entry with a
 # dead one once the code moves. Removed when it is still exactly the docgen file setup generated;

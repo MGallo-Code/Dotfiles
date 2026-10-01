@@ -5,7 +5,7 @@
     "serve_path": "",
     "mcp_path": "/mcp",
     "token_file": "~/.config/courier/auth-token",
-    "run_cmd": "/usr/bin/env PYTHONPATH=$CODE_ROOT/courier/src:$CODE_ROOT/ea_mcp_remote/src $CODE_ROOT/courier/.venv/bin/python -u -m courier.server"
+    "run_cmd": "/usr/bin/env COURIER_NEXUS_DB=$HOME/.local/share/nexus/nexus.db PYTHONPATH=$CODE_ROOT/courier/src:$CODE_ROOT/ea_mcp_remote/src $CODE_ROOT/courier/.venv/bin/python -u -m courier.server"
   },
   {
     "name": "calendar",
@@ -21,6 +21,6 @@
     "serve_path": "/nexus",
     "mcp_path": "/mcp",
     "token_file": "~/.config/nexus/auth-token",
-    "run_cmd": "/usr/bin/env node $CODE_ROOT/nexus/dist/server.js"
+    "run_cmd": "/usr/bin/env NEXUS_DB_MUST_EXIST=1 NEXUS_DB=$HOME/.local/share/nexus/nexus.db node $CODE_ROOT/nexus/dist/server.js"
   }
 ]

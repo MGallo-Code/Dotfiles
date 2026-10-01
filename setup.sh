@@ -407,6 +407,7 @@ if [[ "$MODE" == "--full" ]]; then
     step "Setting up MCP servers (nexus, courier, docgen, calendar)"
     CODE_ROOT="$(resolve_code_root)"
     NEXUS_PATH="$CODE_ROOT/nexus"
+    if is_mcp_host; then ensure_host_store_link "$CODE_ROOT"; fi
     COURIER_PATH="$CODE_ROOT/courier"
     DOCGEN_PATH="$CODE_ROOT/docgen"
     CALENDAR_PATH="$CODE_ROOT/calendar"

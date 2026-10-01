@@ -49,6 +49,21 @@ run_fixtures() {
         retire_project_mcp_files >/dev/null
         check "$([ -e "$OLD/.mcp.json" ] && echo kept || echo removed)" "kept" "edited .mcp.json kept"
 
+        STORE="$(expand "$NEXUS_HOST_STORE")"; mkdir -p "$(dirname "$STORE")" "$NEW/nexus"; : > "$STORE"
+        ensure_host_store_link "$NEW" >/dev/null 2>&1
+        check "$(readlink "$NEW/nexus/nexus.db")" "$STORE" "host store link created in the checkout"
+        rm -f "$NEW/nexus/nexus.db"; echo real > "$NEW/nexus/nexus.db"
+        out="$(ensure_host_store_link "$NEW" 2>&1)"
+        check "$(cat "$NEW/nexus/nexus.db")" "real" "a real nexus.db is never replaced"
+        case "$out" in *split-brain*) echo "  ok    a real nexus.db is warned about";; *) echo "  FAIL  no warning for a real nexus.db"; exit 1;; esac
+        rm -rf "$NEW"
+
+        # The live services name the store explicitly AND must refuse a missing one (hub session's
+        # NEXUS_DB_MUST_EXIST, 2026-10-01): dropping the flag would let nexus create an empty store.
+        nx="$(jq -r '.[] | select(.name=="nexus") | .run_cmd' "$ROOT/hubs.json")"
+        cr="$(jq -r '.[] | select(.name=="courier") | .run_cmd' "$ROOT/hubs.json")"
+        case "$nx" in *NEXUS_DB_MUST_EXIST=1*NEXUS_DB=\$HOME/.local/share/nexus/nexus.db*) echo "  ok    nexus-http names the store and must find it";; *) echo "  FAIL  nexus-http run_cmd lost NEXUS_DB_MUST_EXIST=1 or its explicit store"; exit 1;; esac
+        case "$cr" in *COURIER_NEXUS_DB=\$HOME/.local/share/nexus/nexus.db*) echo "  ok    courier-http names the store";; *) echo "  FAIL  courier-http lost COURIER_NEXUS_DB"; exit 1;; esac
         if grep -q '\$HOME/Documents/EA' "$ROOT/hubs.json"; then echo "  FAIL  hubs.json still names EA"; exit 1; else echo "  ok    hubs.json names the code root token"; fi
         sh "$ROOT/scripts/hub-host-bootstrap.sh" courier 8765 '/usr/bin/env $CODE_ROOT/courier/x' "$T/tok" "" /mcp >/dev/null 2>&1
         check "$?" "2" "bootstrap refuses an unresolved \$CODE_ROOT"

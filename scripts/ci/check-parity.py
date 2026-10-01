@@ -471,6 +471,11 @@ FEATURES = [
 
 PARITY_EXEMPT = [
     {
+        "name": "host store link in the code checkout (ensure_host_store_link)",
+        "reason": "Only the MCP host keeps the live nexus store and links its main checkout's nexus/nexus.db "
+                  "to it; callers gate on is_mcp_host. Windows is always a client and holds no store."
+    },
+    {
         # remote-hubs Phase D / INV-10: the fresh-client abort-free gate exercises bash setup/sync in a
         # Linux container. The behavior IS mirrored on Windows (setup.ps1 client wiring), but a
         # clean-Windows run is not cheaply CI-able here, so the ENFORCER is Linux-only.

@@ -62,6 +62,12 @@ Now: the context diet, read-only. Plan: EA `docs/plans/context-diet.md` (uncommi
 - B0 done on main (Learning, a9acd20f and later), apart from the closing promote: kickstart com.ea.calendar-http (Michael's go), then the promote with Michael at the screen.
 - History re-trial 2026-10-01 on EA 09832b0c: 2208 commits, gate 0 hits over 23,156 objects and all messages (54 rules, 3 drop paths, allowed-domains reviewed). Ready for B2 after the drain (B) and the freeze.
 - Calendar identity: (a) ran on the mini 2026-10-01 (Michael: "sure on new 2"); identity.toml present, `identity: present` sent to Learning, which pushes (b) and item 7. Before the B0-closing promote: `launchctl kickstart -k gui/501/com.ea.calendar-http` (needs Michael's go), else the promote preflight refuses.
+- Done 2026-10-01:
+  - Laptop pull: profile/health/ (32 files) and profile/legal/ (2 signed PDFs), both gitignored; the .gitignore line is EA 153a86b3, unpushed. leads.db (KeepTheCall prospect data with PII) stays on the laptop; asked Michael whether to keep it.
+  - Stale calendar sign-in files removed from the clients, not hard-deleted: the PC's credentials.json went to the Recycle Bin, WSL's ea-calendar dir to ~/.local/share/Trash.
+  - PC fonts: CaskaydiaCove Nerd Font is installed; HEAD's wezterm config uses it. The stash "PC font edits set aside..." would REMOVE it, so it stays stashed (Michael wants Nerd Fonts on the PC).
+  - KeepTheCall is ~/Apps/keepthecall (local git, no remote); its 4 UI rules go to its docs/.
+- Hub deploy (B0 close): the first run was GREEN on tests, then stopped at provision_live_inputs with allowed_email_unset (the /tmp inputs had been cleared); production unchanged. Michael chooses: re-run with EA_HUB_ALLOWED_EMAIL typed, or wait for Learning's ~/.config/ea-hub/allowed-email fix. Learning holds its push of d5f3e0a1/79b2a6cd plus our 7 local EA commits until the promote finishes.
 - Laptop: Michael asked to pull laptop-only EA files (profile/health etc.). Blocked by macOS TCC; asked him to turn on Remote Login's "Allow full disk access for remote users".
 - Left in place: worktrees `journal` and `music-playlist` (uncommitted changes) and `emailing` and `rating` (their chats are not archived).
 - Running chats pick up new rules only via `/wrap` or a new chat (docs: rules load at start; skills, agents and hooks hot-reload; commands undocumented).

@@ -495,12 +495,14 @@ if [[ "$MODE" == "--full" ]]; then
         # `return 0` (not bare `return`): a bare return propagates `command -v`'s non-zero exit, and
         # this advisory fn is called as a plain statement under `set -e` - so on a client without uv
         # it would ABORT setup. (Latent until Phase B made setup.sh run past the old Darwin exit.)
+        # A client reaches the host's calendar over http and keeps no calendar identity or token.
+        is_mcp_host || return 0
         command -v uv >/dev/null 2>&1 || return 0
         [ -d "$CALENDAR_PATH" ] || return 0
         if PYTHONPATH="$CALENDAR_SRC" uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.cli status --check-events --quiet >/dev/null 2>&1; then
-            ok "Calendar: authenticated as michaelgallo.va@gmail.com"
+            ok "Calendar: healthy (identity and login)"
         else
-            warn "Calendar: not authenticated or health check failed - run: cd $CALENDAR_PATH && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login"
+            warn "Calendar: health check failed - if status reports the identity missing, run identity-set (four key=value lines on stdin), else login: cd $CALENDAR_PATH && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli status"
         fi
     }
     check_calendar_health

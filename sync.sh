@@ -621,12 +621,14 @@ if [ -f "$NEXUS_SERVER" ]; then
     fi
 
     check_calendar_health() {
+        # A client reaches the host's calendar over http and keeps no calendar identity or token.
+        is_mcp_host || return 0
         command -v uv >/dev/null 2>&1 || return
         [ -d "$CALENDAR_PATH" ] || return
         if PYTHONPATH="$CALENDAR_SRC" uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.cli status --check-events --quiet >/dev/null 2>&1; then
-            ok "Calendar: authenticated as michaelgallo.va@gmail.com"
+            ok "Calendar: healthy (identity and login)"
         else
-            warn "Calendar: not authenticated or health check failed - run: cd $CALENDAR_PATH && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login"
+            warn "Calendar: health check failed - if status reports the identity missing, run identity-set (four key=value lines on stdin), else login: cd $CALENDAR_PATH && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli status"
         fi
     }
     check_calendar_health

@@ -583,6 +583,9 @@ if ($Mode -eq "full") {
     }
 
     function Test-CalendarHealth {
+        # Windows is always a client: it reaches the host's calendar over http and keeps no
+        # calendar identity or token, so there is nothing local to check (mirror of is_mcp_host in sh).
+        return
         if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { return }
         if (-not (Test-Path $CalendarPath)) { return }
         $oldPyPath = $env:PYTHONPATH
@@ -591,10 +594,10 @@ if ($Mode -eq "full") {
         $healthExit = $LASTEXITCODE
         $env:PYTHONPATH = $oldPyPath
         if ($healthExit -eq 0) {
-            Write-Ok "Calendar: authenticated as michaelgallo.va@gmail.com"
+            Write-Ok "Calendar: healthy (identity and login)"
         }
         else {
-            Write-Warn "Calendar: not authenticated or health check failed - run: python -m ea_calendar.cli login"
+            Write-Warn "Calendar: health check failed - run: python -m ea_calendar.cli status (identity-set if the identity is missing, else login)"
         }
     }
     Test-CalendarHealth

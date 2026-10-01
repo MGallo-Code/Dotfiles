@@ -1,6 +1,6 @@
-# UI style: Always on, in full
+# UI rules: the core 25
 
-The full form of the always-on rules in `~/.claude/rules/ui-style.md` (why, examples, interactions).
+Read first for any UI work (step 1 of the workflow in `SKILL.md`). Wording and labels come first: they are the corrections Michael makes most.
 Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line names a rule it interacts with and which wins.
 
 ### UI-01 Copy about content, not machinery

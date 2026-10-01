@@ -178,6 +178,31 @@ retarget_moved_links() {
     done
 }
 
+# Register one command hook in ~/.claude/settings.json under <event> with <matcher>, once, by exact
+# command; unrelated hooks and their order are untouched, and the previous file is kept as .bak.
+# Needs jq; without it (or without a settings file) it warns and changes nothing. Parity:
+# manifest.ps1 Ensure-ClaudeHook. Used for the UI-workflow nudge (INV-19).
+ensure_claude_hook() {
+    local event="$1" matcher="$2" hook_cmd="$3" label="$4" settings_file="$HOME/.claude/settings.json" tmp
+    if ! command -v jq >/dev/null 2>&1 || [ ! -f "$settings_file" ]; then
+        warn "$label: no jq or no settings.json - wire manually"; return 0
+    fi
+    if jq -e --arg ev "$event" --arg cmd "$hook_cmd" 'any(.hooks[$ev][]?.hooks[]?; .command == $cmd)' "$settings_file" >/dev/null 2>&1; then
+        ok "$label already wired in settings.json"; return 0
+    fi
+    tmp="$settings_file.tmp.$$"
+    if jq --arg ev "$event" --arg m "$matcher" --arg cmd "$hook_cmd" '
+        .hooks = (.hooks // {})
+      | .hooks[$ev] = (((.hooks[$ev] // []) | if type == "array" then . else [] end)
+                       + [{matcher: $m, hooks: [{type: "command", command: $cmd}]}])' "$settings_file" > "$tmp" && [ -s "$tmp" ]; then
+        cp "$settings_file" "$settings_file.bak" && mv "$tmp" "$settings_file" && ok "wired $label into settings.json"
+    else
+        rm -f "$tmp"; warn "$label: jq merge failed, settings.json left untouched"
+    fi
+}
+# The UI-workflow nudge's registered command (INV-19): fail-open, so a missing python never errors.
+UI_NUDGE_HOOK_CMD='python3 "$HOME/.claude/hooks/ui-nudge.py" || true'
+
 configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     local configurator hook token_file python_cmd candidate
     local -a python_argv

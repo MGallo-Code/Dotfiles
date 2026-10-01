@@ -291,6 +291,31 @@ $AgentNotifyDefaultTo = "mgallo2043@gmail.com"
 $AgentNotifyFromAddress = "michaelgallo.va@gmail.com"
 $AgentNotifyAccount = "mgallo-va"
 
+# Register one command hook in ~/.claude/settings.json under -HookEvent with -Matcher, once, by exact
+# command; unrelated hooks and their order are untouched, and the previous file is kept as .bak.
+# Mirror of manifest.sh ensure_claude_hook. Used for the UI-workflow nudge (INV-19).
+function Ensure-ClaudeHook {
+    param([string]$HookEvent, [string]$Matcher, [string]$Command, [string]$Label)
+    $file = Join-Path $HOME ".claude\settings.json"
+    if (-not (Test-Path $file)) { Write-Warn "${Label}: no settings.json - wire manually"; return }
+    try { $cfg = Get-Content $file -Raw | ConvertFrom-Json } catch { Write-Warn "${Label}: settings.json unreadable - left untouched"; return }
+    $current = @()
+    if ($cfg.hooks -and $cfg.hooks.$HookEvent) { $current = @($cfg.hooks.$HookEvent) }
+    foreach ($entry in $current) {
+        foreach ($hook in @($entry.hooks)) {
+            if ($hook.command -eq $Command) { Write-Ok "$Label already wired in settings.json"; return }
+        }
+    }
+    Copy-Item $file "$file.bak" -Force
+    if (-not $cfg.hooks) { Add-Member -InputObject $cfg -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force }
+    $new = [pscustomobject]@{ matcher = $Matcher; hooks = @([pscustomobject]@{ type = "command"; command = $Command }) }
+    Add-Member -InputObject $cfg.hooks -NotePropertyName $HookEvent -NotePropertyValue @($current + $new) -Force
+    $cfg | ConvertTo-Json -Depth 12 | Set-Content -Path $file
+    Write-Ok "Wired $Label into settings.json"
+}
+# The UI-workflow nudge's registered command (INV-19). The script itself always exits 0.
+$UiNudgeHookCmd = "python `"$($HOME -replace '\\','/')/.claude/hooks/ui-nudge.py`""
+
 function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     $python = $null
     $pythonPrefix = @()

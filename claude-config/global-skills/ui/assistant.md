@@ -1,4 +1,4 @@
-# UI style: Chat and assistant
+# UI rules: Chat and assistant
 
 Open when: building a chat or AI-assistant interface.
 Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line names a rule it interacts with and which wins.

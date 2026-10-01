@@ -754,6 +754,7 @@ if ($Mode -eq "full") {
         Write-Ok "Wired $Label into settings.json"
     }
     Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
+    Ensure-ClaudeHook -HookEvent PostToolUse -Matcher "Edit|Write|MultiEdit" -Command $UiNudgeHookCmd -Label "UI-workflow nudge"
 }
 
 # ── PowerShell Profile ───────────────────────────────────────────────

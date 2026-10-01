@@ -1,4 +1,4 @@
-# UI style: Desktop
+# UI rules: Desktop
 
 Open when: anything used on a desktop or laptop screen.
 Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line names a rule it interacts with and which wins.

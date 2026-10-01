@@ -591,6 +591,7 @@ function Ensure-ClaudePreToolUseHook {
     Write-Ok "Wired $Label into settings.json"
 }
 Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
+Ensure-ClaudeHook -HookEvent PostToolUse -Matcher "Edit|Write|MultiEdit" -Command $UiNudgeHookCmd -Label "UI-workflow nudge"
 Set-AgentDefaults
 
 # ── Rebuild Nexus from the code root ─────────────────────────────────

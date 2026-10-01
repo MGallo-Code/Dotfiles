@@ -1,4 +1,4 @@
-# UI style: Core
+# UI rules: Core
 
 Open when: building or changing any app with more than one screen.
 Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line names a rule it interacts with and which wins.

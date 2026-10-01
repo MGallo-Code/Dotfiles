@@ -1,4 +1,4 @@
-# UI style: Phone and tablet
+# UI rules: Phone and tablet
 
 Open when: anything that runs on a phone or tablet, or takes touch input.
 Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line names a rule it interacts with and which wins.

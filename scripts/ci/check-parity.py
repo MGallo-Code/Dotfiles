@@ -162,6 +162,17 @@ FEATURES = [
         "ps1": ("sync.ps1", r"\$NexusHostStore[\s\S]*Resolve-CodeRoot"),
     },
     {
+        # INV-19: one shared helper registers the UI-workflow nudge on both platforms.
+        "name": "UI-workflow nudge registered (INV-19)",
+        "sh": ("manifest.sh", r"ensure_claude_hook\(\) \{[\s\S]*UI_NUDGE_HOOK_CMD"),
+        "ps1": ("manifest.ps1", r"function Ensure-ClaudeHook[\s\S]*\$UiNudgeHookCmd"),
+    },
+    {
+        "name": "sync registers the UI-workflow nudge",
+        "sh": ("sync.sh", r"ensure_claude_hook PostToolUse"),
+        "ps1": ("sync.ps1", r"Ensure-ClaudeHook -HookEvent PostToolUse"),
+    },
+    {
         "name": "WezTerm config linked",
         "sh": ("manifest.sh", r"wezterm\.lua"),
         "ps1": ("manifest.ps1", r"wezterm\.lua"),

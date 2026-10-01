@@ -1,4 +1,4 @@
-# UI style: Components
+# UI rules: Components
 
 Open when: building or changing a component: forms, lists, tables, dialogs, menus, pickers, editors, media.
 Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line names a rule it interacts with and which wins.

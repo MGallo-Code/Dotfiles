@@ -76,6 +76,10 @@ bash "$ROOT/scripts/ci/check-moved-links.sh" >/dev/null || {
 bash "$ROOT/scripts/ci/check-code-root.sh" >/dev/null || {
   echo "pre-commit: check-code-root failed - run: bash scripts/ci/check-code-root.sh" >&2; exit 1; }
 
+# INV-19: the UI-workflow nudge fires once per session, fails open, and registers once.
+bash "$ROOT/scripts/ci/check-ui-nudge.sh" >/dev/null || {
+  echo "pre-commit: check-ui-nudge failed - run: bash scripts/ci/check-ui-nudge.sh" >&2; exit 1; }
+
 # INV-17: resume-card hooks and the clear guard. About 10s, so only when their surface is staged.
 if git -C "$ROOT" diff --cached --name-only | grep -qE '^(claude-config/global-hooks/context-card\.py|claude-config/model-profiles/compact/|scripts/ci/check-context-card\.py)'; then
   "$PY" "$ROOT/scripts/ci/check-context-card.py" >/dev/null || {

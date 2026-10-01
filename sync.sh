@@ -532,6 +532,7 @@ ensure_claude_pretooluse_hook() {
     fi
 }
 ensure_claude_pretooluse_hook "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
+ensure_claude_hook PostToolUse "Edit|Write|MultiEdit" "$UI_NUDGE_HOOK_CMD" "UI-workflow nudge"
 if ! ensure_agent_defaults; then
     err "sync: agent default convergence FAILED"
     exit 1

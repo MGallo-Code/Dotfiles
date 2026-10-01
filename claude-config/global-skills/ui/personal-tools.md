@@ -1,4 +1,4 @@
-# UI style: Personal tools
+# UI rules: Personal tools
 
 Open when: a tool only Michael uses, or a mock or review page for him (never a client product or KeepTheCall).
 Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line names a rule it interacts with and which wins.

@@ -107,6 +107,10 @@ jobs:
         run: bash scripts/ci/check-code-root.sh
       - name: check-code-root revert-test
         run: bash scripts/ci/check-code-root.sh --revert-test
+      - name: check-ui-nudge (INV-19)
+        run: bash scripts/ci/check-ui-nudge.sh
+      - name: check-ui-nudge revert-test
+        run: bash scripts/ci/check-ui-nudge.sh --revert-test
 
   agent-config-windows:
     # ADR-0006 cutover, PowerShell half: Update-MovedLinks repoints symlinks and junctions, live
@@ -135,6 +139,15 @@ jobs:
       - name: check-code-root Windows PowerShell
         shell: powershell
         run: ./scripts/ci/check-code-root.ps1
+      - name: check-ui-nudge PowerShell
+        shell: pwsh
+        run: ./scripts/ci/check-ui-nudge.ps1
+      - name: check-ui-nudge PowerShell revert-test
+        shell: pwsh
+        run: ./scripts/ci/check-ui-nudge.ps1 -RevertTest
+      - name: check-ui-nudge Windows PowerShell
+        shell: powershell
+        run: ./scripts/ci/check-ui-nudge.ps1
 
   bash-local-selfref:
     # INV-9: no `local`/`declare` references a variable assigned earlier in the SAME statement

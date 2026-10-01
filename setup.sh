@@ -602,6 +602,7 @@ if [[ "$MODE" == "--full" ]]; then
         fi
     }
     ensure_claude_pretooluse_hook "$HOME/.claude/hooks/warn-stacked-git-push.sh" "stacked-push guard"
+    ensure_claude_hook PostToolUse "Edit|Write|MultiEdit" "$UI_NUDGE_HOOK_CMD" "UI-workflow nudge"
 
     # Wire repo-local git hooks (coding-mastermind pre-commit gate) for managed repos
     # that ship a tracked .githooks/ dir. core.hooksPath is per-clone LOCAL config, so

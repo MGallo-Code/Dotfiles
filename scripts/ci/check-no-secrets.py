@@ -67,6 +67,13 @@ CONTENT_PATTERNS = [
     ("generic token assignment",
      re.compile(r"(?i)(refresh_token|access_token|client_secret|api[_-]?key|app[_-]?password)"
                 r"\s*[:=]\s*['\"][^'\"]{16,}['\"]")),
+    # Ported from EA's scan with claude-config (ADR-0006), so the moved files keep their coverage.
+    ("hub or model secret assignment",
+     re.compile(r"(?i)(EA_HUB_[A-Z0-9_]*(?:HMAC|KEY|TOKEN|BEARER)|CLOUDFLARE_API_TOKEN|"
+                r"TUNNEL_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|MODEL_[A-Z0-9_]*KEY)"
+                r"\s*[:=]\s*['\"]?[A-Za-z0-9+/_=-]{32,}['\"]?")),
+    ("bearer value assignment",
+     re.compile(r"(?i)(token|bearer|authorization)\s*[:=]\s*['\"]?Bearer\s+[A-Za-z0-9._-]{16,}['\"]?")),
 ]
 
 # Tracked PATHS that are themselves secrets (basename match unless noted).

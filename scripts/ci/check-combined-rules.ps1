@@ -14,7 +14,7 @@
 #     (Windows only: needs icacls)
 #   - a retired target (ADR-0004) is removed when it still carries our header, saved first
 #     when hand-edited, and never touched when it is the user's own file
-# Also parses regen-agent-rules.ps1 (the entrypoint EA's hooks call on Windows).
+# Also parses regen-agent-rules.ps1 (the entrypoint dotfiles' git hooks call on Windows).
 # Exit 0 = all assertions hold, 1 = a regression.
 $ErrorActionPreference = 'Stop'
 

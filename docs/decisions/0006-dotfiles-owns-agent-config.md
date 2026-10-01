@@ -26,7 +26,7 @@
 ## Decision
 
 1. **The move.** `claude-config/` moves to `~/.dotfiles/claude-config/`, with the same name and subfolders.
-   - It is copied, not history-imported. EA keeps the full history; the move commit names EA's last commit that touched it.
+   - It is copied, not history-imported. EA keeps the full history. The copy is EA `origin/main` 6f06e117, whose last change to `claude-config/` was `3ef719ac`, byte-identical with the same file modes. The removal checks `git log 3ef719ac..HEAD -- claude-config` in EA is empty.
    - Because the layout is unchanged, EA's `check-context-card.py` moves unchanged: it resolves the script from its own repo root.
 2. **The manifests** (`manifest.sh`, `manifest.ps1`) point every source at the new path:
    - the four `~/.claude` links (rules, hooks, agents, commands);

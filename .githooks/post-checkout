@@ -1,0 +1,4 @@
+#!/bin/sh
+# Covers switch/checkout, a fetch-then-rebase that fast-forwards, and git checkout -- <file>.
+# git reset --hard fires no hook: the next sync regenerates.
+exec sh "$(dirname "$0")/refresh-agent-rules"

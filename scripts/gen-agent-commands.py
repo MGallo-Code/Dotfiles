@@ -71,6 +71,13 @@ def clean_orphans(keep, directory, ext):
             print(f"  commands: removed orphan {fn}")
 
 
+def missing_sources(argv):
+    """Declared source dirs that do not exist. A missing source must never read as "no
+    commands": that would delete every generated prompt (ADR-0006 review)."""
+    return [os.path.expanduser(spec.partition(":")[2]) for spec in argv
+            if not os.path.isdir(os.path.expanduser(spec.partition(":")[2]))]
+
+
 def iter_sources(argv):
     """Yield (name, dir, filename) for every source .md across the prefix:dir specs.
     Shared by generate + --verify so the name computation can never drift between them."""
@@ -106,7 +113,7 @@ def write_index(directory, names, kind):
         "",
         "Mirrors of Michael's Claude Code slash-commands, REGENERATED on every `sync` from",
         "the Claude `.md` sources - do not hand-edit (changes are overwritten). Source of",
-        "truth: `EA/claude-config/global-commands`.",
+        "truth: `~/.dotfiles/claude-config/global-commands`.",
         "",
         "## How to invoke",
         how,
@@ -139,7 +146,7 @@ def retire_gemini_mirrors():
 def verify(argv):
     """Assert every source command has a generated codex prompt.
     The 'missing generated command fails a local check' gate (run during sync)."""
-    missing, n = [], 0
+    missing, n = [f"source dir {d}" for d in missing_sources(argv)], 0
     for name, _d, _fn in iter_sources(argv):
         n += 1
         if not os.path.isfile(os.path.join(CODEX_DIR, f"{name}.md")):
@@ -159,6 +166,11 @@ def main(argv):
     if not argv:
         print("  ! commands: no sources passed (expected prefix:dir args)")
         return 0
+    absent = missing_sources(argv)
+    if absent:
+        sys.stderr.write("  ! commands: source dir missing, generated prompts left as they are: "
+                         + ", ".join(absent) + "\n")
+        return 1
     generated = 0
     keep = set()
     for name, d, fn in iter_sources(argv):

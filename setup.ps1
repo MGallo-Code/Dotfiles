@@ -700,6 +700,9 @@ if ($Mode -eq "full") {
         Write-Host ""
     }
 
+    # Repoint links left at a moved source (ADR-0006) before checking them.
+    Update-MovedLinks
+
     foreach ($link in $Symlinks) {
         $source = $link.Source
         $target = $link.Target

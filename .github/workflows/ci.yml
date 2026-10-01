@@ -83,6 +83,46 @@ jobs:
       - name: check-agent-integrations revert-test (INV-16)
         run: python scripts/ci/check-agent-integrations.py --revert-test
 
+  agent-config:
+    # claude-config moved here from EA (ADR-0006), with its enforcers: INV-17 (resume-card hooks
+    # and the /wrap-only clear guard) and the INV-15 trigger (dotfiles' git hooks regenerate
+    # Codex's AGENTS.md after a rule change).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-context-card (INV-17)
+        run: python scripts/ci/check-context-card.py
+      - name: check-context-card revert-test (INV-17)
+        run: python scripts/ci/check-context-card.py --revert-test
+      - name: check-agent-rules-hooks (INV-15 trigger)
+        run: sh scripts/ci/check-agent-rules-hooks.sh
+      - name: check-moved-links (ADR-0006 cutover)
+        run: bash scripts/ci/check-moved-links.sh
+      - name: check-moved-links revert-test
+        run: bash scripts/ci/check-moved-links.sh --revert-test
+
+  agent-config-windows:
+    # ADR-0006 cutover, PowerShell half: Update-MovedLinks repoints symlinks and junctions, live
+    # or dangling, and the sync verify helpers read the result, on pwsh 7 and Windows PowerShell 5.1.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-moved-links PowerShell
+        shell: pwsh
+        run: ./scripts/ci/check-moved-links.ps1
+      - name: check-moved-links PowerShell revert-test
+        shell: pwsh
+        run: ./scripts/ci/check-moved-links.ps1 -RevertTest
+      - name: check-moved-links Windows PowerShell
+        shell: powershell
+        run: ./scripts/ci/check-moved-links.ps1
+      - name: check-moved-links Windows PowerShell revert-test
+        shell: powershell
+        run: ./scripts/ci/check-moved-links.ps1 -RevertTest
+
   bash-local-selfref:
     # INV-9: no `local`/`declare` references a variable assigned earlier in the SAME statement
     # (unbound under `set -u` - the class of bug that crashed sync mid-regen 2026-06-18).

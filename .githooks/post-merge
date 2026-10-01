@@ -1,0 +1,4 @@
+#!/bin/sh
+# Covers pull (merge or fast-forward), auto-git's merge --ff-only, and a pull --rebase with
+# no local commits.
+exec sh "$(dirname "$0")/refresh-agent-rules"

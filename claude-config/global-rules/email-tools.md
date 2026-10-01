@@ -1,0 +1,7 @@
+# Email Tools
+
+## Prefer the `courier` MCP for email (when it's connected)
+- `courier` (sibling of `nexus`, lives in `~/Documents/EA/courier/`) wraps the himalaya + notmuch + mbsync stack as typed tools across all ~14 accounts: `email_search`/`email_read`/`email_thread` (reads, notmuch-backed), `email_move`/`email_trash`/`email_flag`/`email_mark_read`/`email_tag`/`email_folder_create`/`email_sync` (writes, himalaya), and `email_send`/`email_reply`/`email_draft_*` (compose).
+- **When `courier` tools are available in the session, use them over raw himalaya/notmuch Bash** for anything multi-account or destructive. courier is wired into EA by default; it may also be added (local scope) to other projects so a session there can reason over email. If you don't see `mcp__courier__*` tools, it isn't connected in this project; fall back to himalaya/notmuch in Bash.
+- Every courier read returns a normalized `message_id` that bridges to the Nexus `email_*` metadata tools (`email_status`, `email_action_log`, `email_link_*`, `email_snooze_*`). courier **auto-logs each successful write to the Nexus action trail itself** (actor `courier`, fail-open) — don't call `email_action_log` for trashes/moves/flags; you still own notes, links, and snoozes.
+- courier's `email_reply` threads correctly and quotes cleanly (proper `In-Reply-To`), and `email_draft_edit` can replace a draft (save-new + delete-old) because himalaya can delete.

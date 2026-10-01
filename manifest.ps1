@@ -33,28 +33,97 @@ $EARepos = @(
 $CodexPin = "0.147.0"
 
 $Symlinks = @(
-    @{ Source = "$HOME\Documents\EA\claude-config\global-rules"; Target = "$HOME\.claude\rules" }
+    @{ Source = "$HOME\.dotfiles\claude-config\global-rules"; Target = "$HOME\.claude\rules" }
     # Mirror of manifest.sh: wire the global-hooks dir so hook scripts (notify,
     # stacked-push guard) are available on Windows too. Without this, ~/.claude/hooks
     # never exists on Windows. (parity-checked: scripts/ci/check-parity.py)
-    @{ Source = "$HOME\Documents\EA\claude-config\global-hooks"; Target = "$HOME\.claude\hooks" }
+    @{ Source = "$HOME\.dotfiles\claude-config\global-hooks"; Target = "$HOME\.claude\hooks" }
     @{ Source = "$HOME\.dotfiles\terminal\wezterm\wezterm.lua"; Target = "$HOME\.wezterm.lua" }
     @{ Source = "$HOME\.dotfiles\terminal\starship\starship.toml"; Target = "$HOME\.config\starship.toml" }
     # Mirror of manifest.sh: global-agents -> ~/.claude/agents (Claude subagent defs).
     # Claude-only; codex/gemini have no subagent concept. (parity-checked: scripts/ci/check-parity.py)
-    @{ Source = "$HOME\Documents\EA\claude-config\global-agents"; Target = "$HOME\.claude\agents" }
+    @{ Source = "$HOME\.dotfiles\claude-config\global-agents"; Target = "$HOME\.claude\agents" }
     # Mirror of manifest.sh: global-commands -> ~/.claude/commands. Codex/Gemini get generated
     # mirrors from the same source; Claude gets the source directory directly.
-    @{ Source = "$HOME\Documents\EA\claude-config\global-commands"; Target = "$HOME\.claude\commands" }
+    @{ Source = "$HOME\.dotfiles\claude-config\global-commands"; Target = "$HOME\.claude\commands" }
 )
+
+# Moved link sources (ADR-0006). Parity: manifest.sh MOVED_LINK_SOURCES / retarget_moved_links.
+# Update-MovedLinks repoints every managed link (the $Symlinks targets and each entry of the
+# skill target dirs) whose target is under an Old prefix, live or dangling, to the same path
+# under New. Only links are touched, never a real file or dir. setup and sync run it before the
+# repo pulls. Keep an entry until every machine has synced twice past the move.
+$MovedLinkSources = @(
+    @{ Old = "$HOME\Documents\EA\claude-config"; New = "$HOME\.dotfiles\claude-config" }
+)
+
+# The link item at $Path, read from its parent's listing so a dangling link still resolves on
+# Windows PowerShell 5.1 and pwsh 7. $null when $Path is not a link.
+function Get-LinkItem {
+    param([string]$Path)
+    $parent = Split-Path $Path -Parent
+    $leaf = Split-Path $Path -Leaf
+    if (-not $parent -or -not (Test-Path -LiteralPath $parent)) { return $null }
+    $item = Get-ChildItem -LiteralPath $parent -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq $leaf } | Select-Object -First 1
+    if (-not $item -or -not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $null }
+    return $item
+}
+
+# A link item's target as a plain absolute path (no \??\ or \\?\ prefix, no trailing slash).
+function Get-LinkTargetPath {
+    param($Item)
+    $target = @($Item.Target)[0]
+    if (-not $target) { return $null }
+    $target = [string]$target
+    foreach ($prefix in @('\??\', '\\?\')) {
+        if ($target.StartsWith($prefix)) { $target = $target.Substring($prefix.Length) }
+    }
+    return $target.TrimEnd('\', '/')
+}
+
+function Update-MovedLinks {
+    $paths = @($Symlinks | ForEach-Object { $_.Target })
+    foreach ($root in (@($AgentSkillsTargets + $ProjectSkillsTargets) | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($entry in (Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue)) {
+            if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { $paths += $entry.FullName }
+        }
+    }
+    foreach ($path in $paths) {
+        $item = Get-LinkItem $path
+        if (-not $item) { continue }
+        $current = Get-LinkTargetPath $item
+        if (-not $current) { continue }
+        foreach ($move in $MovedLinkSources) {
+            $old = $move.Old.TrimEnd('\')
+            if (-not ($current -ieq $old -or $current.StartsWith($old + '\', [StringComparison]::OrdinalIgnoreCase))) { continue }
+            $dest = $move.New.TrimEnd('\') + $current.Substring($old.Length)
+            if (-not (Test-Path -LiteralPath $dest)) {
+                Write-Warn "moved link: $path points at $current, but $dest is missing - left as is"
+                break
+            }
+            try {
+                # Remove the link itself, never what it points at.
+                if ($item.Attributes -band [IO.FileAttributes]::Directory) { [IO.Directory]::Delete($path, $false) }
+                else { [IO.File]::Delete($path) }
+                try { New-Item -ItemType SymbolicLink -Path $path -Target $dest -ErrorAction Stop | Out-Null }
+                catch { New-Item -ItemType Junction -Path $path -Target $dest -ErrorAction Stop | Out-Null }
+                Write-Ok "moved link: $path -> $dest"
+            }
+            catch { Write-Err "moved link: could not repoint $path ($($_.Exception.Message))" }
+            break
+        }
+    }
+}
 
 # Codex loads ONE global instruction file. Mirror of manifest.sh:
 # instead of symlinking only agent-skills.md, GENERATE a combined file from ALL
 # global-rules/*.md so Windows agents get the FULL ruleset, not a subset. Generated by
-# Regen-CombinedAgentRules during setup and sync, and between syncs by EA's
+# Regen-CombinedAgentRules during setup and sync, and between syncs by dotfiles'
 # post-commit/merge/checkout hooks via scripts/regen-agent-rules.ps1.
 # (parity-checked: scripts/ci/check-parity.py)
-$GlobalRulesDir = "$HOME\Documents\EA\claude-config\global-rules"
+$GlobalRulesDir = "$HOME\.dotfiles\claude-config\global-rules"
 $CombinedRulesTargets = @(
     "$HOME\.codex\AGENTS.md"
 )
@@ -142,7 +211,7 @@ function Regen-CombinedAgentRules {
             Write-Warn "combined-rules: $target did not match what dotfiles generated (hand-edited, or from an older dotfiles); saved to $target.sync-backup-$stamp before regenerating (edit the global-rules source, not this copy)"
         }
         # Stage beside the target and move it over, so a reader never sees a partial file
-        # and concurrent runs (EA hooks in several lanes) each publish a whole one.
+        # and concurrent runs (git hooks in several worktrees) each publish a whole one.
         $staged = "$target.tmp.$PID"
         $wasReadOnly = (Test-Path $target) -and (Get-Item $target).IsReadOnly
         try {
@@ -181,8 +250,8 @@ function Regen-CombinedAgentRules {
     }
 }
 
-# Completion-email implementation lives in EA; dotfiles owns machine-local wiring.
-$AgentNotifyHook = "$HOME\Documents\EA\claude-config\global-hooks\agent-notify.py"
+# The completion-email hook and its machine-local wiring both live in dotfiles (ADR-0006).
+$AgentNotifyHook = "$HOME\.dotfiles\claude-config\global-hooks\agent-notify.py"
 $AgentNotifyConfigurator = "$HOME\.dotfiles\scripts\configure-agent-integrations.py"
 $AgentNotifyDefaultTo = "mgallo2043@gmail.com"
 $AgentNotifyFromAddress = "michaelgallo.va@gmail.com"
@@ -287,8 +356,8 @@ $NexusTokenFile = "$HOME\.config\nexus\auth-token"
 # http+bearer nexus client. Do NOT flip it before the drain (handoff §4).
 $NexusRemoted = $true
 
-# ── Custom global skills (tracked in EA), linked into all 3 agents ────
-$GlobalSkillsDir = "$HOME\Documents\EA\claude-config\global-skills"
+# ── Custom global skills (tracked in dotfiles), linked into Claude and Codex ──
+$GlobalSkillsDir = "$HOME\.dotfiles\claude-config\global-skills"
 
 # ── Project skills -> each agent's native source, namespaced globally ────────
 $CodexProjectSkills = @(
@@ -315,7 +384,7 @@ $CodexRetiredSkillDisableRoots = @(
 # ── Claude slash-commands -> codex prompts ────────────────────────────
 # Source of truth stays the tracked Claude `.md`. Empty prefix = bare name.
 $CommandSources = @(
-    @{ Prefix = "";     Dir = "$HOME\Documents\EA\claude-config\global-commands" }
+    @{ Prefix = "";     Dir = "$HOME\.dotfiles\claude-config\global-commands" }
 )
 
 $Directories = @(

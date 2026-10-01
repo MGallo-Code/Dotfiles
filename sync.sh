@@ -427,6 +427,12 @@ if [ -f "$NEXUS_DB" ] && command -v sqlite3 &>/dev/null; then
     ok "Nexus DB: WAL checkpointed"
 fi
 
+# ── Repoint links left at a moved source (ADR-0006) ──────────────────
+# Before the pulls, while the old targets still exist. A sync runs the code it started with,
+# so a move reaches a machine on its second sync after the dotfiles push.
+echo -e "\n${GREEN}==>${NC} Checking moved link sources"
+retarget_moved_links
+
 # ── Sync dotfiles repo itself ────────────────────────────────────────
 echo -e "\n${GREEN}==>${NC} Syncing dotfiles"
 sync_repo "$DOTFILES_DIR"

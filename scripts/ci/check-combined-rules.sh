@@ -2,7 +2,7 @@
 # check-combined-rules.sh - INV-15 enforcer (bash half; PowerShell half: check-combined-rules.ps1).
 #
 # Hermetic: a throwaway $HOME with a small global-rules source, driven through the real
-# scripts/regen-agent-rules.sh (the entrypoint EA's hooks call, which sources manifest.sh's
+# scripts/regen-agent-rules.sh (the entrypoint dotfiles' git hooks call, which sources manifest.sh's
 # regen_combined_agent_rules - the same function setup.sh/sync.sh call). Asserts:
 #   - both targets are generated from every source file, identical, and read-only
 #   - --quiet prints nothing when current; a write is always reported
@@ -22,7 +22,7 @@ T="$(mktemp -d)"
 trap 'chmod -R u+w "$T" 2>/dev/null; rm -rf "$T"' EXIT
 
 export HOME="$T/home"
-SRC="$HOME/Documents/EA/claude-config/global-rules"
+SRC="$HOME/.dotfiles/claude-config/global-rules"
 CX="$HOME/.codex/AGENTS.md"
 GM="$HOME/.gemini/GEMINI.md"   # retired target (ADR-0004): removed, never generated
 mkdir -p "$SRC"

@@ -74,7 +74,7 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 | IT-Worker | ~/Documents/IT-Worker | archive-repo (NOT synced; legacy reference, active ops moved to EA/business/michaelgit) |
 
 **Generated for codex on every sync** (never hand-edit; the targets are read-only):
-- Combined agent rules from `EA/claude-config/global-rules/*.md` -> `~/.codex/AGENTS.md`
+- Combined agent rules from `claude-config/global-rules/*.md` (this repo) -> `~/.codex/AGENTS.md`
 - Global + per-repo project skills, namespaced (`ea-*`, `wiki-*`) into `~/.codex/skills`
 - Claude slash-commands -> codex prompts (`~/.codex/prompts/*.md`). Invoke with `/<name>` (e.g. `/handoff`); the dir gets a generated `README.md` index listing commands + how to invoke them.
 - Gemini is retired as an interactive agent (ADR-0004): its generated skills, commands and `GEMINI.md` are removed by sync. The CLI, its MCP hub wiring, and the headless cross-check stay.

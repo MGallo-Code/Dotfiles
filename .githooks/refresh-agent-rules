@@ -1,0 +1,27 @@
+#!/bin/sh
+# Regenerate ~/.codex/AGENTS.md from claude-config/global-rules after a commit, pull or
+# checkout in dotfiles, so a rule change reaches Codex without waiting for the next sync
+# (INV-15). Moved here from EA with claude-config (ADR-0006). This only calls the regen
+# entrypoint, and prints nothing unless a file changed. The entrypoint reads the main
+# checkout's live global-rules dir (the same files Claude reads through ~/.claude/rules),
+# whichever worktree fired the hook.
+# Fails open: a post-* hook cannot undo the git operation, and the next sync regenerates.
+# Portable POSIX sh: runs on macOS and on Windows via git-bash. Guarded by
+# scripts/ci/check-agent-rules-hooks.sh.
+DOT="$HOME/.dotfiles"
+[ -d "$DOT" ] || exit 0
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    ENTRY="$DOT/scripts/regen-agent-rules.ps1"
+    [ -f "$ENTRY" ] || { echo "refresh-agent-rules: $ENTRY missing; Codex/Gemini rules wait for the next sync" >&2; exit 0; }
+    PS="$(command -v pwsh || command -v powershell || true)"
+    [ -n "$PS" ] || exit 0
+    "$PS" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$ENTRY")" -Quiet || true
+    ;;
+  *)
+    ENTRY="$DOT/scripts/regen-agent-rules.sh"
+    [ -f "$ENTRY" ] || { echo "refresh-agent-rules: $ENTRY missing; Codex/Gemini rules wait for the next sync" >&2; exit 0; }
+    bash "$ENTRY" --quiet || true
+    ;;
+esac
+exit 0

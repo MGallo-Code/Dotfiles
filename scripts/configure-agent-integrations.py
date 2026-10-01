@@ -10,7 +10,7 @@ each resulting file is replaced atomically. Unrelated hooks and TOML tables are 
 Because Codex exposes one ``notify`` command, a pre-existing callback is retained as an
 argument-safe passthrough behind the managed entry point.
 
-Resume-card hooks (EA ``context-card.py``, EA ADR-0004, dotfiles INV-16) are registered for
+Resume-card hooks (``claude-config/global-hooks/context-card.py``, design EA ADR-0004, INV-16/INV-17) are registered for
 Claude when that script sits beside the notify hook, and removed when it is gone.
 """
 
@@ -42,7 +42,7 @@ MAX_CODEX_PASSTHROUGH_TOKEN_CHARS = 12_000
 SKILLS_BEGIN = "# dotfiles: begin Codex duplicate skill suppression"
 CONTEXT_SCRIPT = "context-card.py"
 CONTEXT_TIMEOUT = 15
-# (event, matcher, subcommand). The clear guard keys on the Desktop tool's name (EA INV-11
+# (event, matcher, subcommand). The clear guard keys on the Desktop tool's name (INV-17
 # limit). The role guard fires on every edit and shell call and is silent for sessions without
 # an orchestration role; it runs on the same stable runner as the others (uv, about 30 ms).
 CONTEXT_HOOKS = (

@@ -461,6 +461,12 @@ if ((Test-Path $NexusDb) -and (Get-Command sqlite3 -ErrorAction SilentlyContinue
     Write-Ok "Nexus DB: WAL checkpointed"
 }
 
+# ── Repoint links left at a moved source (ADR-0006) ──────────────────
+# Before the pulls, while the old targets still exist. A sync runs the code it started with,
+# so a move reaches a machine on its second sync after the dotfiles push.
+Write-Host "`n==> Checking moved link sources" -ForegroundColor Green
+Update-MovedLinks
+
 # ── Sync dotfiles repo itself ────────────────────────────────────────
 Write-Host "`n==> Syncing dotfiles" -ForegroundColor Green
 Sync-Repo $DotfilesDir
@@ -518,11 +524,17 @@ foreach ($link in $Symlinks) {
     $source = $link.Source
     $name = Split-Path $target -Leaf
 
-    if ((Test-Path $target) -and ((Get-Item $target).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    $linkItem = Get-LinkItem $target
+    if ($linkItem -and ((Get-LinkTargetPath $linkItem) -ieq $source.TrimEnd('\'))) {
         Write-Ok "$name`: linked correctly"
     }
+    elseif ($linkItem) {
+        # A link to somewhere else, possibly dangling - don't auto-overwrite (verify by target, as
+        # setup.ps1 does; a moved source was already repointed by Update-MovedLinks).
+        Write-Warn "$name`: links to $(Get-LinkTargetPath $linkItem), not $source - resolve manually (remove and re-run, or run setup.ps1)"
+    }
     elseif (Test-Path $target) {
-        # Real file or wrong-target symlink - don't auto-overwrite (could lose local edits)
+        # Real file - don't auto-overwrite (could lose local edits)
         Write-Warn "$name`: exists but not the expected symlink - resolve manually (remove and re-run, or run setup.ps1)"
     }
     elseif (-not (Test-Path $source)) {

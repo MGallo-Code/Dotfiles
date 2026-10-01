@@ -1,0 +1,3 @@
+#!/bin/sh
+# Covers commit, amend, and each commit a rebase replays.
+exec sh "$(dirname "$0")/refresh-agent-rules"

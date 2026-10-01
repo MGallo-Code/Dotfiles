@@ -1,0 +1,15 @@
+{
+  "_note": "Phase-2 additions to the handoff's ledger schema (section 2). Add per slice under review_cycles[] or milestones[].accepted_slices[].",
+  "orchestrator": {"session_ref": "<CLAUDE_CODE_HOST_SESSION_ID>", "arm": "A|B"},
+  "metrics": {
+    "review_rounds": 0,
+    "findings_pass1": {"P1": 0, "P2": 0, "P3": 0},
+    "findings_pass2": {"P1": 0, "P2": 0, "P3": 0},
+    "findings_rejected_invalid": 0,
+    "usage_by_role": {"orchestrator": "", "builder": "", "challenger": ""},
+    "custody_incidents": 0,
+    "taste_rejections": 0,
+    "orchestrator_arm": "A|B"
+  },
+  "builder": {"session_per_slice": true, "lessons_path": "analysis_outputs/builder-notes/lessons.md"}
+}

@@ -566,6 +566,9 @@ fi
 if [[ "$MODE" == "--full" ]]; then
     step "Creating symlinks"
 
+    # Repoint links left at a moved source (ADR-0006) before checking them.
+    retarget_moved_links
+
     for entry in "${SYMLINKS[@]}"; do
         source_path="$(expand "${entry%%|*}")"
         target_path="$(expand "${entry##*|}")"

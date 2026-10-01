@@ -458,10 +458,10 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
 
 
 def machine_context(findings: list[str], home: Path, claude: dict) -> None:
-    script = home / "Documents" / "EA" / "claude-config" / "global-hooks" / "context-card.py"
+    script = home / ".dotfiles" / "claude-config" / "global-hooks" / "context-card.py"
     if not script.is_file():
         require(not any(context_entries(claude, event) for event in CONTEXT_EVENTS),
-                "live resume-card hooks are registered but EA context-card.py is missing", findings)
+                "live resume-card hooks are registered but context-card.py is missing", findings)
         return
     for sub, (event, _matcher) in CONTEXT_SUBS.items():
         found = context_entries(claude, event, sub)
@@ -486,7 +486,7 @@ def machine_context(findings: list[str], home: Path, claude: dict) -> None:
 
 def machine(findings: list[str]) -> None:
     home = Path.home()
-    hook_path = home / "Documents" / "EA" / "claude-config" / "global-hooks" / "agent-notify.py"
+    hook_path = home / ".dotfiles" / "claude-config" / "global-hooks" / "agent-notify.py"
     require(hook_path.is_file(), f"live hook missing: {hook_path}", findings)
     if not hook_path.is_file():
         return

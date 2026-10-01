@@ -20,8 +20,9 @@ Definition-of-Done: [`DEFINITION_OF_DONE.md`](./DEFINITION_OF_DONE.md).
 - Run: `bash setup.sh [--full|--dev|--minimal]` (mac/linux) or `.\setup.ps1` (Windows);
   `sync` pulls/pushes managed repos (including the agent-skills fork) and regenerates agent wiring.
 - Where it lives: paired `*.sh`/`*.ps1` scripts at the root; `shell/` (commands),
-  `ssh/` (config template), `packages/` (Homebrew). Manages EA, Wiki, NVIM-Setup, the
-  Claude/Codex/Gemini rules, and SSH config.
+  `ssh/` (config template), `packages/` (Homebrew), and `claude-config/` (the global agent
+  rules, hooks, commands, agents and skills; moved from EA by ADR-0006). Manages EA, Wiki,
+  NVIM-Setup, the agent wiring, and SSH config.
 
 ## Conventions that matter
 

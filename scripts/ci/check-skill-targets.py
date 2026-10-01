@@ -223,10 +223,12 @@ def main(argv):
                     if not os.path.isdir(td):
                         continue              # guard: fresh machine, target not yet created
                     claims[td][name].add(root_label)
-                    if not is_linked(td, name):
+                    # Expected source too, so a link left at a moved source (ADR-0006) fails.
+                    source = os.path.join(os.path.expanduser(src), name)
+                    if not is_linked(td, name, source):
                         failures.append(
-                            f"missing skill link: {root_label} skill {name!r} is not linked "
-                            f"into {td} - run `sync`")
+                            f"missing/wrong skill link: {root_label} skill {name!r} is not linked "
+                            f"into {td} from {source} - run `sync`")
 
         # (d) RETIRED: a retired target keeps no generated link or marked copy.
         for d in (os.path.expanduser(t) for t in retired_targets):

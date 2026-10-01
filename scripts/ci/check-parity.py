@@ -64,8 +64,8 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"could not save .*left it unchanged"),
     },
     {
-        # INV-15: EA's post-commit/post-merge hooks call a standalone quiet entrypoint on each OS.
-        "name": "combined agent-rules standalone entrypoint (EA hooks)",
+        # INV-15: dotfiles' post-commit/post-merge hooks call a standalone quiet entrypoint on each OS.
+        "name": "combined agent-rules standalone entrypoint (git hooks)",
         "sh": ("scripts/regen-agent-rules.sh", r"COMBINED_RULES_QUIET"),
         "ps1": ("scripts/regen-agent-rules.ps1", r"CombinedRulesQuiet"),
     },
@@ -127,6 +127,23 @@ FEATURES = [
         "name": "~/.claude/agents dir wired (Claude subagent defs)",
         "sh": ("manifest.sh", r"global-agents"),
         "ps1": ("manifest.ps1", r"global-agents"),
+    },
+    {
+        # ADR-0006: links left at a moved source (EA claude-config -> dotfiles) are repointed,
+        # live or dangling, by one manifest function per platform, before the repo pulls.
+        "name": "moved link sources retargeted (ADR-0006)",
+        "sh": ("manifest.sh", r"retarget_moved_links\(\) \{"),
+        "ps1": ("manifest.ps1", r"function Update-MovedLinks"),
+    },
+    {
+        "name": "sync repoints moved links before the pulls",
+        "sh": ("sync.sh", r"(?m)^retarget_moved_links$"),
+        "ps1": ("sync.ps1", r"(?m)^Update-MovedLinks$"),
+    },
+    {
+        "name": "setup repoints moved links before linking",
+        "sh": ("setup.sh", r"(?m)^\s+retarget_moved_links$"),
+        "ps1": ("setup.ps1", r"(?m)^\s+Update-MovedLinks$"),
     },
     {
         "name": "WezTerm config linked",

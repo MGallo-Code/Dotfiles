@@ -154,6 +154,8 @@ gemini_workspace_roots = [
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
+# The code repo joins once it exists (GalloGrid split); a missing dir is never listed.
+gemini_workspace_roots += [p for p in [os.path.expanduser("~/Documents/GalloGrid")] if os.path.isdir(p)]
 context = data.setdefault("context", {})
 if not isinstance(context, dict):
     context = {}
@@ -403,12 +405,11 @@ fi
 # NOT expanded; we bake absolute paths in per machine.
 if [[ "$MODE" == "--full" ]]; then
     step "Setting up MCP servers (nexus, courier, docgen, calendar)"
-    EA_PATH="$(expand "~/Documents/EA")"
-    ITW_PATH="$(expand "~/Documents/IT-Worker")"
-    NEXUS_PATH="$EA_PATH/nexus"
-    COURIER_PATH="$EA_PATH/courier"
-    DOCGEN_PATH="$EA_PATH/docgen"
-    CALENDAR_PATH="$EA_PATH/calendar"
+    CODE_ROOT="$(resolve_code_root)"
+    NEXUS_PATH="$CODE_ROOT/nexus"
+    COURIER_PATH="$CODE_ROOT/courier"
+    DOCGEN_PATH="$CODE_ROOT/docgen"
+    CALENDAR_PATH="$CODE_ROOT/calendar"
     NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
     COURIER_SRC="$COURIER_PATH/src"
     DOCGEN_SRC="$DOCGEN_PATH/src"
@@ -450,35 +451,10 @@ if [[ "$MODE" == "--full" ]]; then
         warn "uv not found - skipping courier/docgen/calendar dep sync"
     fi
 
-    # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos: docgen ONLY. nexus, like
-    # courier, is wired GLOBALLY ONLY (host stdio / client http+bearer via register_all_hub_mcp)
-    # and is NEVER written into any project .mcp.json - a project stdio nexus would let a client
-    # read its own stale nexus.db (split-brain), and assert-no-client-stdio-nexus.sh forbids it on
-    # every box. docgen is not remoted, so it is the only project-scoped server.
-    if [ -f "$NEXUS_SERVER" ]; then
-        MCP_JSON=$(cat <<EOF
-{
-  "mcpServers": {
-    "docgen": {
-      "command": "uv",
-      "args": ["run", "--project", "$DOCGEN_PATH", "--no-sync", "python", "-m", "docgen.server"],
-      "env": {
-        "PYTHONPATH": "$DOCGEN_SRC",
-        "PLAYWRIGHT_BROWSERS_PATH": "$DOCGEN_BROWSERS"
-      }
-    }
-  }
-}
-EOF
-)
-        MCP_DESC="docgen; nexus is global-only (never in project .mcp.json, like courier)"
-        echo "$MCP_JSON" > "$EA_PATH/.mcp.json"
-        ok "EA .mcp.json generated ($MCP_DESC)"
-        if [ -d "$ITW_PATH" ]; then
-            echo "$MCP_JSON" > "$ITW_PATH/.mcp.json"
-            ok "IT-Worker .mcp.json generated ($MCP_DESC)"
-        fi
-    fi
+    # No project .mcp.json (GalloGrid split review): docgen is wired globally like the other three
+    # servers, and a project-scoped copy with a fixed path would shadow the global one with a dead
+    # path once the code moves. A leftover generated file is removed; an edited one is kept.
+    retire_project_mcp_files
 
     # Global wiring: all four servers in EVERY project, for Claude, Codex, and Gemini.
     # Idempotent (remove-then-add); no-ops if the CLI is absent. This is how
@@ -524,7 +500,7 @@ EOF
         if PYTHONPATH="$CALENDAR_SRC" uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.cli status --check-events --quiet >/dev/null 2>&1; then
             ok "Calendar: authenticated as michaelgallo.va@gmail.com"
         else
-            warn "Calendar: not authenticated or health check failed - run: cd ~/Documents/EA/calendar && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login"
+            warn "Calendar: not authenticated or health check failed - run: cd $CALENDAR_PATH && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login"
         fi
     }
     check_calendar_health

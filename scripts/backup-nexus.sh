@@ -15,7 +15,7 @@
 # Env overrides:  NEXUS_DB, NEXUS_BACKUP_DIR, NEXUS_BACKUP_RETENTION_DAYS
 set -euo pipefail
 
-DB="${NEXUS_DB:-$HOME/Documents/EA/nexus/nexus.db}"
+DB="${NEXUS_DB:-$HOME/.local/share/nexus/nexus.db}"   # the pinned live store (INV-18), not a checkout link
 BACKUP_DIR="${NEXUS_BACKUP_DIR:-$HOME/.local/state/nexus-backups}"   # OUTSIDE any repo (not git-tracked)
 RETENTION_DAYS="${NEXUS_BACKUP_RETENTION_DAYS:-30}"
 LABEL="com.ea.nexus-backup"

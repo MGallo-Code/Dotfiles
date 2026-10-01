@@ -106,6 +106,8 @@ gemini_workspace_roots = [
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
+# The code repo joins once it exists (GalloGrid split); a missing dir is never listed.
+gemini_workspace_roots += [p for p in [os.path.expanduser("~/Documents/GalloGrid")] if os.path.isdir(p)]
 context = data.setdefault("context", {})
 if not isinstance(context, dict):
     context = {}
@@ -421,7 +423,7 @@ source "$DOTFILES_DIR/scripts/git-sync-lock.sh"
 git_sync_lock_acquire "manual-sync" || exit 0
 
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
-NEXUS_DB="$(expand "~/Documents/EA/nexus/nexus.db")"
+NEXUS_DB="$(expand "$NEXUS_LIVE_DB")"   # pinned live store, not a checkout link
 if [ -f "$NEXUS_DB" ] && command -v sqlite3 &>/dev/null; then
     sqlite3 "$NEXUS_DB" "PRAGMA wal_checkpoint(TRUNCATE);" >/dev/null 2>&1
     ok "Nexus DB: WAL checkpointed"
@@ -541,8 +543,9 @@ if [ -x "$NVIM_SETUP" ]; then
     "$NVIM_SETUP"
 fi
 
-# ── Rebuild Nexus if EA was updated ──────────────────────────────────
-NEXUS_PATH="$(expand "~/Documents/EA/nexus")"
+# ── Rebuild Nexus from the code root ─────────────────────────────────
+CODE_ROOT="$(resolve_code_root)"
+NEXUS_PATH="$CODE_ROOT/nexus"
 if [ -f "$NEXUS_PATH/package.json" ]; then
     cd "$NEXUS_PATH"
     npm install --silent 2>/dev/null
@@ -552,10 +555,10 @@ if [ -f "$NEXUS_PATH/package.json" ]; then
 fi
 
 # ── Refresh MCP runtime deps + global wiring ─────────────────────────
-EA_PATH="$(expand "~/Documents/EA")"
-COURIER_PATH="$EA_PATH/courier"
-DOCGEN_PATH="$EA_PATH/docgen"
-CALENDAR_PATH="$EA_PATH/calendar"
+COURIER_PATH="$CODE_ROOT/courier"
+DOCGEN_PATH="$CODE_ROOT/docgen"
+CALENDAR_PATH="$CODE_ROOT/calendar"
+retire_project_mcp_files
 NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
 COURIER_SRC="$COURIER_PATH/src"
 DOCGEN_SRC="$DOCGEN_PATH/src"
@@ -622,7 +625,7 @@ if [ -f "$NEXUS_SERVER" ]; then
         if PYTHONPATH="$CALENDAR_SRC" uv run --project "$CALENDAR_PATH" --no-sync python -m ea_calendar.cli status --check-events --quiet >/dev/null 2>&1; then
             ok "Calendar: authenticated as michaelgallo.va@gmail.com"
         else
-            warn "Calendar: not authenticated or health check failed - run: cd ~/Documents/EA/calendar && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login"
+            warn "Calendar: not authenticated or health check failed - run: cd $CALENDAR_PATH && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login"
         fi
     }
     check_calendar_health

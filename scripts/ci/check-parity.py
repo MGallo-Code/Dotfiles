@@ -146,6 +146,22 @@ FEATURES = [
         "ps1": ("setup.ps1", r"(?m)^\s+Update-MovedLinks$"),
     },
     {
+        # GalloGrid split: the services' code root resolves per machine (GalloGrid once cloned, else EA).
+        "name": "code root resolves per machine (GalloGrid split)",
+        "sh": ("manifest.sh", r"resolve_code_root\(\) \{"),
+        "ps1": ("manifest.ps1", r"function Resolve-CodeRoot"),
+    },
+    {
+        "name": "retired project .mcp.json removed when still generated",
+        "sh": ("manifest.sh", r"retire_project_mcp_files\(\) \{"),
+        "ps1": ("manifest.ps1", r"function Remove-RetiredProjectMcp"),
+    },
+    {
+        "name": "sync uses the code root and the pinned nexus store",
+        "sh": ("sync.sh", r'CODE_ROOT="\$\(resolve_code_root\)"[\s\S]*NEXUS_LIVE_DB|NEXUS_LIVE_DB[\s\S]*CODE_ROOT="\$\(resolve_code_root\)"'),
+        "ps1": ("sync.ps1", r"\$NexusLiveDb[\s\S]*Resolve-CodeRoot"),
+    },
+    {
         "name": "WezTerm config linked",
         "sh": ("manifest.sh", r"wezterm\.lua"),
         "ps1": ("manifest.ps1", r"wezterm\.lua"),

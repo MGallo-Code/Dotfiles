@@ -185,6 +185,7 @@ matcher = "^Bash`$"
     $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
     $geminiWorkspaceRoots = @(
         "$HOME\Documents\EA",
+        "$HOME\Documents\GalloGrid",
         "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
         $nvimRoot
@@ -510,12 +511,11 @@ if ($Mode -ne "minimal") {
 # ── MCP servers (nexus + courier + docgen + calendar) ─────────────
 if ($Mode -eq "full") {
     Write-Step "Setting up MCP servers (nexus, courier, docgen, calendar)"
-    $EaPath = "$HOME\Documents\EA"
-    $ItwPath = "$HOME\Documents\IT-Worker"
-    $NexusPath = "$EaPath\nexus"
-    $CourierPath = "$EaPath\courier"
-    $DocgenPath = "$EaPath\docgen"
-    $CalendarPath = "$EaPath\calendar"
+    $CodeRoot = Resolve-CodeRoot
+    $NexusPath = "$CodeRoot\nexus"
+    $CourierPath = "$CodeRoot\courier"
+    $DocgenPath = "$CodeRoot\docgen"
+    $CalendarPath = "$CodeRoot\calendar"
     $NexusServer = "$NexusPath\dist\server.js"
     $CourierSrc = "$CourierPath\src"
     $DocgenSrc = "$DocgenPath\src"
@@ -566,31 +566,10 @@ if ($Mode -eq "full") {
         Write-Warn "uv not found - skipping courier/docgen/calendar dep sync"
     }
 
-    if (Test-Path $NexusServer) {
-        # Project-scope .mcp.json for the PRIVATE EA + IT-Worker repos: docgen ONLY. nexus, like
-        # courier, is wired GLOBALLY ONLY (host stdio / client http+bearer via Register-AllHubMcp)
-        # and is NEVER written into any project .mcp.json - a project stdio nexus would let a client
-        # read its own stale nexus.db (split-brain), forbidden on every box. docgen is not remoted.
-        $mcpServers = @{
-            docgen = @{
-                command = "uv"
-                args = @("run", "--project", $DocgenPath, "--no-sync", "python", "-m", "docgen.server")
-                env = @{
-                    PYTHONPATH = $DocgenSrc
-                    PLAYWRIGHT_BROWSERS_PATH = $DocgenBrowsers
-                }
-            }
-        }
-        $McpJson = @{ mcpServers = $mcpServers } | ConvertTo-Json -Depth 6
-        $McpDesc = "docgen; nexus is global-only (never in project .mcp.json, like courier)"
-        Set-Content -Path "$EaPath\.mcp.json" -Value $McpJson
-        Write-Ok "EA .mcp.json generated ($McpDesc)"
-
-        if (Test-Path $ItwPath) {
-            Set-Content -Path "$ItwPath\.mcp.json" -Value $McpJson
-            Write-Ok "IT-Worker .mcp.json generated ($McpDesc)"
-        }
-    }
+    # No project .mcp.json (GalloGrid split review): docgen is wired globally like the other three
+    # servers; a project-scoped copy with a fixed path would shadow it with a dead path once the code
+    # moves. A leftover generated file is removed; an edited one is kept. Mirror of setup.sh.
+    Remove-RetiredProjectMcp
 
     # Hubs are wired per-ROLE through Register-AllHubMcp / Register-HubMcp (manifest.ps1,
     # dot-sourced at the top) so setup AND sync share ONE copy of the wiring and check-hub-wiring

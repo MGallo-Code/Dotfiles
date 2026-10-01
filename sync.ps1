@@ -95,6 +95,7 @@ matcher = "^Bash`$"
     $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
     $geminiWorkspaceRoots = @(
         "$HOME\Documents\EA",
+        "$HOME\Documents\GalloGrid",
         "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
         $nvimRoot
@@ -455,7 +456,7 @@ if (-not (Acquire-GitSyncLock "manual-sync")) { exit 0 }
 try {
 
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
-$NexusDb = "$HOME\Documents\EA\nexus\nexus.db"
+$NexusDb = $NexusLiveDb   # pinned live store, not a checkout link
 if ((Test-Path $NexusDb) -and (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
     & sqlite3 $NexusDb "PRAGMA wal_checkpoint(TRUNCATE);" 2>$null | Out-Null
     Write-Ok "Nexus DB: WAL checkpointed"
@@ -591,8 +592,9 @@ function Ensure-ClaudePreToolUseHook {
 Ensure-ClaudePreToolUseHook "bash `"$HOME/.claude/hooks/warn-stacked-git-push.sh`"" "stacked-push guard"
 Set-AgentDefaults
 
-# ── Rebuild Nexus if EA was updated ──────────────────────────────────
-$NexusPath = "$HOME\Documents\EA\nexus"
+# ── Rebuild Nexus from the code root ─────────────────────────────────
+$CodeRoot = Resolve-CodeRoot
+$NexusPath = "$CodeRoot\nexus"
 if (Test-Path "$NexusPath\package.json") {
     Push-Location $NexusPath
     npm install --silent 2>$null | Out-Null
@@ -602,10 +604,10 @@ if (Test-Path "$NexusPath\package.json") {
 }
 
 # ── Refresh MCP runtime deps + global wiring ─────────────────────────
-$EaPath = "$HOME\Documents\EA"
-$CourierPath = "$EaPath\courier"
-$DocgenPath = "$EaPath\docgen"
-$CalendarPath = "$EaPath\calendar"
+$CourierPath = "$CodeRoot\courier"
+$DocgenPath = "$CodeRoot\docgen"
+$CalendarPath = "$CodeRoot\calendar"
+Remove-RetiredProjectMcp
 $NexusServer = "$NexusPath\dist\server.js"
 $CourierSrc = "$CourierPath\src"
 $DocgenSrc = "$DocgenPath\src"

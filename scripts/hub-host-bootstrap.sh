@@ -35,6 +35,9 @@ if [ "$#" -ne 6 ]; then
     exit 2
 fi
 NAME="$1"; PORT="$2"; RUN_CMD="$3"; TOKEN_ARG="$4"; SERVE_PATH="$5"; MCP_PATH="$6"
+# hubs.json names the code root as $CODE_ROOT; bootstrap_all_hubs (manifest.sh) resolves it. A
+# run-cmd that still carries the token would write a plist pointing nowhere: refuse it loudly.
+case "$RUN_CMD" in *'$CODE_ROOT'*) echo "hub-host-bootstrap: run-cmd for $NAME still names \$CODE_ROOT (call it through bootstrap_all_hubs)" >&2; exit 2 ;; esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root
 # shellcheck source=/dev/null

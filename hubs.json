@@ -5,7 +5,7 @@
     "serve_path": "",
     "mcp_path": "/mcp",
     "token_file": "~/.config/courier/auth-token",
-    "run_cmd": "/usr/bin/env PYTHONPATH=$HOME/Documents/EA/courier/src:$HOME/Documents/EA/ea_mcp_remote/src $HOME/Documents/EA/courier/.venv/bin/python -u -m courier.server"
+    "run_cmd": "/usr/bin/env PYTHONPATH=$CODE_ROOT/courier/src:$CODE_ROOT/ea_mcp_remote/src $CODE_ROOT/courier/.venv/bin/python -u -m courier.server"
   },
   {
     "name": "calendar",
@@ -13,7 +13,7 @@
     "serve_path": "/calendar",
     "mcp_path": "/mcp",
     "token_file": "~/.config/calendar/auth-token",
-    "run_cmd": "/usr/bin/env EA_CALENDAR_FORCE_FILE=1 PYTHONPATH=$HOME/Documents/EA/calendar/src:$HOME/Documents/EA/ea_mcp_remote/src $HOME/Documents/EA/calendar/.venv/bin/python -u -m ea_calendar.server"
+    "run_cmd": "/usr/bin/env EA_CALENDAR_FORCE_FILE=1 PYTHONPATH=$CODE_ROOT/calendar/src:$CODE_ROOT/ea_mcp_remote/src $CODE_ROOT/calendar/.venv/bin/python -u -m ea_calendar.server"
   },
   {
     "name": "nexus",
@@ -21,6 +21,6 @@
     "serve_path": "/nexus",
     "mcp_path": "/mcp",
     "token_file": "~/.config/nexus/auth-token",
-    "run_cmd": "/usr/bin/env node $HOME/Documents/EA/nexus/dist/server.js"
+    "run_cmd": "/usr/bin/env node $CODE_ROOT/nexus/dist/server.js"
   }
 ]

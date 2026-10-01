@@ -9,11 +9,11 @@ Manage Google Calendar events via the first-party `calendar` MCP.
 
 ## Tools
 
-- `calendar` (sibling of `nexus`, lives in `~/Documents/EA/calendar/`) wraps the Google Calendar API directly. It is the canonical path for all Google Calendar reads and writes via the `mcp__calendar__*` tools. (The old Claude-hosted `/calendar` connector has been removed.)
+- `calendar` (sibling of `nexus`, lives in the code repo's `calendar/`: `~/Documents/GalloGrid`, or EA until the split lands) wraps the Google Calendar API directly. It is the canonical path for all Google Calendar reads and writes via the `mcp__calendar__*` tools. (The old Claude-hosted `/calendar` connector has been removed.)
 - The canonical Google account is `michaelgallo.va@gmail.com`. `calendar_status` should report that account before making changes.
 - Calendar tools return object envelopes like `{ok: true, events: [...]}` or `{ok: false, error: "..."}`. Never expect a top-level array.
 - `calendar_delete_event` is destructive and requires `confirm=true`.
-- If the `calendar` MCP tools are unavailable, there is no managed fallback. Recover the first-party server: run `calendar_status`, and if unauthenticated re-run login with `cd ~/Documents/EA/calendar && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login`. Otherwise print event details for manual entry.
+- If the `calendar` MCP tools are unavailable, there is no managed fallback. Recover the first-party server: run `calendar_status`, and if unauthenticated re-run login with `cd <code repo>/calendar && PYTHONPATH=src uv run --no-sync python -m ea_calendar.cli login`. Otherwise print event details for manual entry.
 - `himalaya` is email IMAP/SMTP only. It can help parse `.ics` invite emails, but it is not the source of truth for calendar state.
 - OAuth client secrets, refresh tokens, keychain entries, and fallback token files are machine-local. Do not sync or commit them.
 

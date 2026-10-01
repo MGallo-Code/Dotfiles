@@ -71,6 +71,47 @@ MOVED_LINK_SOURCES=(
   "~/Documents/EA/claude-config|~/.dotfiles/claude-config"
 )
 
+# ── Code root (GalloGrid split, EA docs/plans/gallogrid-split.md) ──────
+# The services' code (nexus, courier, calendar, docgen, agent, ea_mcp_remote, ea-hub) moves from
+# EA into its own repo. Each machine resolves the root itself: GalloGrid once that checkout
+# exists, else EA, so no machine is stranded whatever order it pulls in. The live nexus store is
+# pinned, never found through a checkout's nexus.db link. Parity: manifest.ps1 Resolve-CodeRoot.
+CODE_ROOT_NEW="~/Documents/GalloGrid"
+CODE_ROOT_OLD="~/Documents/EA"
+NEXUS_LIVE_DB="~/.local/share/nexus/nexus.db"
+resolve_code_root() {
+    local new old
+    new="$(expand "$CODE_ROOT_NEW")"; old="$(expand "$CODE_ROOT_OLD")"
+    if [ -d "$new/.git" ]; then echo "$new"; return 0; fi
+    [ -d "$old/nexus" ] || [ -d "$old/courier" ] || warn "code root: no service code in $new or $old" >&2
+    echo "$old"
+}
+
+# Retired project MCP files (GalloGrid split review): EA's project .mcp.json only re-declared the
+# global docgen with an EA path, and project scope would shadow the working global entry with a
+# dead one once the code moves. Removed when it is still exactly the docgen file setup generated;
+# a file someone edited is left alone with a warning. Parity: manifest.ps1 Remove-RetiredProjectMcp.
+RETIRED_PROJECT_MCP_FILES=(
+  "~/Documents/EA/.mcp.json"
+)
+retire_project_mcp_files() {
+    local entry f
+    for entry in "${RETIRED_PROJECT_MCP_FILES[@]}"; do
+        f="$(expand "$entry")"
+        [ -f "$f" ] || continue
+        if python3 - "$f" <<'PYEOF' 2>/dev/null
+import json, sys
+d = json.load(open(sys.argv[1]))
+s = d.get("mcpServers", {})
+ok = set(d) == {"mcpServers"} and set(s) == {"docgen"} and "docgen.server" in s["docgen"].get("args", [])
+sys.exit(0 if ok else 1)
+PYEOF
+        then rm -f "$f" && ok "project MCP: removed retired $entry (global docgen serves it)"
+        else warn "project MCP: $entry is not the generated docgen-only file - left as is"
+        fi
+    done
+}
+
 # Combined global rules for single-file agent tools.
 # Codex loads ONE global instruction file (AGENTS.md), not a directory. You can't
 # symlink a dir into a file, so we GENERATE that file by concatenating every
@@ -623,6 +664,7 @@ bootstrap_all_hubs() {
         if [ "$name" = "nexus" ]; then nexus_seen=1; fi   # the registry HAS a nexus entry (served or staging-skipped)
         port="$(printf '%s' "$hub"  | jq -r '.port')"
         run="$(printf '%s' "$hub"   | jq -r '.run_cmd')"
+        run="${run//\$CODE_ROOT/$(resolve_code_root)}"   # hubs.json names the code root, not a path
         token="$(printf '%s' "$hub" | jq -r '.token_file')"
         serve="$(printf '%s' "$hub" | jq -r '.serve_path')"
         mcp="$(printf '%s' "$hub"   | jq -r '.mcp_path')"

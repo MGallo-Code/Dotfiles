@@ -347,18 +347,6 @@ if [[ "$MODE" != "--minimal" ]]; then
     fi
 fi
 
-# ── Directories ──────────────────────────────────────────────────────
-step "Creating directories"
-
-for dir in "${DIRECTORIES[@]}"; do
-    dir_expanded="$(expand "$dir")"
-    if [ -d "$dir_expanded" ]; then
-        ok "$dir already exists"
-    else
-        mkdir -p "$dir_expanded"
-        ok "Created $dir"
-    fi
-done
 
 # ── Move repos out of ~/Documents (ADR-0007, INV-21) ─────────────────
 # Before cloning, so an existing old clone is moved instead of a second copy being cloned next to it.

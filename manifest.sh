@@ -8,7 +8,6 @@
 #   host-repo        an active-repo cloned and synced on the MCP host only (HOST_REPOS)
 #   generated-target written by dotfiles, never hand-edited (COMBINED_RULES_TARGETS,
 #                    PROJECT_SKILLS_TARGETS, codex prompts)
-#   artifact-dir     ensured to exist, content owned by the user (DIRECTORIES)
 # An archived root must NEVER appear in an active list, or it resurrects stale generated
 # affordances (e.g. the dangling it-worker-* skill links). See INVARIANTS.md.
 
@@ -546,12 +545,6 @@ CODEX_RETIRED_SKILL_DISABLE_ROOTS=(
 # "prefix|commands_dir" - empty prefix = bare name; a prefix namespaces it as <prefix>-<name>.
 COMMAND_SOURCES=(
   "|~/.dotfiles/claude-config/global-commands"
-)
-
-# Directories to ensure exist
-DIRECTORIES=(
-  "~/Documents/Learning"
-  "~/Documents/Jobs"
 )
 
 # Shell command files (relative to dotfiles repo root)

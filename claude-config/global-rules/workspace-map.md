@@ -7,7 +7,7 @@ guessing or searching for where something lives, consult the authoritative point
 
 - **Roots + their roles:** `~/.dotfiles/manifest.sh` — the role taxonomy at the top is the
   single, always-current list of every managed root and its role (active-repo, archive-repo,
-  external-managed, generated-target, artifact-dir).
+  external-managed, generated-target).
 - **Ops / personal orientation:** `~/Workspace/EA/CLAUDE.md` — the executive-assistant hub; it
   points to `profile/`, business, Nexus, and the Wiki. Start there for assistant/ops work.
 

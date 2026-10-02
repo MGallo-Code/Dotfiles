@@ -464,19 +464,6 @@ if ($Mode -ne "minimal") {
     }
 }
 
-# ── Directories ──────────────────────────────────────────────────────
-Write-Step "Creating directories"
-
-foreach ($dir in $Directories) {
-    if (Test-Path $dir) {
-        Write-Ok "$dir already exists"
-    }
-    else {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        Write-Ok "Created $dir"
-    }
-}
-
 # ── Move repos out of ~\Documents (ADR-0007, INV-21) ────────────────
 # Before cloning, so an existing old clone is moved instead of a second copy being cloned next to
 # it. Mirror of setup.sh.

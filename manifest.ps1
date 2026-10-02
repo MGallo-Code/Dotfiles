@@ -3,7 +3,7 @@
 # ── Managed-root ROLES (mirror of manifest.sh) ───────────────────────
 # Every root dotfiles manages has exactly one role: active-repo (synced, $Repos),
 # archive-repo (NOT synced, $ArchivedRepos), external-managed ($AgentSkillsDir),
-# generated-target (written by dotfiles), artifact-dir ($Directories). An archived root
+# generated-target (written by dotfiles). An archived root
 # must NEVER appear in an active list or it resurrects stale generated affordances.
 # See manifest.sh for the full taxonomy and INVARIANTS.md.
 
@@ -504,11 +504,6 @@ $CodexRetiredSkillDisableRoots = @(
 # Source of truth stays the tracked Claude `.md`. Empty prefix = bare name.
 $CommandSources = @(
     @{ Prefix = "";     Dir = "$HOME\.dotfiles\claude-config\global-commands" }
-)
-
-$Directories = @(
-    "$HOME\Documents\Learning"
-    "$HOME\Documents\Jobs"
 )
 
 # ── Per-ROLE hub client token (shared by setup.ps1 AND sync.ps1) ──────

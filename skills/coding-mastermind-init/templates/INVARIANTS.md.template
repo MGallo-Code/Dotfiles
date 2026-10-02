@@ -1,0 +1,54 @@
+# INVARIANTS - <REPO NAME>
+
+The per-repo registry of cross-cutting invariants: rules that must hold across many
+surfaces, the single point that enforces each, and the gate that guards it. This is
+the repo's hands-off memory: it counts how often each invariant has broken so nobody
+tracks that by hand, and it tells an agent which invariants apply to a file before
+touching it.
+
+## How to read a row
+
+- **Invariant**: the end-state that must hold, stated as an outcome, NEVER as a banned
+  verb (a flat "never do X" rule becomes the next bug). "the k-anon floor holds," not
+  "never inline `<5`."
+- **Enforcement point**: the single chokepoint that, if used, makes the invariant hold.
+- **Gate**: the mechanical check that guarantees it, with its tier. Tier ladder,
+  earlier bites stronger: pre-commit -> local re-run -> CI (post-merge). POINT guards
+  one named site; COVERAGE guarantees no site can silently omit it (only COVERAGE
+  closes the per-surface-drift pattern).
+- **Status**: `required-gate` (a required CI check) / `advisory-gate` (runs, does not
+  block) / `point-only` (named sites; a new site can slip) / `local-green (pending
+  merge)` (the check passes locally but is uncommitted / not yet a CI gate - do NOT
+  label it `required-gate` or "ENFORCED" until it is merged and green on the PR;
+  "prove it, don't promise it") / `advisor-only` (prose, no enforcer yet) / `to-build`
+  (enforcer planned).
+- **Recur**: how many times this invariant has regressed (seed estimate; keep current).
+- **Detection signals**: precision-first triggers that say "this change touches this
+  invariant." Favor a few reliable catches over noisy recall - an ignored signal is
+  worth zero.
+- **Escape hatch**: the audited override. Every guardrail is
+  default-with-audited-override plus a named owner, never a flat prohibition.
+
+## Index
+
+| ID | Invariant (end-state) | Enforcement point | Gate (tier) | Status | Recur |
+|----|-----------------------|-------------------|-------------|--------|-------|
+| INV-1 | <e.g. every public handler checks auth before any data access> | <the one chokepoint> | <the check + tier, or "none yet"> | to-build | 0 |
+
+<!-- Add a row when a rule recurs across surfaces. The SECOND recurrence is the
+     trigger to promote it from prose to a mechanical gate, not the third. -->
+
+## Detail
+
+### INV-1 - <name>
+- **Surfaces**: <glob(s) the invariant applies to>
+- **Detection signals**: <a precise, low-false-positive trigger>
+- **Escape hatch**: <the logged override + named owner; or "none (true invariant)">
+- **Recurrence history**: <when/why it broke before>
+
+<!-- The enforcer pattern is language-agnostic; only the runner changes:
+     Node: scripts/ci/<name>.mjs   Go: a *_test.go or go vet check
+     Rust: cargo clippy / cargo xtask   Python: ruff / a pytest check
+     Whatever the runner, the gate must assert a REAL outcome (a count, a value,
+     non-emptiness), fail-closed on "no tests collected," and keep its own config
+     un-editable in the same turn it is checked. -->

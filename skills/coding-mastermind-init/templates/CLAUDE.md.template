@@ -1,0 +1,31 @@
+# CLAUDE.md - <REPO NAME>
+
+Always-loaded context. Keep it SHORT and actionable: it is evaluated every turn, and
+bloated context files reduce agent success and raise cost. Point at the registries;
+do not inline them.
+
+`AGENTS.md` should mirror this file (the cross-tool standard) so Codex/Gemini read the
+same constitution. A pre-commit `cmp -s AGENTS.md CLAUDE.md` copy keeps them identical.
+
+## Invariants (read before writing)
+
+This repo's cross-cutting invariants and their enforcers live in
+[`INVARIANTS.md`](./INVARIANTS.md). Before changing a file, check which invariants its
+surface is subject to. Definition-of-Done: [`DEFINITION_OF_DONE.md`](./DEFINITION_OF_DONE.md).
+
+## Repo at a glance
+
+- Stack: <language / framework / datastore>
+- Build / test: <commands>
+- Where the code lives: <top-level layout in one or two lines>
+
+## Conventions that matter
+
+- <the canonical route/handler/module pattern an implementer should copy, by path>
+- <the one or two "do not do X" rules, each stated as the invariant + its escape hatch>
+
+## Decisions
+
+Architecture bets (auth provider, framework, major dependency) get a one-page record
+in `docs/decisions/` before they land, so a later reversal has a paper trail. A
+reverted bet gets a banned-import grep so it cannot silently return.

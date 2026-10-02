@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SCRIPT=\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\"; [ -f \"$SCRIPT\" ] || SCRIPT=\"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start.sh\"; [ -f \"$SCRIPT\" ]&& bash \"$SCRIPT\" || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "IN=\"$(cat)\"; case \"$IN\" in *'\"stop_hook_active\":true'*|*'\"stop_hook_active\": true'*) exit 0;; esac; S=\"${CLAUDE_PROJECT_DIR}/platform/scripts/ci/check-cohort-floor-coverage.mjs\"; [ -f \"$S\" ] || S=\"${CLAUDE_PROJECT_DIR}/scripts/ci/check-cohort-floor-coverage.mjs\"; [ -f \"$S\" ] || exit 0; command -v node >/dev/null 2>&1 || exit 0; OUT=\"$(node \"$S\" --static 2>&1)\" || { echo \"BLOCKED (done must == green): a cohort-spanning aggregate RPC has no verifiable k-anon floor. Route it through public.k_anon_distribution, add a pgTAP floor test, or log it in scripts/ci/.cohort-floor-coverage-allowlist.txt.\" >&2; echo \"$OUT\" >&2; exit 2; }; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

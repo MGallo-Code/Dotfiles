@@ -598,11 +598,15 @@ def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
            {**said("Base directory for this skill: CODEWORD-META", "me"), "isMeta": True},
            said("<command-message>wrap</command-message>\n<command-name>/wrap</command-name>", "w1"),
            said("<command-message>loop</command-message>\n<command-name>/loop</command-name>\n<command-args>check CI</command-args>", "l1"),
+           said("<system-reminder>\nThe separate session for background task t1 has ended.\n</system-reminder>\n\nkeep only this: CODEWORD-CROW", "r1"),
+           said("<system-reminder>\nCODEWORD-NOTICE only\n</system-reminder>", "r2"),
            PEER, SUMMARY, TOOL_RESULT, EXPANSION,
            raw='{"type": "attachment", "attachment": {"type": "queued_command", "prompt": "half-writ')
     stop()
     got = texts()
-    s.check("queue: mid-turn messages and slash commands with arguments are captured", got[1:] == ["mid-turn: CODEWORD-FINCH", "/loop check CI"], str(got))
+    s.check("queue: mid-turn messages and slash commands with arguments are captured, harness notices stripped",
+            got[1:] == ["mid-turn: CODEWORD-FINCH", "/loop check CI", "keep only this: CODEWORD-CROW"], str(got))
+    s.check("queue: a message that is only a harness notice is not captured", "CODEWORD-NOTICE" not in " ".join(got), str(got))
     s.check("queue: peers, task notifications, subagents, meta, summaries, tool results and bare commands are never captured",
             not any(w in " ".join(got) for w in ("CODEWORD-PEER", "CODEWORD-TASK", "CODEWORD-SIDE", "CODEWORD-META", "continued from", "Resume cards", "/wrap")), str(got))
     s.check("queue: the first sweep reaches back minutes, never to older history", not any("old" in x for x in got), str(got))
@@ -613,7 +617,7 @@ def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
     stop()
     got = texts()
     s.check("queue: a line finished after a sweep lands once; a re-written message and a second sweep add nothing",
-            got.count("half-written") == 1 and got.count("mid-turn: CODEWORD-FINCH") == 1 and len(got) == 4, str(got))
+            got.count("half-written") == 1 and got.count("mid-turn: CODEWORD-FINCH") == 1 and len(got) == 5, str(got))
 
     other = s.transcript("queue-after-clear", [said("after the clear: CODEWORD-HAWK", "c1")])
     stop(other)
@@ -621,7 +625,7 @@ def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
     stop()
     got = texts()
     s.check("queue: offsets are kept per transcript (a new one after a clear, then the old one again)",
-            got[4:] == ["after the clear: CODEWORD-HAWK", "back on the first transcript: CODEWORD-KITE"], str(got))
+            got[5:] == ["after the clear: CODEWORD-HAWK", "back on the first transcript: CODEWORD-KITE"], str(got))
 
     r = s.run(["queue", "done", "R3"], work, host=host)
     r2 = s.run(["queue", "list"], work, host=host)

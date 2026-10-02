@@ -446,6 +446,9 @@ QUEUE_FIRST_BYTES = 8 * 1024 * 1024
 QUEUE_LOCK_WAIT = 3.0
 QUEUE_HELP = "python3 ~/.claude/hooks/context-card.py queue"
 CONTROL_RE = re.compile(r"^/[A-Za-z0-9:_-]+$")  # a bare slash command, e.g. /clear or /wrap
+# Notices the harness attaches to a typed message (a background task ending, a file change);
+# they are not Michael's words.
+REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 ID_RE = re.compile(r"^R(\d+)$")
 CODEX_INTERACTIVE = ("cli", "vscode")  # session_meta sources Michael types into (not exec, not subagents)
 
@@ -524,7 +527,7 @@ def queue_append(sid: str, rec: dict) -> None:
 def capturable(text: object) -> str | None:
     if not isinstance(text, str):
         return None
-    text = text.strip()
+    text = REMINDER_RE.sub("", text).strip()
     command = re.match(r"^<command-message>.*?</command-message>\s*<command-name>(/[^<]+)</command-name>(?:\s*<command-args>(.*?)</command-args>)?\s*$", text, re.DOTALL)
     if command:  # a slash command as the transcript records it
         text = f"{command.group(1)} {(command.group(2) or '').strip()}".strip()

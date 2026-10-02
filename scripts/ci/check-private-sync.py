@@ -65,6 +65,8 @@ def fixtures(script: Path) -> list[str]:
                  "crashReportingEnabled", "startBrowser"):
         check(f"{flag} is off", o[flag] is False, o[flag])
     check("usage reporting declined", o["urAccepted"] == -1, o["urAccepted"])
+    check("STUN off (no external-address lookups)", o["stunKeepaliveStartS"] == 0, o["stunKeepaliveStartS"])
+    check("LAN addresses not announced", o["announceLANAddresses"] is False, o["announceLANAddresses"])
     check("auto-upgrade off (Homebrew owns the version)", o["autoUpgradeIntervalH"] == 0, o["autoUpgradeIntervalH"])
     check("GUI forced back to loopback", want["gui"]["address"].startswith("127.0.0.1:"), want["gui"]["address"])
     ids = {d["deviceID"]: d for d in want["devices"]}
@@ -108,6 +110,7 @@ def fixtures(script: Path) -> list[str]:
 
 PLANTS = [
     ('    "relaysEnabled": False,\n', '    "relaysEnabled": True,\n', "relays left on"),
+    ('    "stunKeepaliveStartS": 0,', '    "stunKeepaliveStartS": 180,', "STUN left on"),
     ('    cfg["options"]["listenAddresses"] = [f"tcp://{me[\'tailscale_ip\']}:{port}"]\n',
      '    cfg["options"]["listenAddresses"] = ["default"]\n', "listening on every interface"),
     ('    lines.append("*")\n', '', "the ignore file is not include-only"),

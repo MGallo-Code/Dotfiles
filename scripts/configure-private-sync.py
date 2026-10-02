@@ -38,6 +38,8 @@ LOCKDOWN = {
     "localAnnounceEnabled": False,
     "relaysEnabled": False,
     "natEnabled": False,
+    "stunKeepaliveStartS": 0,      # no STUN: never ask public servers for the external address
+    "announceLANAddresses": False,
     "urAccepted": -1,
     "autoUpgradeIntervalH": 0,
     "crashReportingEnabled": False,

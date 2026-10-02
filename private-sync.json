@@ -1,0 +1,13 @@
+{
+  "_comment": "EA's private files, synced with Syncthing over Tailscale between opted-in machines (ADR-0009, INV-24). A machine opts in with ~/.config/dotfiles/private-sync. Device IDs identify a key; they are not secrets.",
+  "folder_id": "ea-private",
+  "folder_label": "EA private",
+  "folder_path": "~/Workspace/EA",
+  "include": ["profile/health", "profile/legal", "business/keepthecall"],
+  "versioning_days": 30,
+  "port": 22000,
+  "peers": [
+    {"name": "mikes-mac-mini", "tailscale_ip": "100.122.77.123", "device_id": ""},
+    {"name": "michaels-macbook-pro", "tailscale_ip": "100.67.196.41", "device_id": ""}
+  ]
+}

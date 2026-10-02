@@ -712,6 +712,7 @@ if ($Mode -eq "full") {
     # and completion-hook registration path.
     Regen-CombinedAgentRules
     Set-AgentIntegrations
+    Set-PrivateSync
 
     # Wire PreToolUse guards into the per-machine Claude settings.json. The scripts ride the
     # global-hooks symlink wired above; the registration is machine-local. Mirror of setup.sh

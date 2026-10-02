@@ -501,6 +501,7 @@ if ($AgentSkillsDir) {
 # hook registration before the live machine gate evaluates them.
 Regen-CombinedAgentRules
 Set-AgentIntegrations
+Set-PrivateSync
 
 # ── Regenerate cross-agent COMMANDS + mirror Claude ALLOWLIST ─────────
 # Shared python generators (same scripts the sh side calls) - one source of truth, no

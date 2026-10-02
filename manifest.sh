@@ -49,6 +49,9 @@ WORKSPACE_RETIRED_CLONES=(
 )
 RETIRED_CLONE_DIR="~/.local/share/dotfiles/retired-clones"
 WORKSPACE_MOVE_GATE="~/.config/dotfiles/workspace-move"
+# Private-file sync (ADR-0009, INV-24): a machine opts in to Syncthing for EA's git-ignored
+# private folders with this file. The folder list and the peers live in private-sync.json.
+PRIVATE_SYNC_GATE="~/.config/dotfiles/private-sync"
 WORKSPACE_JOURNAL="~/.local/share/dotfiles/workspace-migration.journal"
 # The GalloGrid-split switch file (INV-18 before ADR-0007): removed by the migration.
 RETIRED_CODE_ROOT_SWITCH="~/.config/dotfiles/code-root"
@@ -279,6 +282,24 @@ ensure_claude_hook() {
 }
 # The UI-workflow nudge's registered command (INV-19): fail-open, so a missing python never errors.
 UI_NUDGE_HOOK_CMD='python3 "$HOME/.claude/hooks/ui-nudge.py" || true'
+
+# Syncthing over Tailscale for EA's private folders, on machines that opted in (ADR-0009, INV-24).
+# macOS only for now: Homebrew installs it and runs it as a LaunchAgent; the converger sets the
+# lockdown, the peers and the include-only folder. Parity: manifest.ps1 Set-PrivateSync.
+configure_private_sync() {
+    local gate; gate="$(expand "$PRIVATE_SYNC_GATE")"
+    [ -e "$gate" ] || return 0
+    if [ "$(uname -s)" != "Darwin" ]; then
+        warn "private sync: opted in, but only macOS is wired (ADR-0009)"; return 0
+    fi
+    if ! command -v syncthing >/dev/null 2>&1; then
+        brew install syncthing >/dev/null 2>&1 || { warn "private sync: brew install syncthing failed"; return 0; }
+    fi
+    if ! brew services list 2>/dev/null | awk '$1 == "syncthing" { print $2 }' | grep -q '^started$'; then
+        brew services start syncthing >/dev/null 2>&1 || { warn "private sync: could not start syncthing"; return 0; }
+    fi
+    python3 "${DOTFILES_DIR:-$HOME/.dotfiles}/scripts/configure-private-sync.py" || warn "private sync was not converged"
+}
 
 configure_agent_integrations() { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     local configurator hook token_file python_cmd candidate

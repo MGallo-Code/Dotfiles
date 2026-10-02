@@ -99,6 +99,10 @@ jobs:
         run: python scripts/ci/check-context-card.py --revert-test
       - name: check-agent-rules-hooks (INV-15 trigger)
         run: sh scripts/ci/check-agent-rules-hooks.sh
+      - name: check-private-sync (INV-24)
+        run: python3 scripts/ci/check-private-sync.py
+      - name: check-private-sync revert-test (INV-24)
+        run: python3 scripts/ci/check-private-sync.py --revert-test
       - name: check-moved-links (ADR-0006 cutover)
         run: bash scripts/ci/check-moved-links.sh
       - name: check-moved-links revert-test

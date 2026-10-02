@@ -364,6 +364,15 @@ function Ensure-ClaudeHook {
 # The UI-workflow nudge's registered command (INV-19). The script itself always exits 0.
 $UiNudgeHookCmd = "python `"$($HOME -replace '\\','/')/.claude/hooks/ui-nudge.py`""
 
+# Private-file sync (ADR-0009, INV-24). Parity: manifest.sh configure_private_sync. Only the mini
+# and the laptop carry EA's private folders, so a Windows machine that opts in is told so and left
+# alone until its Syncthing service is wired (ADR-0009, Limits).
+$PrivateSyncGate = "$HOME\.config\dotfiles\private-sync"
+function Set-PrivateSync {
+    if (-not (Test-Path $PrivateSyncGate)) { return }
+    Write-Warn "private sync: opted in, but only macOS is wired (ADR-0009)"
+}
+
 function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     $python = $null
     $pythonPrefix = @()

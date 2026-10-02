@@ -584,6 +584,7 @@ if [[ "$MODE" == "--full" ]]; then
     # Generate Codex + Gemini single-file rule bundles from global-rules/*
     regen_combined_agent_rules
     configure_agent_integrations || warn "agent integrations were not updated"
+    configure_private_sync
 
     # Wire PreToolUse guards into settings.json. Same rationale as the notify hook above:
     # scripts ride the global-hooks symlink; registration is machine-local, so merge each

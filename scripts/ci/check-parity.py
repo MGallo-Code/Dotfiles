@@ -129,6 +129,23 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"global-agents"),
     },
     {
+        # ADR-0009: EA's private folders sync over Tailscale on opted-in machines; both sides
+        # check the same gate (Windows warns: only macOS is wired, ADR-0009 Limits).
+        "name": "private sync converged on opted-in machines (ADR-0009)",
+        "sh": ("manifest.sh", r"configure_private_sync\(\) \{"),
+        "ps1": ("manifest.ps1", r"function Set-PrivateSync"),
+    },
+    {
+        "name": "sync runs the private-sync step",
+        "sh": ("sync.sh", r"(?m)^configure_private_sync$"),
+        "ps1": ("sync.ps1", r"(?m)^Set-PrivateSync$"),
+    },
+    {
+        "name": "setup runs the private-sync step",
+        "sh": ("setup.sh", r"(?m)^\s+configure_private_sync$"),
+        "ps1": ("setup.ps1", r"(?m)^\s+Set-PrivateSync$"),
+    },
+    {
         # ADR-0006: links left at a moved source (EA claude-config -> dotfiles) are repointed,
         # live or dangling, by one manifest function per platform, before the repo pulls.
         "name": "moved link sources retargeted (ADR-0006)",

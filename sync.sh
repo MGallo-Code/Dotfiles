@@ -491,6 +491,7 @@ done
 # Regenerate the Codex single-file rule bundle from global-rules/* (and remove retired ones)
 regen_combined_agent_rules
 configure_agent_integrations || warn "agent integrations were not updated"
+configure_private_sync
 
 # Regenerate cross-agent COMMANDS (codex prompts) and mirror the Claude
 # permission ALLOWLIST into codex/gemini. Both are shared python generators (one source

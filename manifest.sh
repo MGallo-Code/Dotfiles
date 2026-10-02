@@ -104,7 +104,6 @@ SYMLINKS=(
 # targets still exist. Keep an entry until every machine has synced twice past the move.
 # First match wins, so the more specific prefix comes first.
 MOVED_LINK_SOURCES=(
-  "~/Documents/EA/claude-config|~/.dotfiles/claude-config"   # stale-path-ok (ADR-0006)
   "~/Documents/agent-skills|~/.dotfiles/agent-skills"        # stale-path-ok (ADR-0007)
   "~/Documents/EA|~/Workspace/EA"                            # stale-path-ok (ADR-0007)
   "~/Documents/Wiki|~/Workspace/Wiki"                        # stale-path-ok (ADR-0007)

@@ -20,6 +20,8 @@ run_fixtures() {
         expand() { echo "${1/#\~/$HOME}"; }
         # shellcheck source=/dev/null
         source "$ROOT/manifest.sh"
+        # The fixture brings its own list, so it does not depend on which moves are still live.
+        MOVED_LINK_SOURCES=("~/Documents/EA/claude-config|~/.dotfiles/claude-config")   # stale-path-ok (ADR-0006 fixture)
         [ "$REVERT" = 1 ] && MOVED_LINK_SOURCES=()
 
         OLD="$HOME/Documents/EA/claude-config"; NEW="$HOME/.dotfiles/claude-config"   # stale-path-ok (ADR-0006 fixture)

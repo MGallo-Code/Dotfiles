@@ -205,7 +205,8 @@ defining property is cross-platform PARITY, so most invariants are about the `*.
 - Retired 2026-09-27 by ADR-0004: Forge went unused (last Claude use 2026-07-06, last Codex
   use 2026-08-24) and `forge-guard.sh` never blocked or warned. The skill, command, hook,
   `check-state.py`, `check-forge-wiring.py`, the PR-template section and the `Agent-Forge`
-  directory ensure are gone; existing `~/Documents/Agent-Forge` content stays on disk.
+  directory ensure are gone. The leftover `~/Documents/Agent-Forge` folders went to each
+  machine's Trash on 2026-10-01 (KeepTheCall's Forge workspace is in that repo's docs inbox).
 - **What still holds**: every machine that syncs drops a leftover registration of the deleted
   hook (Claude `settings.json` and Codex `config.toml`, with Codex's positional trust keys
   renumbered), so no agent is left calling a missing script. Enforced by the retired-hook

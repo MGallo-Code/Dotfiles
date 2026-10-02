@@ -82,7 +82,6 @@ $Symlinks = @(
 # repo pulls. Keep an entry until every machine has synced twice past the move.
 # First match wins, so the more specific prefix comes first.
 $MovedLinkSources = @(
-    @{ Old = "$HOME\Documents\EA\claude-config"; New = "$HOME\.dotfiles\claude-config" }  # stale-path-ok (ADR-0006)
     @{ Old = "$HOME\Documents\agent-skills"; New = "$HOME\.dotfiles\agent-skills" }        # stale-path-ok (ADR-0007)
     @{ Old = "$HOME\Documents\EA"; New = "$HOME\Workspace\EA" }                            # stale-path-ok (ADR-0007)
     @{ Old = "$HOME\Documents\Wiki"; New = "$HOME\Workspace\Wiki" }                        # stale-path-ok (ADR-0007)

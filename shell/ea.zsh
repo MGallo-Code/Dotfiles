@@ -169,8 +169,8 @@ sysupdate() {
     case "${1:-}" in
         --codex)  shift; _ws_launch "$HOME/.dotfiles" --codex "$@" ;;
         --gemini) shift; _ws_launch "$HOME/.dotfiles" --gemini "$@" ;;
-        --claude) shift; _ws_launch "$HOME/.dotfiles" --claude --add-dir "$HOME/Documents/EA" --add-dir "$HOME/Documents/agent-skills" "$@" ;;
-        *)               _ws_launch "$HOME/.dotfiles" --claude --add-dir "$HOME/Documents/EA" --add-dir "$HOME/Documents/agent-skills" "$@" ;;
+        --claude) shift; _ws_launch "$HOME/.dotfiles" --claude --add-dir "$HOME/Documents/EA" "$@" ;;
+        *)               _ws_launch "$HOME/.dotfiles" --claude --add-dir "$HOME/Documents/EA" "$@" ;;
     esac
 }
 

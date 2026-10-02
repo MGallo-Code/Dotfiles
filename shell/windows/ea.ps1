@@ -219,7 +219,7 @@ function sysupdate {
     if ($rest.Count -ge 1 -and $rest[0] -eq "--codex")  { Invoke-WsLaunch "$HOME\.dotfiles" --codex @($rest | Select-Object -Skip 1); return }
     if ($rest.Count -ge 1 -and $rest[0] -eq "--gemini") { Invoke-WsLaunch "$HOME\.dotfiles" --gemini @($rest | Select-Object -Skip 1); return }
     if ($rest.Count -ge 1 -and $rest[0] -eq "--claude") { $rest = @($rest | Select-Object -Skip 1) }
-    Invoke-WsLaunch "$HOME\.dotfiles" --claude --add-dir "$HOME\Documents\EA" --add-dir "$HOME\Documents\agent-skills" @rest
+    Invoke-WsLaunch "$HOME\.dotfiles" --claude --add-dir "$HOME\Documents\EA" @rest
 }
 
 function wsdoctor {

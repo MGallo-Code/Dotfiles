@@ -72,6 +72,7 @@ SYMLINKS=(
 # targets still exist. Keep an entry until every machine has synced twice past the move.
 MOVED_LINK_SOURCES=(
   "~/Documents/EA/claude-config|~/.dotfiles/claude-config"
+  "~/Documents/agent-skills|~/.dotfiles/agent-skills"
 )
 
 # ── Code root (GalloGrid split, EA docs/plans/gallogrid-split.md) ──────
@@ -409,10 +410,11 @@ regen_combined_agent_rules() {
     done
 }
 
-# ── agent-skills fork ─────────────────────────────────────────────────
-# Michael's fork, synced with origin by sync_repo like any repo (ADR-0004). Upstream is not
-# merged automatically; the link below is kept for a manual, reviewed fetch.
-AGENT_SKILLS_DIR="~/Documents/agent-skills"
+# ── agent-skills (inside dotfiles, ADR-0007) ─────────────────────────
+# Michael's fork of addyosmani/agent-skills, folded in as a squashed subtree; its full history
+# stays on GitHub. Upstream is pulled by hand and reviewed:
+#   git subtree pull --prefix=agent-skills --squash "$AGENT_SKILLS_UPSTREAM" main
+AGENT_SKILLS_DIR="~/.dotfiles/agent-skills"
 AGENT_SKILLS_UPSTREAM="https://github.com/addyosmani/agent-skills.git"
 
 # Each tool reads global skills from its own dir; sync symlinks every

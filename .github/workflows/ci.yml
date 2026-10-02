@@ -280,3 +280,33 @@ jobs:
         run: bash scripts/ci/check-hub-bootstrap-failclosed.sh
       - name: hub-bootstrap revert-test (the fail-closed gate is load-bearing)
         run: bash scripts/ci/check-hub-bootstrap-failclosed.sh --revert-test
+
+  docgen:
+    # ADR-0007: docgen lives in tools/docgen and runs on every machine. Full suite, the slow
+    # Chromium PDF tests included.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          cache-dependency-glob: "tools/docgen/uv.lock"
+      - name: docgen deps and Chromium
+        working-directory: tools/docgen
+        run: |
+          uv sync --frozen
+          uv run --no-sync playwright install --with-deps chromium
+      - name: docgen (pytest, slow included)
+        working-directory: tools/docgen
+        run: uv run --no-sync python -m pytest -q --slow
+
+  docgen-windows:
+    # The PC runs docgen locally too: the fast suite (paths, DOCX) on Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          cache-dependency-glob: "tools/docgen/uv.lock"
+      - name: docgen (pytest, fast)
+        working-directory: tools/docgen
+        run: uv run --frozen python -m pytest -q

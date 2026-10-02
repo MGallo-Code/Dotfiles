@@ -186,7 +186,6 @@ matcher = "^Bash`$"
     $geminiWorkspaceRoots = @(
         "$HOME\Documents\EA",
         "$HOME\Documents\GalloGrid",
-        "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
         $nvimRoot
     ) | Where-Object { Test-Path $_ } | ForEach-Object { (Resolve-Path $_).Path }
@@ -514,13 +513,13 @@ if ($Mode -eq "full") {
     $CodeRoot = Resolve-CodeRoot
     $NexusPath = "$CodeRoot\nexus"
     $CourierPath = "$CodeRoot\courier"
-    $DocgenPath = "$CodeRoot\docgen"
+    $DocgenPath = "$DotfilesDir\tools\docgen"
     $CalendarPath = "$CodeRoot\calendar"
     $NexusServer = "$NexusPath\dist\server.js"
     $CourierSrc = "$CourierPath\src"
     $DocgenSrc = "$DocgenPath\src"
     $CalendarSrc = "$CalendarPath\src"
-    $DocgenBrowsers = "$DocgenPath\.playwright-browsers"
+    $DocgenBrowsers = "$HOME\.cache\docgen-playwright"
 
     # Nexus is built only where it is stdio-wired (Test-NeedsLocalNexus): before the Phase-D cutover.
     # After it, Windows reaches nexus over http and docgen is its one local server.

@@ -102,7 +102,6 @@ general["defaultApprovalMode"] = "auto_edit"
 # content after sync.
 gemini_workspace_roots = [
     os.path.expanduser("~/Documents/EA"),
-    os.path.expanduser("~/Documents/agent-skills"),
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
@@ -447,10 +446,9 @@ for entry in "${REPOS[@]}"; do
     sync_repo "$target"
 done
 
-# ── Sync the agent-skills fork (origin only) + per-agent skill links ──
+# ── Per-agent skill links (agent-skills lives in dotfiles, ADR-0007) ──
 if [ -n "${AGENT_SKILLS_DIR:-}" ]; then
-    echo -e "\n${GREEN}==>${NC} Syncing agent-skills"
-    sync_repo "$(expand "$AGENT_SKILLS_DIR")"
+    echo -e "\n${GREEN}==>${NC} Linking agent skills"
     regen_agent_skills_links
 fi
 
@@ -559,14 +557,14 @@ fi
 
 # ── Refresh MCP runtime deps + global wiring ─────────────────────────
 COURIER_PATH="$CODE_ROOT/courier"
-DOCGEN_PATH="$CODE_ROOT/docgen"
+DOCGEN_PATH="$DOTFILES_DIR/tools/docgen"
 CALENDAR_PATH="$CODE_ROOT/calendar"
 retire_project_mcp_files
 NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
 COURIER_SRC="$COURIER_PATH/src"
 DOCGEN_SRC="$DOCGEN_PATH/src"
 CALENDAR_SRC="$CALENDAR_PATH/src"
-DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
+DOCGEN_BROWSERS="$HOME/.cache/docgen-playwright"
 
 if command -v uv >/dev/null 2>&1; then
     # courier and calendar run only on the host; a client reaches them over http.
@@ -693,11 +691,6 @@ if [ ${#DIRTY[@]} -gt 0 ]; then
         done
         if [[ "$name" == "$(basename "$DOTFILES_DIR")" ]]; then
             repo_path="$DOTFILES_DIR"
-        fi
-        # Forked agent-skills isn't in REPOS, but its own (your) edits should still
-        # commit+push to your origin like any other repo.
-        if [ -n "${AGENT_SKILLS_DIR:-}" ] && [[ "$name" == "$(basename "$(expand "$AGENT_SKILLS_DIR")")" ]]; then
-            repo_path="$(expand "$AGENT_SKILLS_DIR")"
         fi
         [ -z "$repo_path" ] && continue
 

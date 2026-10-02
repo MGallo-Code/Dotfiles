@@ -150,7 +150,6 @@ general["defaultApprovalMode"] = "auto_edit"
 # entry - this list is authoritative for the managed setting.
 gemini_workspace_roots = [
     os.path.expanduser("~/Documents/EA"),
-    os.path.expanduser("~/Documents/agent-skills"),
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
@@ -409,13 +408,13 @@ if [[ "$MODE" == "--full" ]]; then
     NEXUS_PATH="$CODE_ROOT/nexus"
     if is_mcp_host; then ensure_host_store_link "$CODE_ROOT"; fi
     COURIER_PATH="$CODE_ROOT/courier"
-    DOCGEN_PATH="$CODE_ROOT/docgen"
+    DOCGEN_PATH="$DOTFILES_DIR/tools/docgen"
     CALENDAR_PATH="$CODE_ROOT/calendar"
     NEXUS_SERVER="$NEXUS_PATH/dist/server.js"
     COURIER_SRC="$COURIER_PATH/src"
     DOCGEN_SRC="$DOCGEN_PATH/src"
     CALENDAR_SRC="$CALENDAR_PATH/src"
-    DOCGEN_BROWSERS="$DOCGEN_PATH/.playwright-browsers"
+    DOCGEN_BROWSERS="$HOME/.cache/docgen-playwright"
 
     # Build nexus (TypeScript) only where it is stdio-wired (needs_local_nexus: the host, or every box
     # before the Phase-D cutover); a client reaches it over http. Two `set -euo pipefail` aborts to

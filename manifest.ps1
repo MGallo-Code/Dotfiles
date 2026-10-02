@@ -57,6 +57,7 @@ $Symlinks = @(
 # repo pulls. Keep an entry until every machine has synced twice past the move.
 $MovedLinkSources = @(
     @{ Old = "$HOME\Documents\EA\claude-config"; New = "$HOME\.dotfiles\claude-config" }
+    @{ Old = "$HOME\Documents\agent-skills"; New = "$HOME\.dotfiles\agent-skills" }
 )
 
 # The link item at $Path, read from its parent's listing so a dangling link still resolves on
@@ -389,10 +390,10 @@ function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     }
 }
 
-# ── Forked agent-skills (addyosmani/agent-skills) ────────────────────
-# Michael's fork, synced with origin by Sync-Repo like any repo (ADR-0004). Upstream is not
-# merged automatically; the link below is kept for a manual, reviewed fetch.
-$AgentSkillsDir = "$HOME\Documents\agent-skills"
+# ── agent-skills (inside dotfiles, ADR-0007) ─────────────────────────
+# Michael's fork of addyosmani/agent-skills, folded in as a squashed subtree (mirror of
+# manifest.sh); upstream is pulled by hand with git subtree pull.
+$AgentSkillsDir = "$HOME\.dotfiles\agent-skills"
 $AgentSkillsUpstream = "https://github.com/addyosmani/agent-skills.git"
 
 # Each tool reads global skills from its own dir; sync symlinks every

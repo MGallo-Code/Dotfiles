@@ -258,13 +258,13 @@ FEATURES = [
         # Keep Gemini focused on real source/control-plane roots; broad parents and agent-state
         # dirs made cross-checks roam caches/downloads and confabulate irrelevant files.
         "name": "gemini workspace roots narrowed in setup",
-        "sh": ("setup.sh", r"Documents/agent-skills"),
-        "ps1": ("setup.ps1", r"Documents\\agent-skills"),
+        "sh": ("setup.sh", r"gemini_workspace_roots = \["),
+        "ps1": ("setup.ps1", r"\$geminiWorkspaceRoots = @\("),
     },
     {
         "name": "gemini workspace roots narrowed in sync",
-        "sh": ("sync.sh", r"Documents/agent-skills"),
-        "ps1": ("sync.ps1", r"Documents\\agent-skills"),
+        "sh": ("sync.sh", r"gemini_workspace_roots = \["),
+        "ps1": ("sync.ps1", r"\$geminiWorkspaceRoots = @\("),
     },
     # --- courier remote per-OS wiring + cross-agent skills/commands/allowlist
     #     (ADR-0002 + handoff). Each is a paired sh/ps1 behavior. ---

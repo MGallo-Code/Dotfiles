@@ -96,7 +96,6 @@ matcher = "^Bash`$"
     $geminiWorkspaceRoots = @(
         "$HOME\Documents\EA",
         "$HOME\Documents\GalloGrid",
-        "$HOME\Documents\agent-skills",
         "$HOME\.dotfiles",
         $nvimRoot
     ) | Where-Object { Test-Path $_ } | ForEach-Object { (Resolve-Path $_).Path }
@@ -485,10 +484,9 @@ foreach ($repo in $Repos) {
     Sync-Repo $repo.Target
 }
 
-# ── Sync the agent-skills fork (origin only) + per-agent skill links ──
+# ── Per-agent skill links (agent-skills lives in dotfiles, ADR-0007) ──
 if ($AgentSkillsDir) {
-    Write-Host "`n==> Syncing agent-skills" -ForegroundColor Green
-    Sync-Repo $AgentSkillsDir
+    Write-Host "`n==> Linking agent skills" -ForegroundColor Green
     Update-AgentSkillsLinks
 }
 
@@ -613,14 +611,14 @@ if ((Test-NeedsLocalNexus) -and (Test-Path "$NexusPath\package.json")) {
 
 # ── Refresh MCP runtime deps + global wiring ─────────────────────────
 $CourierPath = "$CodeRoot\courier"
-$DocgenPath = "$CodeRoot\docgen"
+$DocgenPath = "$DotfilesDir\tools\docgen"
 $CalendarPath = "$CodeRoot\calendar"
 Remove-RetiredProjectMcp
 $NexusServer = "$NexusPath\dist\server.js"
 $CourierSrc = "$CourierPath\src"
 $DocgenSrc = "$DocgenPath\src"
 $CalendarSrc = "$CalendarPath\src"
-$DocgenBrowsers = "$DocgenPath\.playwright-browsers"
+$DocgenBrowsers = "$HOME\.cache\docgen-playwright"
 
 $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
 if ($uvCmd) {
@@ -746,9 +744,6 @@ if ($Dirty.Count -gt 0) {
         $repo = $Repos | Where-Object { (Split-Path $_.Target -Leaf) -eq $name }
         if ($repo) { $repoPath = $repo.Target }
         if ($name -eq (Split-Path $DotfilesDir -Leaf)) { $repoPath = $DotfilesDir }
-        # Forked agent-skills isn't in $Repos, but its own (your) edits should still
-        # commit+push to your origin like any other repo.
-        if ($AgentSkillsDir -and ($name -eq (Split-Path $AgentSkillsDir -Leaf))) { $repoPath = $AgentSkillsDir }
         if (-not $repoPath) { continue }
 
         Push-Location $repoPath

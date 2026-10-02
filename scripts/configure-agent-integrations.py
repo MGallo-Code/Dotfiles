@@ -50,8 +50,11 @@ CONTEXT_HOOKS = (
     ("PreCompact", None, "pre-compact"),
     ("PreToolUse", "mcp__ccd_session_mgmt__clear_session", "clear-guard"),
     ("PreToolUse", "Edit|Write|NotebookEdit|Bash|PowerShell", "role-guard"),
+    # The request queue (ADR-0008) sweeps the transcript at the end of each turn. Not
+    # UserPromptSubmit: in Claude Code 2.1.285 that hook makes mid-turn messages wait for the turn.
+    ("Stop", None, "request-capture"),
 )
-_CONTEXT_SUB = re.compile(r"""context-card\.py["']?\s+(session-start|pre-compact|clear-guard|role-guard)\b""")
+_CONTEXT_SUB = re.compile(r"""context-card\.py["']?\s+(session-start|pre-compact|clear-guard|role-guard|request-capture)\b""")
 _CONTEXT_TOKEN = re.compile(r"""(?:^|[\s"'/\\])context-card\.py(?=["'\s]|$)""")
 SKILLS_END = "# dotfiles: end Codex duplicate skill suppression"
 
@@ -224,7 +227,9 @@ def _configure_claude_context(original: dict[str, Any], prefixes: dict[str, list
             if want_event == event and sub not in placed:
                 fresh: dict[str, Any] = {} if matcher is None else {"matcher": matcher}
                 fresh["hooks"] = [{"type": "command", "command": command, "timeout": CONTEXT_TIMEOUT}]
-                kept.append(fresh)
+                # _configure_claude re-appends the completion hook to Stop on every run; ours goes
+                # ahead of it, so the next run finds it in place and stays byte-identical.
+                kept.insert(0, fresh) if event == "Stop" else kept.append(fresh)
         if kept:
             hooks[event] = kept
         else:
@@ -421,16 +426,24 @@ CODEX_CONTEXT_BEGIN = "# dotfiles: begin resume-card hooks (EA context-card.py)"
 CODEX_CONTEXT_END = "# dotfiles: end resume-card hooks"
 
 
+CODEX_CONTEXT_EVENTS = ("SessionStart", "Stop")
+
+
 def _strip_codex_context_hooks(text: str) -> str:
-    """Drop every [[hooks.SessionStart]] group whose handler runs context-card.py, by content:
-    Codex rewrites config.toml itself and can drop the marker comments around the block."""
+    """Drop every [[hooks.SessionStart]] / [[hooks.Stop]] group whose handler runs
+    context-card.py, by content: Codex rewrites config.toml itself and can drop the marker
+    comments around the block."""
     lines = text.split("\n")
     out: list[str] = []
     i = 0
     while i < len(lines):
-        if lines[i].strip() == "[[hooks.SessionStart]]":
+        event = next((e for e in CODEX_CONTEXT_EVENTS if lines[i].strip() == f"[[hooks.{e}]]"), None)
+        if event:
             j = i + 1
-            while j < len(lines) and not (lines[j].startswith("[") and not lines[j].startswith("[[hooks.SessionStart.hooks]]")):
+            # The group ends at the next table or comment: a comment after it opens someone
+            # else's block (the Codex permission profile's marker) and must survive.
+            while j < len(lines) and not lines[j].lstrip().startswith("#") and not (
+                    lines[j].lstrip().startswith("[") and not lines[j].strip().startswith(f"[[hooks.{event}.hooks]]")):
                 j += 1
             group = lines[i:j]
             # TOML escapes the command's quotes (\\"), so match the script name on the raw line.
@@ -493,14 +506,16 @@ def _configure_codex(
             )
         lines.append(SKILLS_END)
         chunks.append("\n".join(lines))
-    if context_argv and re.search(r"(?m)^\s*(hooks\.)?SessionStart\s*=", body):
-        print("agent integrations: Codex hooks.SessionStart is an inline array; resume-card hook not registered for Codex", file=sys.stderr)
+    if context_argv and re.search(r"(?m)^\s*(hooks\.)?(SessionStart|Stop)\s*=", body):
+        print("agent integrations: Codex hooks.SessionStart or hooks.Stop is an inline array; resume-card hooks not registered for Codex", file=sys.stderr)
         context_argv = None
     if context_argv:
         # Codex reloads the card after compaction through SessionStart(compact); it ignores
         # PreCompact output and has no Desktop clear tool, so only this hook applies. Codex
         # asks Michael once to trust a new hook (hooks.state); dotfiles never writes trust.
-        command = " ".join(_hook_quote(part) for part in context_argv) + " session-start --agent codex"
+        base = " ".join(_hook_quote(part) for part in context_argv)
+        # The request queue (ADR-0008): Stop sweeps the rollout for what Michael typed, silently;
+        # SessionStart restores the open requests after a compaction or resume.
         chunks.append("\n".join([
             CODEX_CONTEXT_BEGIN,
             "[[hooks.SessionStart]]",
@@ -508,9 +523,16 @@ def _configure_codex(
             "",
             "[[hooks.SessionStart.hooks]]",
             'type = "command"',
-            f"command = {_toml_string(command)}",
+            f"command = {_toml_string(base + ' session-start --agent codex')}",
             f"timeout = {CONTEXT_TIMEOUT}",
             "additionalContextLimit = 0",
+            "",
+            "[[hooks.Stop]]",
+            "",
+            "[[hooks.Stop.hooks]]",
+            'type = "command"',
+            f"command = {_toml_string(base + ' request-capture --agent codex || true')}",
+            f"timeout = {CONTEXT_TIMEOUT}",
             CODEX_CONTEXT_END,
         ]))
     candidate = "\n\n".join(chunks).rstrip() + "\n"

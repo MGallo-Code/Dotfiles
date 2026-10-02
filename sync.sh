@@ -740,7 +740,9 @@ Respond with ONLY one of:
 Nothing else. No explanation."
 
             info "$name: asking Claude for commit message..."
-            MSG=$(claude -p "$PROMPT" 2>/dev/null); MSG_RC=$?
+            # Headless on purpose: run from inside an agent session, an inherited Desktop session id
+            # would put this prompt on that session's request queue and resume-card hooks (ADR-0008).
+            MSG=$(env -u CLAUDE_CODE_HOST_SESSION_ID CLAUDE_CODE_ENTRYPOINT=sdk-cli claude -p "$PROMPT" 2>/dev/null); MSG_RC=$?
 
             if ! usable_commit_message "$MSG" "$MSG_RC"; then
                 warn "$name: no usable commit message from Claude (exit $MSG_RC; is it logged in?) - commit manually"

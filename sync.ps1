@@ -783,8 +783,17 @@ Nothing else. No explanation.
 "@
 
             Write-Info "$name`: asking Claude for commit message..."
-            $msg = & claude -p $prompt 2>$null
-            $msgExit = $LASTEXITCODE
+            # Headless on purpose: run from inside an agent session, an inherited Desktop session id
+            # would put this prompt on that session's request queue and resume-card hooks (ADR-0008).
+            $savedHost = $env:CLAUDE_CODE_HOST_SESSION_ID; $savedEntry = $env:CLAUDE_CODE_ENTRYPOINT
+            Remove-Item Env:CLAUDE_CODE_HOST_SESSION_ID -ErrorAction SilentlyContinue
+            $env:CLAUDE_CODE_ENTRYPOINT = "sdk-cli"
+            try {
+                $msg = & claude -p $prompt 2>$null
+                $msgExit = $LASTEXITCODE
+            } finally {
+                $env:CLAUDE_CODE_HOST_SESSION_ID = $savedHost; $env:CLAUDE_CODE_ENTRYPOINT = $savedEntry
+            }
 
             if (-not (Test-UsableCommitMessage $msg $msgExit)) {
                 Write-Warn "$name`: no usable commit message from Claude (exit $msgExit; is it logged in?) - commit manually"

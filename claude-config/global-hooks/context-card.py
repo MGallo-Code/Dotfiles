@@ -9,6 +9,9 @@ Michael's latest typed message was a bare `/wrap`.
 Hook subcommands (registered by dotfiles `configure-agent-integrations.py`):
   session-start   SessionStart: reload the bound card after a compaction or clear.
   pre-compact     PreCompact: stdout is appended to the compaction instructions.
+  request-capture Stop: sweep what Michael typed this turn (prompts and mid-turn messages) from the
+                  transcript onto this conversation's request queue (ADR-0008). PreCompact and
+                  SessionStart sweep too; SessionStart then prints every open request verbatim.
   clear-guard     PreToolUse on the Desktop clear_session tool (exit 2 blocks).
   role-guard      PreToolUse on Edit/Write/NotebookEdit/Bash/PowerShell: enforces an orchestration
                   role (skill `build-orchestration`) for sessions that set one; silent for everyone else.
@@ -18,6 +21,7 @@ Hook subcommands (registered by dotfiles `configure-agent-integrations.py`):
                   pass-1 isolation from the canonical checkout, evidence-only writes, read-only git.
 Helper subcommands (run by /wrap and the orchestrate skill):
   status | bind <name> | bind --file <path> | unbind | commit <message> | autowrap on|off|status|limit <tokens>
+  queue [list [--all|--project]] | queue show|done|drop|reopen <ids> [--note ...] | queue add <text>
   role orchestrator --orch-dir <path> [--allow <path>]... | role builder [--worktree <path>] | role off
   orchestration new <name> [--builder-worktree <path>] [--allow <path>]... | on | off | end [<name>] | status
       (the /orchestrate command: `new` sets an orchestration up; `off`/`on` pause and resume it,
@@ -147,6 +151,44 @@ def headless() -> bool:
     if HOOK_AGENT == "codex":
         return False
     return os.environ.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk")
+
+
+def quiet_lane() -> bool:
+    """No cards and no request capture: headless, or a `claude -p` run nested in a session. The
+    guards keep using headless() alone, so a nested `claude -p` never slips out of a role's guard."""
+    return headless() or print_mode()
+
+
+def print_mode() -> bool:
+    """A `claude -p` started from inside a session inherits that session's environment (its
+    CLAUDE_CODE_ENTRYPOINT stays claude-desktop), so read the nearest claude CLI ancestor's
+    arguments instead. The Desktop app runs Claude Code in-process: reaching it means interactive.
+    POSIX `ps`; False when it cannot tell. CONTEXT_CARD_PRINT_MODE=1/0 overrides (fixtures)."""
+    forced = os.environ.get("CONTEXT_CARD_PRINT_MODE")
+    if forced in ("0", "1"):
+        return forced == "1"
+    if os.name == "nt":
+        return False
+    pid = os.getppid()
+    for _ in range(12):
+        if pid <= 1:
+            return False
+        try:
+            out = subprocess.run(["ps", "-o", "ppid=", "-o", "args=", "-p", str(pid)], capture_output=True,
+                                 text=True, timeout=3).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return False
+        ppid, _, args = out.partition(" ")
+        argv = args.split()
+        if not argv:
+            return False
+        name = os.path.basename(argv[0])
+        if name in ("claude", "claude.exe") or (name in ("node", "bun") and any(os.path.basename(a).startswith("claude") for a in argv[1:2])):
+            return any(a in ("-p", "--print") for a in argv[1:])
+        if name == "Claude":
+            return False
+        pid = int(ppid) if ppid.strip().isdigit() else 0
+    return False
 
 
 def project_dir() -> Path:
@@ -386,14 +428,391 @@ def iso_epoch(stamp: str) -> float | None:
         return None
 
 
+# ---------------------------------------------------------------- request queue (ADR-0008)
+#
+# Every message Michael types becomes an item R<n>, captured by hooks rather than by the agent
+# remembering. The hooks sweep the agent's own transcript (Claude: typed prompts and messages typed
+# mid-turn; Codex: user_message events) at the end of each turn, before each compaction and at
+# session start. No UserPromptSubmit hook: in Claude Code 2.1.285 one makes mid-turn messages wait
+# for the turn to end. One append-only file per conversation: {"op":"add",...} items and
+# {"op":"close"|"reopen"} events.
+
+QUEUE_TEXT_MAX = 8000        # stored per item
+QUEUE_SHOW_MAX = 1500        # printed per item after a compaction
+QUEUE_SHOW_TOTAL = 12000     # printed in all after a compaction
+QUEUE_PRUNE_DAYS = 90        # by age alone: unattended queues (scripted runs) must not pile up
+QUEUE_LOOKBACK = 900         # a conversation's first sweep also takes the last 15 minutes
+QUEUE_FIRST_BYTES = 8 * 1024 * 1024
+QUEUE_LOCK_WAIT = 3.0
+QUEUE_HELP = "python3 ~/.claude/hooks/context-card.py queue"
+CONTROL_RE = re.compile(r"^/[A-Za-z0-9:_-]+$")  # a bare slash command, e.g. /clear or /wrap
+ID_RE = re.compile(r"^R(\d+)$")
+CODEX_INTERACTIVE = ("cli", "vscode")  # session_meta sources Michael types into (not exec, not subagents)
+
+
+def queue_path(sid: str) -> Path:
+    return STATE / "queue" / f"{sid}.jsonl"
+
+
+def sweep_path(sid: str) -> Path:
+    return STATE / "queue" / f"{sid}.sweep.json"
+
+
+class QueueLock:
+    """An exclusive lock beside the queue file: id assignment reads then appends, and two hooks
+    of one conversation (a prompt and a compaction) can run at once. O_EXCL works on every OS;
+    a lock left by a killed process is broken after QUEUE_LOCK_WAIT seconds."""
+
+    def __init__(self, sid: str) -> None:
+        self.path = STATE / "queue" / f"{sid}.lock"
+
+    def __enter__(self) -> "QueueLock":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.time() + QUEUE_LOCK_WAIT
+        while True:
+            try:
+                os.close(os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+                return self
+            except FileExistsError:
+                if time.time() > deadline:
+                    try:
+                        os.unlink(self.path)  # stale: its writer died holding it
+                    except OSError:
+                        pass
+                    deadline = time.time() + QUEUE_LOCK_WAIT
+                time.sleep(0.02)
+
+    def __exit__(self, *exc) -> None:
+        try:
+            os.unlink(self.path)
+        except OSError:
+            pass
+
+
+def load_queue(sid: str) -> list[dict]:
+    """Items in id order, each with its current status ("open", "done" or "dropped")."""
+    items: dict[str, dict] = {}
+    try:
+        lines = queue_path(sid).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue  # a torn last line from a crashed writer
+        if not isinstance(rec, dict):
+            continue
+        if rec.get("op") == "add" and isinstance(rec.get("id"), str):
+            items[rec["id"]] = {**rec, "status": "open"}
+        elif rec.get("op") in ("close", "reopen"):
+            for rid in rec.get("ids") or []:
+                if rid in items:
+                    items[rid]["status"] = rec.get("status", "done") if rec["op"] == "close" else "open"
+                    items[rid]["note"] = rec.get("note") or items[rid].get("note")
+    return sorted(items.values(), key=lambda i: int(ID_RE.match(i["id"]).group(1)) if ID_RE.match(i["id"]) else 0)
+
+
+def queue_append(sid: str, rec: dict) -> None:
+    path = queue_path(sid)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+def capturable(text: object) -> str | None:
+    if not isinstance(text, str):
+        return None
+    text = text.strip()
+    command = re.match(r"^<command-message>.*?</command-message>\s*<command-name>(/[^<]+)</command-name>(?:\s*<command-args>(.*?)</command-args>)?\s*$", text, re.DOTALL)
+    if command:  # a slash command as the transcript records it
+        text = f"{command.group(1)} {(command.group(2) or '').strip()}".strip()
+    if not text or CONTROL_RE.match(text):
+        return None
+    return text
+
+
+def queue_add_many(sid: str, entries: list[tuple[str, str, str]]) -> list[str]:
+    """Append (text, source, timestamp) entries; a source already on the queue is skipped. Returns new ids."""
+    added: list[str] = []
+    with QueueLock(sid):
+        items = load_queue(sid)
+        seen = {i.get("src") for i in items if i.get("src")}
+        n = max((int(m.group(1)) for i in items for m in [ID_RE.match(i["id"])] if m), default=0)
+        for text, src, stamp in entries:
+            if src and src in seen:
+                continue
+            n += 1
+            rid = f"R{n}"
+            if len(text) > QUEUE_TEXT_MAX:
+                text = text[:QUEUE_TEXT_MAX] + f" [cut at {QUEUE_TEXT_MAX} characters; the transcript has the rest]"
+            queue_append(sid, {"op": "add", "id": rid, "ts": stamp or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                               "text": text, "src": src, "cwd": str(project_dir().resolve())})
+            seen.add(src)
+            added.append(rid)
+    return added
+
+
+def claude_human(entry: dict) -> tuple[str, str, str] | None:
+    """A message Michael typed, from a Claude transcript entry: (text, source, timestamp).
+    Typed prompts are user entries with origin.kind "human"; messages typed mid-turn are
+    queued_command attachments with the same origin. Peers, subagent hand-backs, task
+    notifications, command expansions, compaction summaries and tool results never match."""
+    if entry.get("isSidechain"):
+        return None
+    if entry.get("type") == "attachment":
+        att = entry.get("attachment") or {}
+        origin = att.get("origin")
+        if att.get("type") != "queued_command" or not isinstance(origin, dict) or origin.get("kind") != "human":
+            return None
+        if att.get("commandMode") not in (None, "prompt"):
+            return None
+        text, src = capturable(att.get("prompt")), att.get("source_uuid") or entry.get("uuid")
+        stamp = att.get("timestamp") or entry.get("timestamp")
+    elif entry.get("type") == "user":
+        origin = entry.get("origin")
+        if not isinstance(origin, dict) or origin.get("kind") != "human":
+            return None
+        if entry.get("isMeta") or entry.get("isCompactSummary") or entry.get("isVisibleInTranscriptOnly"):
+            return None
+        content = (entry.get("message") or {}).get("content")
+        if isinstance(content, list) and any(isinstance(x, dict) and x.get("type") == "tool_result" for x in content):
+            return None
+        text, src, stamp = capturable(entry_text(entry)), entry.get("promptId") or entry.get("uuid"), entry.get("timestamp")
+    else:
+        return None
+    if not text:
+        return None
+    return (text, f"claude:{src}" if src else "", str(stamp or ""))
+
+
+def codex_human(entry: dict) -> tuple[str, str, str] | None:
+    """A message Michael typed, from a Codex rollout line (an event_msg of type user_message)."""
+    payload = entry.get("payload") or {}
+    if entry.get("type") != "event_msg" or payload.get("type") != "user_message":
+        return None
+    text = capturable(payload.get("message"))
+    if not text:
+        return None
+    stamp = str(entry.get("timestamp") or "")
+    src = payload.get("client_id") or hashlib.sha256(f"{stamp}|{text}".encode()).hexdigest()[:24]
+    return (text, f"codex:{src}", stamp)
+
+
+def codex_interactive(transcript: str) -> bool:
+    """Only rollouts Michael types into: Codex's terminal UI or the Codex app, never `codex exec`
+    (the cross-check skill) or Codex subagents."""
+    try:
+        with open(transcript, "rb") as handle:
+            first = json.loads(handle.readline().decode("utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return False
+    source = (first.get("payload") or {}).get("source") if isinstance(first, dict) else None
+    return source in CODEX_INTERACTIVE
+
+
+def queue_sweep(sid: str, transcript: str | None) -> list[str]:
+    """Capture what Michael typed since the last sweep of this transcript. Offsets are kept per
+    transcript, so a clear's new transcript or a stray child never forces a re-read; the first
+    sweep of a conversation reaches back QUEUE_LOOKBACK seconds and no further."""
+    if not transcript or not os.path.isfile(transcript):
+        return []
+    codex = HOOK_AGENT == "codex"
+    if codex and not codex_interactive(transcript):
+        return []
+    state_file = sweep_path(sid)
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = None
+    size = os.path.getsize(transcript)
+    if not isinstance(state, dict) or not isinstance(state.get("paths"), dict):
+        state = {"since": time.time() - QUEUE_LOOKBACK, "paths": {}}
+    offsets = state["paths"]
+    offset = offsets.get(transcript)
+    if not isinstance(offset, int) or offset > size:
+        offset = max(0, size - QUEUE_FIRST_BYTES)
+    since = float(state.get("since", 0))
+    with open(transcript, "rb") as handle:
+        handle.seek(offset)
+        chunk = handle.read()
+    end = chunk.rfind(b"\n") + 1  # whole lines only; a line still being written waits
+    marker = b'"user_message"' if codex else b'"human"'
+    parse = codex_human if codex else claude_human
+    found: list[tuple[str, str, str]] = []
+    for raw in chunk[:end].split(b"\n"):
+        if marker not in raw:
+            continue  # most lines are tool calls and output: skip them before parsing
+        try:
+            entry = json.loads(raw.decode("utf-8", errors="replace"))
+        except ValueError:
+            continue
+        hit = parse(entry) if isinstance(entry, dict) else None
+        if hit and (iso_epoch(hit[2]) or time.time()) >= since:
+            found.append(hit)
+    added = queue_add_many(sid, found) if found else []
+    offsets[transcript] = offset + end
+    atomic_write(state_file, json.dumps(state))
+    return added
+
+
+def when(item: dict) -> str:
+    epoch = iso_epoch(str(item.get("ts", "")))
+    return fmt_time(epoch) if epoch else str(item.get("ts", ""))[:16]
+
+
+def snippet(text: str, words: int = 9) -> str:
+    flat = " ".join(text.split())
+    parts = flat.split(" ")
+    return " ".join(parts[:words]) + ("..." if len(parts) > words else "")
+
+
+def open_items(sid: str | None) -> list[dict]:
+    return [i for i in load_queue(sid) if i["status"] == "open"] if sid else []
+
+
+def queue_block(sid: str | None) -> str:
+    """Every open item verbatim, for the start of a refreshed or resumed conversation."""
+    items = open_items(sid)
+    if not items:
+        return ""
+    out = [f"Michael's open requests in this conversation ({len(items)}), restored verbatim from the request queue. "
+           f"Work them or confirm they are done; close each with `{QUEUE_HELP} done <ids>` (`{QUEUE_HELP} drop <id> --note why` if superseded):"]
+    used = 0
+    for item in items:
+        text = item["text"]
+        if len(text) > QUEUE_SHOW_MAX:
+            text = text[:QUEUE_SHOW_MAX] + f" [... `{QUEUE_HELP} show {item['id']}` for the rest]"
+        if used + len(text) > QUEUE_SHOW_TOTAL:
+            out.append(f"{item['id']} ({when(item)}): {snippet(item['text'], 20)} [`{QUEUE_HELP} show {item['id']}`]")
+            continue
+        used += len(text)
+        out.append(f"{item['id']} ({when(item)}): {text}")
+    return "\n".join(out)
+
+
+def prune_queues() -> None:
+    cutoff = time.time() - QUEUE_PRUNE_DAYS * 86400
+    for path in (STATE / "queue").glob("*.jsonl"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                for extra in (path, sweep_path(path.stem)):
+                    extra.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def cmd_queue(args: list[str]) -> int:
+    """queue [list [--all|--project]] | show <id> | done <ids> [--note ...] | drop <ids> [--note ...] | reopen <ids> | add <text>"""
+    sid = need_sid()
+    sub = args[0] if args else "list"
+    rest = args[1:]
+    note = None
+    if "--note" in rest:
+        at = rest.index("--note")
+        note = " ".join(rest[at + 1:]) or None
+        rest = rest[:at]
+    items = load_queue(sid)
+    by_id = {i["id"]: i for i in items}
+    if sub == "list":
+        if "--project" in rest:
+            here = str((repo_root(project_dir()) or project_dir()).resolve())
+            shown = 0
+            for path in sorted((STATE / "queue").glob("*.jsonl")):
+                if path.stem == sid:
+                    continue
+                for item in open_items(path.stem):
+                    if _under(Path(str(item.get("cwd", ""))), here):
+                        print(f"[{path.stem}] {item['id']} ({when(item)}): {snippet(item['text'], 30)}")
+                        shown += 1
+            if not shown:
+                print(f"No open requests from other conversations under {here}.")
+            return 0
+        chosen = items if "--all" in rest else [i for i in items if i["status"] == "open"]
+        if not chosen:
+            print("No open requests in this conversation." if items else "The request queue for this conversation is empty.")
+        for item in chosen:
+            mark = "" if item["status"] == "open" else f" [{item['status']}{': ' + item['note'] if item.get('note') else ''}]"
+            print(f"{item['id']} ({when(item)}){mark}: {snippet(item['text'], 40)}")
+        return 0
+    if sub == "show":
+        for rid in rest:
+            item = by_id.get(rid.upper())
+            print(f"{rid}: {item['text']}" if item else f"{rid}: no such request")
+        return 0
+    if sub == "add":
+        text = capturable(" ".join(rest))
+        if not text:
+            print("queue add: give the request text", file=sys.stderr)
+            return 1
+        print(f"added {', '.join(queue_add_many(sid, [(text, '', '')]))}")
+        return 0
+    if sub in ("done", "drop", "reopen"):
+        ids = []
+        for raw in rest:
+            for part in raw.replace(",", " ").split():
+                rid = part.upper()
+                if rid not in by_id:
+                    print(f"queue {sub}: no request {part} in this conversation", file=sys.stderr)
+                    return 1
+                ids.append(rid)
+        if not ids:
+            print(f"queue {sub}: give one or more ids (R3 R4)", file=sys.stderr)
+            return 1
+        rec = {"op": "reopen" if sub == "reopen" else "close", "ids": ids,
+               "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+        if sub != "reopen":
+            rec["status"] = "done" if sub == "done" else "dropped"
+        if note:
+            rec["note"] = note
+        with QueueLock(sid):
+            queue_append(sid, rec)
+        left = open_items(sid)
+        print(f"{sub}: {', '.join(ids)}. Open: {', '.join(i['id'] for i in left) or 'none'}.")
+        return 0
+    print(cmd_queue.__doc__, file=sys.stderr)
+    return 1
+
+
+def hook_request_capture(data: dict) -> int:
+    """Stop (and Codex Stop): sweep this turn's typed and mid-turn messages onto the queue. Silent."""
+    if quiet_lane():
+        return 0
+    sid = session_id()
+    if not sid:
+        return 0
+    added = queue_sweep(sid, data.get("transcript_path"))
+    log("request-capture", f"sid={sid} agent={HOOK_AGENT} added={','.join(added) or '-'}")
+    return 0
+
+
 # ---------------------------------------------------------------- hooks
 
 def hook_session_start(data: dict) -> int:
-    if headless():
+    if quiet_lane():
         return 0
+    status = session_start_card(data)
+    sid = session_id()
+    try:
+        prune_queues()
+        if sid:
+            queue_sweep(sid, data.get("transcript_path"))
+        block = queue_block(sid)
+    except Exception as exc:  # the queue must never cost a session its card
+        log("session-start", f"queue error: {type(exc).__name__}: {exc}")
+        block = ""
+    if block:
+        print(("\n" if status else "") + block)
+    return 0
+
+
+def session_start_card(data: dict) -> bool:
+    """The resume-card part of SessionStart. True when it printed something."""
     sid = session_id()
     prune_bindings()
     root = repo_root(project_dir())
+    printed = False
     if sid and HOOK_AGENT == "claude" and data.get("source") == "startup" and not load_binding(sid) and not load_role(sid):
         try:
             activated = activate_builder(sid, root)
@@ -402,8 +821,10 @@ def hook_session_start(data: dict) -> int:
             activated = None
         if activated:
             print(activated)
+            printed = True
     elif HOOK_AGENT == "codex" and root and load_activation(root):
         print("This folder is a Builder worktree of an active orchestration; roles and guards apply only in Claude Code.")
+        printed = True
     binding = load_binding(sid)
     if binding and sid:
         marker = STATE / "cleared" / sid
@@ -425,20 +846,33 @@ def hook_session_start(data: dict) -> int:
         if role:
             print(f"Orchestration role for this session: {role_summary(role)}.")
         log("session-start", f"sid={sid} source={data.get('source')} refreshed={refreshed}")
-        return 0
+        return True
     if root:
         folder = card_dir(root)
         names = sorted(folder.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True) if folder.is_dir() else []
         if names:
             listed = ", ".join(p.stem for p in names[:6])
             print(f"Resume cards in this repo: {listed}. If Michael asks to continue one, bind it first: python3 ~/.claude/hooks/context-card.py bind <name>.")
-    return 0
+            return True
+    return printed
 
 
 def hook_pre_compact(data: dict) -> int:
-    if headless():
+    if quiet_lane():
         return 0
-    binding = load_binding(session_id())
+    sid = session_id()
+    try:
+        if sid:
+            queue_sweep(sid, data.get("transcript_path"))  # a mid-turn message lands before it can be summarized away
+        waiting = open_items(sid)
+    except Exception as exc:
+        log("pre-compact", f"queue error: {type(exc).__name__}: {exc}")
+        waiting = []
+    if waiting:
+        print(f"Michael's {len(waiting)} open request(s) ({', '.join(i['id'] for i in waiting)}) are kept verbatim in a "
+              "request queue and restored right after this compaction. Refer to them by id and record progress on "
+              "each; do not restate their text.\n")
+    binding = load_binding(sid)
     if not binding:
         return 0
     model = working_model(data.get("transcript_path"))
@@ -1275,10 +1709,12 @@ def activate_builder(sid: str, root: Path | None) -> str | None:
 
 
 HOOKS = {"session-start": hook_session_start, "pre-compact": hook_pre_compact,
+         "request-capture": hook_request_capture,
          "clear-guard": hook_clear_guard, "role-guard": hook_role_guard,
          "challenger-guard": hook_challenger_guard}
 HELPERS = {"status": cmd_status, "bind": cmd_bind, "unbind": cmd_unbind, "commit": cmd_commit,
-           "autowrap": cmd_autowrap, "role": cmd_role, "orchestration": cmd_orchestration}
+           "autowrap": cmd_autowrap, "role": cmd_role, "orchestration": cmd_orchestration,
+           "queue": cmd_queue}
 
 
 def main(argv: list[str]) -> int:
@@ -1293,12 +1729,12 @@ def main(argv: list[str]) -> int:
     if "--agent" in argv[1:] and name in HOOKS:
         HOOK_AGENT = argv[argv.index("--agent") + 1] if argv.index("--agent") + 1 < len(argv) else "claude"
     if HOOK_AGENT == "codex":
-        if name != "session-start":
+        if name not in ("session-start", "request-capture"):
             return 0  # Codex ignores PreCompact output, and has no Desktop clear tool.
         data = read_stdin_json()
         CODEX_HOOK_SESSION = str(data.get("session_id") or "") or None
         try:
-            return hook_session_start(data)
+            return HOOKS[name](data)
         except BaseException as exc:
             log(name, f"codex error: {type(exc).__name__}: {exc}")
             return 0

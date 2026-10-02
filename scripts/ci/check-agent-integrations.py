@@ -270,6 +270,7 @@ CONTEXT_SUBS = {
     "pre-compact": ("PreCompact", None),
     "clear-guard": ("PreToolUse", "mcp__ccd_session_mgmt__clear_session"),
     "role-guard": ("PreToolUse", "Edit|Write|NotebookEdit|Bash|PowerShell"),
+    "request-capture": ("Stop", None),  # the request queue (ADR-0008)
 }
 CONTEXT_EVENTS = sorted({event for event, _ in CONTEXT_SUBS.values()})
 
@@ -389,12 +390,21 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
             require(len(ours) == 1 and "session-start --agent codex" in ours[0]["hooks"][0]["command"]
                     and ours[0]["hooks"][0].get("additionalContextLimit") == 0,
                     "Codex: expected one resume-card SessionStart hook with no context cap", findings)
+            capture = [g for g in parsed.get("hooks", {}).get("Stop", []) for h in g.get("hooks", [])
+                       if "context-card.py" in h.get("command", "")]
+            require(len(capture) == 1 and "request-capture --agent codex" in capture[0]["hooks"][0]["command"],
+                    "Codex: expected one request-queue Stop hook (ADR-0008)", findings)
             require(parsed["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "/x/warn.sh"
                     and parsed["hooks"]["state"]["/x:pre_tool_use:0:0"]["trusted_hash"] == "sha256:abc",
                     "Codex: the existing PreToolUse hook or its trust state was disturbed", findings)
             before = codex_cfg.read_bytes()
             run(codex_home)
             require(before == codex_cfg.read_bytes(), "Codex: resume-card registration is not byte-idempotent", findings)
+            neighbour = "# dotfiles: Codex Michael workspace permission profile\n[neighbour]\nx = 1\n# dotfiles: end Codex Michael workspace permission profile\n"
+            codex_cfg.write_text(codex_cfg.read_text(encoding="utf-8") + "\n" + neighbour, encoding="utf-8")
+            run(codex_home)
+            require(neighbour.splitlines()[0] in codex_cfg.read_text(encoding="utf-8").splitlines(),
+                    "Codex: stripping the resume-card block swallowed the next managed block's opening marker", findings)
             ml = 'note = """a\n\n\n\nb"""\n'
             codex_cfg.write_text(ml + "\n".join(l for l in text.splitlines() if not l.startswith("# dotfiles: ")) + "\n", encoding="utf-8")
             run(codex_home)

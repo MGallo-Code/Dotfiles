@@ -49,6 +49,14 @@ Keep Michael's agent setup lean, and his long sessions accurate without him mana
   - Invariants: EA INV-11, dotfiles INV-16
 
 ## Next exact step
+- OPEN REQUESTS 2026-10-02 (Michael, in order):
+  1. "ensure the claude always puts my requests on a persistent work queue that can't be lost due to compacts/loss in long context ... automatic, part of the system ... make those changes in dotfiles as necessary (claude and codex), pull them everywhere, please. Tell me when that is done."
+  2. "the dotfiles system stuff, all of that is set up now? And pulled onto each system I use them on?" (verify every machine is at origin/main after the pushes)
+  3. "After we sort icloud docs here along with that new request, we'll move you to updating the laptop's files." Sort iCloud Documents (laptop has it all downloaded; the mini's view is placeholders and still shows pre-move ghosts of EA/Wiki/Notes/GalloGrid/agent-skills/Projects/Archive/SBIC while iCloud catches up).
+  4. Mini ~/Documents: 4 empty dirs (Codex, Customer-Work, Jobs, Learning) can go; drop manifest DIRECTORIES (~/Documents/Learning, ~/Documents/Jobs; sh + ps1) so sync stops recreating them (laptop's real Jobs/Learning stay).
+  5. Laptop Dropbox leftovers (app already uninstalled, no files): ~/.dropbox (17 MB), ~/Dropbox link, dangling ~/Dropbox-Mgallo2043, empty CloudStorage/Dropbox + two dated "Dropbox (...)" dirs -> Trash, if he says yes.
+  6. "so the next step is setting up a syncthing or tailscale sync for the workspace folder after all of that? That sounds like it should also be part of the dotfiles system, correct?" -> yes: Syncthing over Tailscale for EA's gitignored private dirs only (never .git), owned by dotfiles; ADR first + encrypted off-site backup.
+  Answered (his call pending): keep iCloud Desktop & Documents OFF on the mini (recommended); health/Medical files in iCloud are NOT byte-duplicates of EA (0 of 6 Medical, 0 of 1,924 Personal) -> move into Workspace only after the Syncthing + backup ADR.
 - 2026-10-01 machine cleanup (Michael: "1. Go for it. 2. Fold it in, sure. 3. Yup 4. Toggled."):
   - Done: dotfiles 875e719 (clients never build nexus/courier/calendar: `needs_local_nexus`, `mcp_wiring_ready`, ps1 twins, INV-18, parity row, check-code-root fixtures with 4 mutants killed), f70cd2d (Windows `Get-PythonCmd` prefers a Python with tomllib; the PC's `python3` is the Store 3.10), d90cca9 (agent-integration fixture writes TOML-safe Windows paths). CI green on 875e719 and d90cca9.
   - Done: Wiki f5dd53c (mini's Aug 21 learning pages) + ef7c136 (PC's Aug 28 Wizard101 pages; duplicate log row dropped). PC Wiki reset to origin, backup branch `wiki-pc-backup-20261001`.

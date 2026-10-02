@@ -546,6 +546,130 @@ def fixtures(s: Suite) -> None:
     r = s.run(["autowrap", "off"], mine, host="local_aw")
     s.check("autowrap off: window removed and this chat's card unbound", "autoCompactWindow" not in json.loads(settings.read_text())
             and not (s.state / "bind" / "local_aw.json").exists(), settings.read_text())
+    queue_fixtures(s)
+
+
+def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
+    """ADR-0008: every message Michael types lands on the request queue (swept from the transcript
+    at Stop, PreCompact and SessionStart), nothing else does, and open items come back verbatim."""
+    work = s.repo("queue-work", None)
+    host = "local_queue"
+    q = s.state / "queue" / f"{host}.jsonl"
+
+    def said(text: str, uid: str, offset_s: float = 0.0) -> dict:
+        return {**typed(text, offset_s), "uuid": uid}
+
+    def midturn(text: str, uid: str, offset_s: float = 0.0, **att) -> dict:
+        stamp = iso(offset_s)
+        return {"type": "attachment", "uuid": f"e-{uid}", "timestamp": stamp,
+                "attachment": {"type": "queued_command", "prompt": text, "source_uuid": uid, "commandMode": "prompt",
+                               "origin": {"kind": "human"}, "timestamp": stamp, **att}}
+
+    tpath = s.transcript("queue", [said("an old request from before the queue existed", "old1", -3600),
+                                   midturn("an old mid-turn message", "old2", -3500)])
+
+    def append(path: str, *entries: dict, raw: str = "") -> None:
+        with open(path, "a") as handle:
+            handle.write("".join(json.dumps(e) + "\n" for e in entries) + raw)
+
+    def stop(path: str = tpath, hook: str = "request-capture", **extra) -> subprocess.CompletedProcess:
+        return s.run([hook], work, {"transcript_path": path, **extra}, host=host)
+
+    def texts() -> list[str]:
+        try:
+            return [json.loads(line)["text"] for line in q.read_text().splitlines() if '"op": "add"' in line]
+        except OSError:
+            return []
+
+    append(tpath, said("Sort the iCloud docs and CODEWORD-WREN", "u1"))
+    r = stop()
+    s.check("queue: the turn's typed prompt is captured verbatim as R1, silently", r.returncode == 0 and r.stdout == ""
+            and texts() == ["Sort the iCloud docs and CODEWORD-WREN"], f"{texts()} {r.stdout} {r.stderr}")
+
+    append(tpath,
+           midturn("mid-turn: CODEWORD-FINCH", "m1"),
+           {"type": "attachment", "uuid": "p1", "timestamp": iso(), "turnOrigin": "human",  # gets past the byte filter
+            "attachment": {"type": "queued_command", "prompt": "peer: CODEWORD-PEER", "origin": {"kind": "peer"}, "timestamp": iso()}},
+           {"type": "attachment", "uuid": "n1", "timestamp": iso(),
+            "attachment": {"type": "queued_command", "prompt": "<task-notification>CODEWORD-TASK", "commandMode": "task-notification", "timestamp": iso()}},
+           {**midturn("subagent: CODEWORD-SIDE", "sc1"), "isSidechain": True},
+           {**said("Another Claude session sent a message: CODEWORD-PEER2", "pu"), "origin": {"kind": "peer"}},
+           {**said("<task-notification>CODEWORD-TASK2", "tn"), "origin": {"kind": "task-notification"}},
+           {**said("Base directory for this skill: CODEWORD-META", "me"), "isMeta": True},
+           said("<command-message>wrap</command-message>\n<command-name>/wrap</command-name>", "w1"),
+           said("<command-message>loop</command-message>\n<command-name>/loop</command-name>\n<command-args>check CI</command-args>", "l1"),
+           PEER, SUMMARY, TOOL_RESULT, EXPANSION,
+           raw='{"type": "attachment", "attachment": {"type": "queued_command", "prompt": "half-writ')
+    stop()
+    got = texts()
+    s.check("queue: mid-turn messages and slash commands with arguments are captured", got[1:] == ["mid-turn: CODEWORD-FINCH", "/loop check CI"], str(got))
+    s.check("queue: peers, task notifications, subagents, meta, summaries, tool results and bare commands are never captured",
+            not any(w in " ".join(got) for w in ("CODEWORD-PEER", "CODEWORD-TASK", "CODEWORD-SIDE", "CODEWORD-META", "continued from", "Resume cards", "/wrap")), str(got))
+    s.check("queue: the first sweep reaches back minutes, never to older history", not any("old" in x for x in got), str(got))
+
+    append(tpath, raw='ten", "origin": {"kind": "human"}, "commandMode": "prompt", "source_uuid": "half", "timestamp": "' + iso() + '"}}\n')
+    append(tpath, midturn("mid-turn: CODEWORD-FINCH", "m1"))  # Claude Code re-writes a queued message later with the same id
+    stop()
+    stop()
+    got = texts()
+    s.check("queue: a line finished after a sweep lands once; a re-written message and a second sweep add nothing",
+            got.count("half-written") == 1 and got.count("mid-turn: CODEWORD-FINCH") == 1 and len(got) == 4, str(got))
+
+    other = s.transcript("queue-after-clear", [said("after the clear: CODEWORD-HAWK", "c1")])
+    stop(other)
+    append(tpath, said("back on the first transcript: CODEWORD-KITE", "k1"))
+    stop()
+    got = texts()
+    s.check("queue: offsets are kept per transcript (a new one after a clear, then the old one again)",
+            got[4:] == ["after the clear: CODEWORD-HAWK", "back on the first transcript: CODEWORD-KITE"], str(got))
+
+    r = s.run(["queue", "done", "R3"], work, host=host)
+    r2 = s.run(["queue", "list"], work, host=host)
+    s.check("queue done closes an item and list shows only open ones", r.returncode == 0 and "R3 " not in r2.stdout and "R1 " in r2.stdout,
+            r.stdout + r2.stdout + r.stderr)
+    r = s.run(["queue", "done", "R99"], work, host=host)
+    s.check("queue done refuses an unknown id", r.returncode == 1, r.stdout + r.stderr)
+    r = s.run(["queue", "add", "relayed by a peer: CODEWORD-DOVE"], work, host=host)
+    s.check("queue add puts a request on by hand", r.returncode == 0 and "relayed by a peer: CODEWORD-DOVE" in texts(), r.stdout + r.stderr)
+
+    append(tpath, midturn("typed just before an auto-compaction: CODEWORD-LARK", "m2"))
+    r = stop(hook="pre-compact", trigger="auto")
+    s.check("queue: PreCompact sweeps first, so a mid-turn message is never summarized away",
+            "CODEWORD-LARK" in " ".join(texts()) and "restored" in r.stdout, r.stdout + r.stderr)
+    r = stop(hook="session-start", source="compact")
+    s.check("queue: after a compaction every open item comes back verbatim, closed ones do not",
+            all(w in r.stdout for w in ("CODEWORD-WREN", "CODEWORD-FINCH", "CODEWORD-LARK", "half-written")) and "/loop check CI" not in r.stdout,
+            r.stdout + r.stderr)
+
+    r = s.run(["session-start"], work, {"source": "startup"}, host="local_queue-other")
+    s.check("queue: another conversation starts empty", "CODEWORD" not in r.stdout, r.stdout)
+    r = s.run(["queue", "list", "--project"], work, host="local_queue-other")
+    s.check("queue list --project shows other conversations' open items here", "CODEWORD-WREN" in r.stdout, r.stdout + r.stderr)
+
+    def rollout(name: str, source: object, *messages: str) -> str:
+        lines = [{"type": "session_meta", "payload": {"id": name, "source": source, "originator": "Codex Desktop"}},
+                 {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "# AGENTS.md CODEWORD-AGENTS"}]}}]
+        lines += [{"type": "event_msg", "timestamp": iso(), "payload": {"type": "user_message", "client_id": f"{name}-{i}", "message": m}}
+                  for i, m in enumerate(messages)]
+        return s.transcript(name, lines)
+
+    live = rollout("codex-live", "vscode", "codex: CODEWORD-OWL")
+    r = s.run(["request-capture", "--agent", "codex"], work, {"session_id": "th-1", "transcript_path": live}, host=None,
+              extra={"CODEX_THREAD_ID": "stale"})
+    cq = s.state / "queue" / "codex-th-1.jsonl"
+    s.check("queue: Codex sweeps what Michael typed under its thread id, silently", r.returncode == 0 and r.stdout == ""
+            and cq.is_file() and "CODEWORD-OWL" in cq.read_text() and "CODEWORD-AGENTS" not in cq.read_text(), r.stdout + r.stderr)
+    for source in ("exec", {"subagent": {"other": "guardian"}}):
+        scripted = rollout(f"codex-{'exec' if source == 'exec' else 'sub'}", source, "scripted: CODEWORD-BOT")
+        s.run(["request-capture", "--agent", "codex"], work, {"session_id": "th-2", "transcript_path": scripted}, host=None)
+    s.check("queue: codex exec runs and Codex subagents are never captured", not (s.state / "queue" / "codex-th-2.jsonl").exists(), "")
+
+    bot = s.transcript("queue-bot", [said("headless: CODEWORD-BOT", "b1")])
+    s.run(["request-capture"], work, {"transcript_path": bot}, entry="sdk-cli", host="local_queue-bot")
+    s.run(["request-capture"], work, {"transcript_path": bot}, host="local_queue-bot", extra={"CONTEXT_CARD_PRINT_MODE": "1"})
+    s.check("queue: headless runs and a nested `claude -p` are never captured", not (s.state / "queue" / "local_queue-bot.jsonl").exists(), "")
+    r = s.run(["request-capture"], work, "not json", host=host)
+    s.check("queue: a broken hook input never fails the hook", r.returncode == 0, r.stderr)
 
 
 def main() -> int:
@@ -564,10 +688,18 @@ def main() -> int:
         plants += [('data.get("source") == "startup" and ', ""),  # activation on any source
                    ("                remove(path)\n                cleaned += 1", "                cleaned += 1"),  # end skips Builders
                    ('binding.get("kind") != "file" and cards.get(sid)', 'cards.get(sid)'),  # autowrap off unbinds file cards
-                   ("    if limit > WINDOW_MAX:", "    if False:")]  # no upper bound
+                   ("    if limit > WINDOW_MAX:", "    if False:"),  # no upper bound
+                   ('    elif entry.get("type") == "user":', '    elif False:'),  # typed prompts dropped
+                   ('    if entry.get("type") == "attachment":', '    if False:'),  # mid-turn messages dropped
+                   ('origin.get("kind") != "human"', 'origin.get("kind") == "nobody"'),  # peers captured
+                   ("        print((\"\\n\" if status else \"\") + block)", "        pass"),  # nothing restored after compaction
+                   ("    return source in CODEX_INTERACTIVE", "    return True"),  # codex exec captured
+                   ("    return headless() or print_mode()", "    return headless()")]  # nested claude -p captured
         labels = ["clear guard always allows", "role guard always allows", "challenger guard always allows",
                   "activation on any source", "end skips Builder cleanup", "autowrap off unbinds a file card",
-                  "limit has no upper bound"]
+                  "limit has no upper bound", "queue drops typed prompts", "queue drops mid-turn messages",
+                  "queue captures peers", "queue not restored after compaction", "queue captures codex exec",
+                  "queue captures a nested claude -p"]
         for (marker, replacement), label in zip(plants, labels):
             if marker not in text:
                 print(f"revert-test: plant anchor not found: {marker.strip()[:60]}", file=sys.stderr)

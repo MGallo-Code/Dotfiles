@@ -73,6 +73,13 @@
 - **No stale pointers.** A check fails when a live file (not history: decision logs, old plans, handoffs) still names `~/Documents/EA`, `Wiki`, `Notes`, `GalloGrid` or `agent-skills`.
 - **GalloGrid's services.** The hub web app runs from a deployed copy (`/opt/ea-hub`). courier, calendar and nexus run straight from the checkout, which is why the move needs their re-bootstrap. Giving them deployed copies is a follow-up for Learning.
 
+## TCC (decided 2026-10-01)
+
+- **The trade-off.** `~/Documents` is TCC-guarded and `~/Workspace` is not. On the mini and the laptop, a process running as Michael without a Documents grant can read and write the repos once they move.
+- **Decision.** Michael: "I want the hub itself to access them" (the health and legal files). So they stay inside EA, kept out of git (`profile/health`, `profile/legal`, `business/keepthecall`), and move with it. The hub reads them without per-binary Documents grants, which drift.
+- **Accepted.** Other same-user programs can read them, as they can read the nexus store today.
+- **Follow-up (Learning).** The hub's services (courier, calendar, nexus, the agent) run from root-owned deployed copies like `/opt/ea-hub`, so nothing running as Michael can change code a full-disk-access service executes. It does not block the move.
+
 ## Open
 
 - KeepTheCall: the repo becomes `~/Projects/keepthecall` (today `recoup-calls`), and its business papers go to `EA/business/keepthecall/`, kept out of git.

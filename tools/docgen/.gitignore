@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.playwright-browsers/
+output/*
+!output/.gitkeep
+
+# --- Secrets / credentials (INV-1): never track live key material ---
+.env
+*.env
+.env.*
+*.token
+*.token.json
+token.json
+credentials.json
+client_secret*.json
+*.pem
+*.key
+id_rsa
+id_ed25519

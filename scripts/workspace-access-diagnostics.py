@@ -255,9 +255,11 @@ def path_identity(path: Path, home: Path) -> dict[str, Any]:
     known = {
         os.path.abspath(str(home)): "HOME",
         os.path.abspath(str(home / ".dotfiles")): "dotfiles",
-        os.path.abspath(str(home / "Documents/EA")): "EA",
-        os.path.abspath(str(home / "Documents/Wiki")): "Wiki",
-        os.path.abspath(str(home / "Documents/SBIC")): "SBIC",
+        os.path.abspath(str(home / "Workspace" / "EA")): "EA",
+        os.path.abspath(str(home / "Workspace" / "Wiki")): "Wiki",
+        # ADR-0007: the old homes, while a move is still pending on this machine.
+        os.path.abspath(str(home / "Documents" / "EA")): "EA",
+        os.path.abspath(str(home / "Documents" / "Wiki")): "Wiki",
     }
     return {
         "label": known.get(absolute, "workspace"),

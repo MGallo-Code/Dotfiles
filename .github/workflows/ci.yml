@@ -115,6 +115,14 @@ jobs:
         run: bash scripts/ci/check-sync-commit.sh
       - name: check-sync-commit revert-test
         run: bash scripts/ci/check-sync-commit.sh --revert-test
+      - name: check-workspace-migration (INV-21, ADR-0007)
+        run: bash scripts/ci/check-workspace-migration.sh
+      - name: check-workspace-migration revert-test
+        run: bash scripts/ci/check-workspace-migration.sh --revert-test
+      - name: check-no-stale-paths (INV-22)
+        run: python3 scripts/ci/check-no-stale-paths.py
+      - name: check-no-stale-paths revert-test
+        run: python3 scripts/ci/check-no-stale-paths.py --revert-test
 
   agent-config-windows:
     # ADR-0006 cutover, PowerShell half: Update-MovedLinks repoints symlinks and junctions, live
@@ -134,6 +142,15 @@ jobs:
       - name: check-moved-links Windows PowerShell revert-test
         shell: powershell
         run: ./scripts/ci/check-moved-links.ps1 -RevertTest
+      - name: check-workspace-migration PowerShell
+        shell: pwsh
+        run: ./scripts/ci/check-workspace-migration.ps1
+      - name: check-workspace-migration PowerShell revert-test
+        shell: pwsh
+        run: ./scripts/ci/check-workspace-migration.ps1 -RevertTest
+      - name: check-workspace-migration Windows PowerShell
+        shell: powershell
+        run: ./scripts/ci/check-workspace-migration.ps1
       - name: check-sync-commit PowerShell
         shell: pwsh
         run: ./scripts/ci/check-sync-commit.ps1
@@ -310,3 +327,13 @@ jobs:
       - name: docgen (pytest, fast)
         working-directory: tools/docgen
         run: uv run --frozen python -m pytest -q
+
+  workspace-migration-macos:
+    # INV-21 on macOS: the cwd probe there is lsof (no /proc) and iCloud-only files block a move.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-workspace-migration (macOS)
+        run: bash scripts/ci/check-workspace-migration.sh
+      - name: check-workspace-migration revert-test (macOS)
+        run: bash scripts/ci/check-workspace-migration.sh --revert-test

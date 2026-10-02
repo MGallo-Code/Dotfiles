@@ -22,7 +22,7 @@ run_fixtures() {
         source "$ROOT/manifest.sh"
         [ "$REVERT" = 1 ] && MOVED_LINK_SOURCES=()
 
-        OLD="$HOME/Documents/EA/claude-config"; NEW="$HOME/.dotfiles/claude-config"
+        OLD="$HOME/Documents/EA/claude-config"; NEW="$HOME/.dotfiles/claude-config"   # stale-path-ok (ADR-0006 fixture)
         for d in global-rules global-hooks global-commands global-skills/calendar; do
             mkdir -p "$OLD/$d" "$NEW/$d"
         done

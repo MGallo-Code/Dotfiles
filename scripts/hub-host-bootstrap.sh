@@ -66,7 +66,7 @@ DRY="${HUB_BOOTSTRAP_DRY_RUN:-}"
 [ -n "$DRY" ] && PLIST="$DRY"
 
 # ProgramArguments: $HOME-expand the run-cmd (a controlled substitution, not eval) then word-split.
-# Hub paths under ~/Documents/EA have no spaces, matching the rest of this repo's assumptions.
+# Hub paths (the code root under ~/Workspace) have no spaces, matching the rest of this repo's assumptions.
 RUN_EXPANDED="${RUN_CMD//\$HOME/$HOME}"
 IFS=' ' read -ra PROG_ARGS <<< "$RUN_EXPANDED"
 if [ "${#PROG_ARGS[@]}" -eq 0 ]; then err "empty run-cmd for hub '$NAME'"; exit 1; fi

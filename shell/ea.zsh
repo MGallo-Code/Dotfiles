@@ -6,11 +6,17 @@
 typeset -g _MICHAEL_WORKSPACE_DOTFILES="${${(%):-%N}:A:h:h}"
 typeset -g _MICHAEL_WORKSPACE_DIAGNOSTIC="$_MICHAEL_WORKSPACE_DOTFILES/scripts/workspace-access-diagnostics.py"
 
+# Where a synced repo lives (ADR-0007): ~/Workspace/<name>, or its old ~/Documents/<name> home only
+# while that move is still pending (the MCP host until its window). Both are real directories, never
+# links, so the redirect rule below holds either way.
+_ws_repo_dir() {
+    if [[ -e "$HOME/Workspace/$1" ]]; then print -r -- "$HOME/Workspace/$1"
+    elif [[ -e "$HOME/Documents/$1/.git" ]]; then print -r -- "$HOME/Documents/$1"
+    else print -r -- "$HOME/Workspace/$1"; fi
+}
+
 _ws_is_trusted_root() {
-    case "$1" in
-        "$HOME/.dotfiles"|"$HOME/Documents/EA"|"$HOME/Documents/Wiki") return 0 ;;
-        *) return 1 ;;
-    esac
+    [[ "$1" == "$HOME/.dotfiles" || "$1" == "$(_ws_repo_dir EA)" || "$1" == "$(_ws_repo_dir Wiki)" ]]
 }
 
 _ws_trusted_root_is_redirected() {
@@ -18,6 +24,7 @@ _ws_trusted_root_is_redirected() {
     [[ -L "$HOME" ]] && return 0
     case "$dir" in
         "$HOME/.dotfiles") [[ -L "$dir" ]] ;;
+        "$HOME/Workspace/"*) [[ -L "$HOME/Workspace" || -L "$dir" ]] ;;
         "$HOME/Documents/"*) [[ -L "$HOME/Documents" || -L "$dir" ]] ;;
         *) return 0 ;;
     esac
@@ -115,8 +122,8 @@ _ws_recover_home() {
 # ── Workspace launchers ──────────────────────────────────────────────
 # cd into a workspace root and open an agent. An optional FIRST flag picks the CLI:
 #   --claude (default) | --codex | --gemini ; any remaining args pass through.
-#   e.g.  ea            -> Claude in ~/Documents/EA
-#         wiki --codex  -> Codex in ~/Documents/Wiki
+#   e.g.  ea            -> Claude in ~/Workspace/EA
+#         wiki --codex  -> Codex in ~/Workspace/Wiki
 _ws_launch() {
     local dir="$1"; shift
     local cli="claude"
@@ -158,19 +165,19 @@ _ws_launch() {
     return "$agent_status"
 }
 
-ea()   { _ws_launch ~/Documents/EA "$@"; }        # active personal ops + MCP tools
-wiki() { _ws_launch ~/Documents/Wiki "$@"; }      # LLM-curated research
+ea()   { _ws_launch "$(_ws_repo_dir EA)" "$@"; }     # active personal ops + MCP tools
+wiki() { _ws_launch "$(_ws_repo_dir Wiki)" "$@"; }   # LLM-curated research
 
 # Update the Michael Workspace SYSTEM: open an agent in the dotfiles control plane (manifest.sh
-# is the map of every managed root + its role). For Claude (default) we add the EA + agent-skills
-# source roots it distributes; Codex/Gemini already see the whole workspace via the
+# is the map of every managed root + its role). For Claude (default) we add the EA source root
+# (agent-skills is inside dotfiles); Codex/Gemini already see the whole workspace via the
 # michael_workspace profile. Same --claude/--codex/--gemini flag.
 sysupdate() {
     case "${1:-}" in
         --codex)  shift; _ws_launch "$HOME/.dotfiles" --codex "$@" ;;
         --gemini) shift; _ws_launch "$HOME/.dotfiles" --gemini "$@" ;;
-        --claude) shift; _ws_launch "$HOME/.dotfiles" --claude --add-dir "$HOME/Documents/EA" "$@" ;;
-        *)               _ws_launch "$HOME/.dotfiles" --claude --add-dir "$HOME/Documents/EA" "$@" ;;
+        --claude) shift; _ws_launch "$HOME/.dotfiles" --claude --add-dir "$(_ws_repo_dir EA)" "$@" ;;
+        *)               _ws_launch "$HOME/.dotfiles" --claude --add-dir "$(_ws_repo_dir EA)" "$@" ;;
     esac
 }
 
@@ -179,10 +186,7 @@ sysupdate() {
 # before recovery. Descendants are excluded so this maintenance hook never enters project trees.
 _workspace_prompt_access_guard() {
     [[ "${_MICHAEL_WORKSPACE_PROMPT_GUARD_ACTIVE:-0}" == 1 ]] && return 0
-    case "$PWD" in
-        "$HOME/.dotfiles"|"$HOME/Documents/EA"|"$HOME/Documents/Wiki") ;;
-        *) return 0 ;;
-    esac
+    _ws_is_trusted_root "$PWD" || return 0
     typeset -g _MICHAEL_WORKSPACE_PROMPT_GUARD_ACTIVE=1
     if ! _ws_probe "$PWD" enumerate; then
         _ws_capture "$PWD" prompt shell unverified || true
@@ -228,14 +232,15 @@ compdef _ws_agent_completion ea wiki sysupdate
 
 # Drop into practice workspace with venv active
 practice() {
-    mkdir -p ~/Documents/EA/exercises/workspace
-    if [ ! -d ~/Documents/EA/exercises/.venv ]; then
+    local ex="$(_ws_repo_dir EA)/exercises"
+    mkdir -p "$ex/workspace"
+    if [ ! -d "$ex/.venv" ]; then
         echo "Setting up practice environment..."
-        python3 -m venv ~/Documents/EA/exercises/.venv
-        ~/Documents/EA/exercises/.venv/bin/pip install pytest
+        python3 -m venv "$ex/.venv"
+        "$ex/.venv/bin/pip" install pytest
         echo "Done!"
     fi
-    source ~/Documents/EA/exercises/.venv/bin/activate
-    cd ~/Documents/EA/exercises/workspace
+    source "$ex/.venv/bin/activate"
+    cd "$ex/workspace"
     nvim .
 }

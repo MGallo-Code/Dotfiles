@@ -8,12 +8,24 @@ $script:MichaelWorkspaceDiagnostic = Join-Path $script:MichaelWorkspaceDotfiles 
 $script:MichaelWorkspacePython = Get-Command python3 -ErrorAction SilentlyContinue
 if (-not $script:MichaelWorkspacePython) { $script:MichaelWorkspacePython = Get-Command python -ErrorAction SilentlyContinue }
 
+# Where a synced repo lives (ADR-0007; mirror of _ws_repo_dir in ea.zsh): ~\Workspace\<name>, or its
+# old ~\Documents\<name> home only while that move is still pending. Both are real directories, so
+# the redirect rule below holds either way.
+function Get-WsRepoDir {
+    param([string]$Name)
+    $new = Join-Path (Join-Path $HOME "Workspace") $Name
+    $old = Join-Path (Join-Path $HOME "Documents") $Name
+    if (Test-Path -LiteralPath $new) { return $new }
+    if (Test-Path -LiteralPath (Join-Path $old ".git")) { return $old }
+    return $new
+}
+
 function Test-WsTrustedRoot {
     param([string]$Dir)
     $trusted = @(
         (Join-Path $HOME ".dotfiles"),
-        (Join-Path $HOME "Documents/EA"),
-        (Join-Path $HOME "Documents/Wiki")
+        (Get-WsRepoDir "EA"),
+        (Get-WsRepoDir "Wiki")
     )
     return $trusted -contains $Dir
 }
@@ -21,8 +33,8 @@ function Test-WsTrustedRoot {
 function Test-WsRootRedirected {
     param([string]$Dir)
     $paths = @($HOME, $Dir)
-    if ($Dir.StartsWith((Join-Path $HOME "Documents"), [System.StringComparison]::OrdinalIgnoreCase)) {
-        $paths = @($HOME, (Join-Path $HOME "Documents"), $Dir)
+    foreach ($parent in @((Join-Path $HOME "Workspace"), (Join-Path $HOME "Documents"))) {
+        if ($Dir.StartsWith($parent, [System.StringComparison]::OrdinalIgnoreCase)) { $paths = @($HOME, $parent, $Dir) }
     }
     foreach ($path in $paths) {
         if (Test-Path -LiteralPath $path) {
@@ -208,18 +220,18 @@ function Invoke-WsLaunch {
     $global:LASTEXITCODE = $agentStatus
 }
 
-function ea   { Invoke-WsLaunch "$HOME\Documents\EA" @args }        # active personal ops + MCP tools
-function wiki { Invoke-WsLaunch "$HOME\Documents\Wiki" @args }      # LLM-curated research
+function ea   { Invoke-WsLaunch (Get-WsRepoDir "EA") @args }        # active personal ops + MCP tools
+function wiki { Invoke-WsLaunch (Get-WsRepoDir "Wiki") @args }      # LLM-curated research
 
 # Update the Michael Workspace SYSTEM: open an agent in the dotfiles control plane (manifest.sh
-# = root/role map). Claude (default) gets the EA + agent-skills source roots added; Codex/Gemini
+# = root/role map). Claude (default) gets the EA source root added (agent-skills is in dotfiles); Codex/Gemini
 # already see the whole workspace via the michael_workspace profile. Same --claude/--codex/--gemini flag.
 function sysupdate {
     $rest = $args
     if ($rest.Count -ge 1 -and $rest[0] -eq "--codex")  { Invoke-WsLaunch "$HOME\.dotfiles" --codex @($rest | Select-Object -Skip 1); return }
     if ($rest.Count -ge 1 -and $rest[0] -eq "--gemini") { Invoke-WsLaunch "$HOME\.dotfiles" --gemini @($rest | Select-Object -Skip 1); return }
     if ($rest.Count -ge 1 -and $rest[0] -eq "--claude") { $rest = @($rest | Select-Object -Skip 1) }
-    Invoke-WsLaunch "$HOME\.dotfiles" --claude --add-dir "$HOME\Documents\EA" @rest
+    Invoke-WsLaunch "$HOME\.dotfiles" --claude --add-dir (Get-WsRepoDir "EA") @rest
 }
 
 function wsdoctor {
@@ -243,8 +255,8 @@ $WsAgentCompleter = {
 Register-ArgumentCompleter -CommandName ea, wiki, sysupdate -ScriptBlock $WsAgentCompleter
 
 function practice {
-    $WorkspaceDir = "$HOME\Documents\EA\exercises\workspace"
-    $VenvDir = "$HOME\Documents\EA\exercises\.venv"
+    $WorkspaceDir = Join-Path (Get-WsRepoDir "EA") "exercises\workspace"
+    $VenvDir = Join-Path (Get-WsRepoDir "EA") "exercises\.venv"
 
     New-Item -ItemType Directory -Path $WorkspaceDir -Force | Out-Null
 

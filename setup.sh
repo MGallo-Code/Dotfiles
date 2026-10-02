@@ -149,12 +149,19 @@ general["defaultApprovalMode"] = "auto_edit"
 # agent-skills) plus the control-plane roots. Assigned (NOT appended) so a re-run PRUNES any stale
 # entry - this list is authoritative for the managed setting.
 gemini_workspace_roots = [
-    os.path.expanduser("~/Documents/EA"),
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
-# The code repo joins once it exists (GalloGrid split); a missing dir is never listed.
-gemini_workspace_roots += [p for p in [os.path.expanduser("~/Documents/GalloGrid")] if os.path.isdir(p)]
+# EA everywhere, GalloGrid on the host: wherever each is now (ADR-0007: ~/Workspace, or the old
+# ~/Documents home while a move is pending). A missing dir is never listed.
+def _ws_home(name):
+    for base in ("Workspace", "Documents"):
+        p = os.path.join(os.path.expanduser("~"), base, name)
+        if os.path.isdir(p):
+            return p
+    return None
+gemini_workspace_roots = [p for p in [_ws_home("EA")] if p] + gemini_workspace_roots
+gemini_workspace_roots += [p for p in [_ws_home("GalloGrid")] if p]
 context = data.setdefault("context", {})
 if not isinstance(context, dict):
     context = {}
@@ -352,6 +359,17 @@ for dir in "${DIRECTORIES[@]}"; do
         ok "Created $dir"
     fi
 done
+
+# ── Move repos out of ~/Documents (ADR-0007, INV-21) ─────────────────
+# Before cloning, so an existing old clone is moved instead of a second copy being cloned next to it.
+# A move still pending (the host before its window) keeps the old paths for this run.
+WORKSPACE_MOVE_FAIL=0
+if [[ "$MODE" != "--minimal" ]]; then
+    step "Workspace layout"
+    migrate_to_workspace || WORKSPACE_MOVE_FAIL=1
+fi
+is_mcp_host && REPOS+=("${HOST_REPOS[@]}")
+apply_pending_workspace_paths
 
 # ── Clone Repos ──────────────────────────────────────────────────────
 if [[ "$MODE" != "--minimal" ]]; then
@@ -697,7 +715,7 @@ fi
 if [[ "$MODE" == "--full" ]]; then
     step "Practice environment"
 
-    EXERCISE_DIR="$(expand "~/Documents/EA/exercises")"
+    EXERCISE_DIR="$(workspace_home EA)/exercises"
     VENV_DIR="$EXERCISE_DIR/.venv"
     WORKSPACE_DIR="$EXERCISE_DIR/workspace"
 
@@ -719,6 +737,11 @@ if [[ "$MODE" == "--full" ]]; then
     else
         warn "EA not cloned yet - practice environment skipped"
     fi
+fi
+
+if [ "${WORKSPACE_MOVE_FAIL:-0}" = 1 ]; then
+    warn "setup: a workspace move was blocked or a clone could not retire (see 'workspace:' above) - fix it and re-run"
+    exit 1
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

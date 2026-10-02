@@ -28,7 +28,7 @@
 #     codex exec -s read-only "Reply with exactly: ok"
 #
 # On PASS: bump CODEX_PIN in manifest.sh + $CodexPin in manifest.ps1, re-stamp
-# ~/Documents/agent-skills/coding-mastermind/MANIFEST.md, then on every machine:
+# ~/.dotfiles/agent-skills/coding-mastermind/MANIFEST.md, then on every machine:
 #   npm install -g @openai/codex@<pin>
 
 set -euo pipefail

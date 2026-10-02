@@ -1,12 +1,11 @@
 # check-code-root.ps1 - GalloGrid split, PowerShell half (bash half: check-code-root.sh).
 #
-# Hermetic: dot-sources the real manifest.ps1, then points $CodeRootNew/$CodeRootOld and
+# Hermetic: dot-sources the real manifest.ps1, then points $WorkspaceDir/$LegacyRepoHome and
 # $RetiredProjectMcpFiles at a throwaway tree ($HOME is read-only in PowerShell). Asserts that
-# Resolve-CodeRoot picks GalloGrid only when the machine's switch file says so, or when EA no
-# longer holds the code (a clone alone never switches), warning when neither holds service code,
-# and that Remove-RetiredProjectMcp removes EA's generated docgen-only .mcp.json and keeps any
-# other. Runs under pwsh 7 and Windows PowerShell 5.1 in CI.
-#   -RevertTest   makes Resolve-CodeRoot switch as soon as GalloGrid is cloned; the fixtures must then FAIL.
+# Resolve-CodeRoot is wherever GalloGrid is (ADR-0007: ~\Workspace, or the old home while a move is
+# pending), and that Remove-RetiredProjectMcp removes EA's generated docgen-only .mcp.json and keeps
+# any other. Runs under pwsh 7 and Windows PowerShell 5.1 in CI.
+#   -RevertTest   makes Resolve-CodeRoot ignore a pending old home; the fixtures must then FAIL.
 param([switch]$RevertTest)
 $ErrorActionPreference = 'Stop'
 
@@ -23,29 +22,20 @@ function Invoke-Fixtures {
     try {
         . (Join-Path $Root 'manifest.ps1')
         # Override AFTER dot-sourcing, in this scope: the functions read them from their caller.
-        $CodeRootNew = Join-Path $T 'GalloGrid'
-        $CodeRootOld = Join-Path $T 'EA'
-        $RetiredProjectMcpFiles = @(Join-Path $CodeRootOld '.mcp.json')
-        $CodeRootSwitch = Join-Path $T 'config\dotfiles\code-root'
-        if ($RevertTest) { function Resolve-CodeRoot { if (Test-Path (Join-Path $CodeRootNew '.git')) { return $CodeRootNew } return $CodeRootOld } }
+        $WorkspaceDir = Join-Path $T 'Workspace'
+        $LegacyRepoHome = Join-Path $T 'Documents'
+        $RetiredProjectMcpFiles = @(Join-Path $WorkspaceDir 'EA\.mcp.json')
+        if ($RevertTest) { function Resolve-CodeRoot { return (Join-Path $WorkspaceDir 'GalloGrid') } }
 
-        New-Item -ItemType Directory -Path (Join-Path $CodeRootOld 'nexus') -Force | Out-Null
-        Expect "no GalloGrid: EA" ((Resolve-CodeRoot) -eq $CodeRootOld)
-        New-Item -ItemType Directory -Path (Join-Path $CodeRootNew 'nexus'), (Join-Path $CodeRootNew '.git') -Force | Out-Null
-        Expect "GalloGrid cloned, no switch: still EA" ((Resolve-CodeRoot) -eq $CodeRootOld)
-        New-Item -ItemType Directory -Path (Split-Path $CodeRootSwitch -Parent) -Force | Out-Null
-        Set-Content -Path $CodeRootSwitch -Value 'GalloGrid'
-        Expect "switch says GalloGrid: GalloGrid" ((Resolve-CodeRoot) -eq $CodeRootNew)
-        Remove-Item -Path $CodeRootSwitch -Force
-        Remove-Item -Path (Join-Path $CodeRootOld 'nexus') -Recurse -Force
-        Expect "EA without code, GalloGrid cloned: GalloGrid" ((Resolve-CodeRoot) -eq $CodeRootNew)
-        Remove-Item -Path $CodeRootNew -Recurse -Force
-        $script:Log.Clear()
-        $r = @(Resolve-CodeRoot)
-        Expect "no code anywhere: one path back" (($r.Count -eq 1) -and ($r[0] -eq $CodeRootOld))
-        Expect "no code anywhere: warned" ([bool]($script:Log | Where-Object { $_ -like '*no service code*' }))
+        $new = Join-Path $WorkspaceDir 'GalloGrid'; $pending = Join-Path $LegacyRepoHome 'GalloGrid'
+        Expect "no GalloGrid anywhere (a client): the Workspace path" ((Resolve-CodeRoot) -eq $new)
+        New-Item -ItemType Directory -Path (Join-Path $pending '.git') -Force | Out-Null
+        Expect "move pending: the old home" ((Resolve-CodeRoot) -eq $pending)
+        New-Item -ItemType Directory -Path (Join-Path $new '.git') -Force | Out-Null
+        Expect "moved: the Workspace home" ((Resolve-CodeRoot) -eq $new)
 
-        $mcp = Join-Path $CodeRootOld '.mcp.json'
+        $mcp = Join-Path $WorkspaceDir 'EA\.mcp.json'
+        New-Item -ItemType Directory -Path (Split-Path $mcp -Parent) -Force | Out-Null
         Set-Content -Path $mcp -Value '{"mcpServers":{"docgen":{"command":"uv","args":["run","--project","x","python","-m","docgen.server"]}}}'
         Remove-RetiredProjectMcp
         Expect "generated docgen-only .mcp.json removed" (-not (Test-Path $mcp))
@@ -83,8 +73,8 @@ function Invoke-Fixtures {
 Write-Host "check-code-root (ps1): fixtures$(if ($RevertTest) { ' (revert test)' })"
 Invoke-Fixtures
 if ($RevertTest) {
-    if ($script:Fail) { Write-Host "revert-test ok: a switch-on-clone resolver fails the fixtures"; exit 0 }
-    Write-Host "revert-test FAILED: a switch-on-clone resolver still passes"; exit 1
+    if ($script:Fail) { Write-Host "revert-test ok: a resolver blind to the pending old home fails the fixtures"; exit 0 }
+    Write-Host "revert-test FAILED: a resolver blind to the pending old home still passes"; exit 1
 }
 if ($script:Fail) { Write-Host "check-code-root (ps1): FAILED"; exit 1 }
 Write-Host "check-code-root (ps1) OK"

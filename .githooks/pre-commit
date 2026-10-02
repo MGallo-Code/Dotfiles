@@ -80,6 +80,16 @@ bash "$ROOT/scripts/ci/check-code-root.sh" >/dev/null || {
 bash "$ROOT/scripts/ci/check-ui-nudge.sh" >/dev/null || {
   echo "pre-commit: check-ui-nudge failed - run: bash scripts/ci/check-ui-nudge.sh" >&2; exit 1; }
 
+# INV-22: no live file names a repo's pre-ADR-0007 ~/Documents home.
+"$PY" "$ROOT/scripts/ci/check-no-stale-paths.py" >/dev/null || {
+  echo "pre-commit: check-no-stale-paths failed - run: python3 scripts/ci/check-no-stale-paths.py" >&2; exit 1; }
+
+# INV-21: the move out of ~/Documents. About 13s, so only when its surface is staged.
+if git -C "$ROOT" diff --cached --name-only | grep -qE '^(manifest\.sh|sync\.sh|setup\.sh|scripts/lib/workspace-migration\.sh|scripts/lib/ws_paths\.py|scripts/ci/check-workspace-migration\.sh)$'; then
+  bash "$ROOT/scripts/ci/check-workspace-migration.sh" >/dev/null || {
+    echo "pre-commit: check-workspace-migration failed - run: bash scripts/ci/check-workspace-migration.sh" >&2; exit 1; }
+fi
+
 # INV-20: sync's dirty-repo commit path keeps unrelated stashes and never commits an error message.
 bash "$ROOT/scripts/ci/check-sync-commit.sh" >/dev/null || {
   echo "pre-commit: check-sync-commit failed - run: bash scripts/ci/check-sync-commit.sh" >&2; exit 1; }

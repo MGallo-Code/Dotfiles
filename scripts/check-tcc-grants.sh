@@ -16,7 +16,7 @@
 # TCC attributes a file access to the RESPONSIBLE process. From a terminal or an agent session the
 # responsible process is Terminal/Ghostty/claude-code, all of which hold their own Full-Disk or
 # Documents grant, and that grant covers every child. MEASURED 2026-08-14: a python binary copied to
-# an ungranted path read ~/Documents/EA/CLAUDE.md WITHOUT ERROR from an interactive shell. So an
+# an ungranted path read EA's CLAUDE.md (then in ~/Documents) WITHOUT ERROR from an interactive shell. So an
 # interactive run of this check CANNOT see the drift and would report a healthy machine while every
 # launchd job was already dead. Only a run whose PPID is 1 reproduces the services' attribution.
 # Hence: the verdict comes from the LaunchAgent; `--verify-via-launchd` is the by-hand entry point.
@@ -46,7 +46,10 @@
 # Env overrides:  TCC_CHECK_TARGET, TCC_CHECK_AGENT_DIR, TCC_CHECK_STATE_DIR
 set -euo pipefail
 
-TARGET="${TCC_CHECK_TARGET:-$HOME/Documents/EA/CLAUDE.md}"       # the file every probe tries to open
+# The file every probe tries to open: EA's CLAUDE.md wherever EA lives (ADR-0007: ~/Workspace, or the
+# old ~/Documents home while its move is pending). Outside ~/Documents, TCC no longer guards it.
+EA_HOME="$HOME/Workspace/EA"; [ -e "$EA_HOME" ] || EA_HOME="$HOME/Documents/$(printf EA)"
+TARGET="${TCC_CHECK_TARGET:-$EA_HOME/CLAUDE.md}"
 AGENT_DIR="${TCC_CHECK_AGENT_DIR:-$HOME/Library/LaunchAgents}"
 STATE_DIR="${TCC_CHECK_STATE_DIR:-$HOME/.local/state/tcc-drift}"
 STATUS_FILE="$STATE_DIR/status"

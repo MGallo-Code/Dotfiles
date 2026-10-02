@@ -94,8 +94,8 @@ matcher = "^Bash`$"
     # content after sync.
     $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
     $geminiWorkspaceRoots = @(
-        "$HOME\Documents\EA",
-        "$HOME\Documents\GalloGrid",
+        (Get-WorkspaceHome "EA"),
+        (Get-WorkspaceHome "GalloGrid"),
         "$HOME\.dotfiles",
         $nvimRoot
     ) | Where-Object { Test-Path $_ } | ForEach-Object { (Resolve-Path $_).Path }
@@ -460,6 +460,13 @@ if ($MyInvocation.InvocationName -eq '.') { return }
 if (-not (Acquire-GitSyncLock "manual-sync")) { exit 0 }
 try {
 
+# ── Move repos out of ~\Documents (ADR-0007, INV-21) ────────────────
+# First, so every later step sees the repos where they now are. A blocked move moves nothing and
+# fails the run at the end; a pending move keeps the old paths for this run. Mirror of sync.sh.
+Write-Host "`n==> Workspace layout" -ForegroundColor Green
+$WorkspaceMoveFail = -not (Move-ToWorkspace)
+Set-PendingWorkspacePaths
+
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
 # The host's live store by its real path (INV-18); a client has none, so this skips there.
 $checkpointDb = $NexusHostStore
@@ -818,6 +825,10 @@ Write-Host ""
 # (parity with sync.sh). Sync still completed its other work first.
 if ($SkillTargetFail) {
     Write-Err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+}
+if ($WorkspaceMoveFail) {
+    Write-Err "sync: a workspace move was blocked or a clone could not retire (see 'workspace:' above) - fix it and re-run"
     exit 1
 }
 }

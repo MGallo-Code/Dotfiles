@@ -387,7 +387,7 @@ def check_zsh_behavior(root: Path, findings: list[str]) -> None:
         return
     with tempfile.TemporaryDirectory(prefix="workspace-access-zsh-") as raw_home:
         home = Path(raw_home)
-        for relative in ("bin", "start", "Documents/EA", "Documents/Wiki", "Documents/SBIC", ".dotfiles"):
+        for relative in ("bin", "start", "Workspace/EA", "Workspace/Wiki", "Documents", ".dotfiles"):
             (home / relative).mkdir(parents=True, exist_ok=True)
         for cli in ("claude", "codex", "gemini"):
             write_stub(home / "bin" / cli)
@@ -407,7 +407,7 @@ def check_zsh_behavior(root: Path, findings: list[str]) -> None:
             findings.append("Zsh launcher emitted a source-time error")
         for expected in (
             "cli=claude",
-            f"cwd={home / 'Documents/EA'}",
+            f"cwd={home / 'Workspace/EA'}",
             "arg=--permission-mode",
             "arg=bypassPermissions",
             "arg=marker",
@@ -427,7 +427,7 @@ def check_zsh_behavior(root: Path, findings: list[str]) -> None:
             findings.append("Zsh Codex launcher did not restore parent cwd")
         for expected in (
             "cli=codex",
-            f"cwd={home / 'Documents/Wiki'}",
+            f"cwd={home / 'Workspace/Wiki'}",
             "arg=--sandbox",
             "arg=danger-full-access",
             "arg=--ask-for-approval",
@@ -467,8 +467,8 @@ def check_zsh_behavior(root: Path, findings: list[str]) -> None:
             findings.append("Zsh launcher allowed Codex's attached short cwd override")
 
         # A fixed trusted name redirected through a symlink must not inherit autonomous policy.
-        trusted_ea = home / "Documents/EA"
-        trusted_ea_backing = home / "Documents/EA-backing"
+        trusted_ea = home / "Workspace/EA"
+        trusted_ea_backing = home / "Workspace/EA-backing"
         trusted_ea.rename(trusted_ea_backing)
         trusted_ea.symlink_to(untrusted, target_is_directory=True)
         redirected = run_zsh(
@@ -483,7 +483,7 @@ def check_zsh_behavior(root: Path, findings: list[str]) -> None:
         trusted_ea_backing.rename(trusted_ea)
 
         # Remove a named root to exercise fail-loud preflight without invoking the agent.
-        shutil.rmtree(home / "Documents/EA")
+        shutil.rmtree(home / "Workspace/EA")
         missing = run_zsh(
             root,
             home,
@@ -493,7 +493,25 @@ def check_zsh_behavior(root: Path, findings: list[str]) -> None:
         if "RESULT rc=74" not in missing.stdout or trace.exists():
             findings.append("Zsh launcher did not fail loudly before launching in a missing trusted root")
 
-        (home / "Documents/EA").mkdir()
+        # ADR-0007: while a move is pending (old home is a repo, the new one absent) the launcher uses
+        # the real old folder; a symlink there is refused like any redirected root.
+        shutil.rmtree(home / "Workspace/Wiki")
+        (home / "Documents" / "Wiki" / ".git").mkdir(parents=True)
+        trace.unlink(missing_ok=True)
+        pending = run_zsh(root, home, trace, 'wiki --codex marker\nprint -r -- "RESULT rc=$? pwd=$PWD"\n')
+        if "RESULT rc=0" not in pending.stdout or f"cwd={home / 'Documents/Wiki'}" not in trace_values(trace):  # stale-path-ok
+            findings.append("Zsh launcher did not use the old home while its move is pending")
+        shutil.rmtree(home / "Documents" / "Wiki")
+        (home / "Documents" / "Wiki").symlink_to(untrusted, target_is_directory=True)
+        (untrusted / ".git").mkdir(exist_ok=True)
+        trace.unlink(missing_ok=True)
+        pending_link = run_zsh(root, home, trace, 'wiki --codex\nprint -r -- "RESULT rc=$? pwd=$PWD"\n')
+        if "RESULT rc=64" not in pending_link.stdout or trace.exists():
+            findings.append("Zsh launcher did not refuse a redirected old home")
+        (home / "Documents" / "Wiki").unlink()
+        (home / "Workspace/Wiki").mkdir()
+
+        (home / "Workspace/EA").mkdir()
         trace.unlink(missing_ok=True)
         recovery = run_zsh(
             root,

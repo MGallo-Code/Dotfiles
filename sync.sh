@@ -101,12 +101,19 @@ general["defaultApprovalMode"] = "auto_edit"
 # agent-state dirs; that caused reviews to roam caches, downloads, and stale generated
 # content after sync.
 gemini_workspace_roots = [
-    os.path.expanduser("~/Documents/EA"),
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
-# The code repo joins once it exists (GalloGrid split); a missing dir is never listed.
-gemini_workspace_roots += [p for p in [os.path.expanduser("~/Documents/GalloGrid")] if os.path.isdir(p)]
+# EA everywhere, GalloGrid on the host: wherever each is now (ADR-0007: ~/Workspace, or the old
+# ~/Documents home while a move is pending). A missing dir is never listed.
+def _ws_home(name):
+    for base in ("Workspace", "Documents"):
+        p = os.path.join(os.path.expanduser("~"), base, name)
+        if os.path.isdir(p):
+            return p
+    return None
+gemini_workspace_roots = [p for p in [_ws_home("EA")] if p] + gemini_workspace_roots
+gemini_workspace_roots += [p for p in [_ws_home("GalloGrid")] if p]
 context = data.setdefault("context", {})
 if not isinstance(context, dict):
     context = {}
@@ -420,6 +427,14 @@ if [ "${BASH_SOURCE[0]}" != "${0}" ]; then return 0 2>/dev/null || exit 0; fi
 # shellcheck source=scripts/git-sync-lock.sh
 source "$DOTFILES_DIR/scripts/git-sync-lock.sh"
 git_sync_lock_acquire "manual-sync" || exit 0
+
+# ── Move repos out of ~/Documents (ADR-0007, INV-21) ─────────────────
+# First, so every later step sees the repos where they now are. A blocked move moves nothing and
+# fails the run at the end; a move still pending (the host before its window) keeps the old paths.
+echo -e "\n${GREEN}==>${NC} Workspace layout"
+migrate_to_workspace || WORKSPACE_MOVE_FAIL=1
+is_mcp_host && REPOS+=("${HOST_REPOS[@]}")
+apply_pending_workspace_paths
 
 # ── Checkpoint Nexus DB (flush WAL into main file before syncing) ────
 # The host's live store by its real path (INV-18). Not named NEXUS_DB: that is nexus's own env var.
@@ -763,6 +778,11 @@ fi
 # A host hub bootstrap failure (nexus is fatal) makes sync exit non-zero so the failure is not silent -
 # the host re-bootstrap is an operational gate, not just an advisory warn (cross-check). Sync still
 # completed its other work first.
+if [ "${WORKSPACE_MOVE_FAIL:-0}" = 1 ]; then
+    err "sync: a workspace move was blocked or a clone could not retire (see 'workspace:' above) - fix it and re-run"
+    exit 1
+fi
+
 if [ "${HUB_BOOTSTRAP_FAIL:-0}" = 1 ]; then
     err "sync: host hub bootstrap FAILED (nexus mis-served over the tunnel - see above) - investigate before relying on it"
     exit 1

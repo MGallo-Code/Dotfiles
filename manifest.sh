@@ -5,22 +5,52 @@
 # Dotfiles is the transport layer; every root it manages has exactly one role:
 #   active-repo      synced by sync (REPOS): pull/push/commit each run
 #   archive-repo     legacy, NOT synced (ARCHIVED_REPOS): kept for reference only
-#   fork-repo        Michael's fork, origin-synced; upstream pulled by hand (AGENT_SKILLS_DIR)
+#   host-repo        an active-repo cloned and synced on the MCP host only (HOST_REPOS)
 #   generated-target written by dotfiles, never hand-edited (COMBINED_RULES_TARGETS,
 #                    PROJECT_SKILLS_TARGETS, codex prompts)
 #   artifact-dir     ensured to exist, content owned by the user (DIRECTORIES)
 # An archived root must NEVER appear in an active list, or it resurrects stale generated
 # affordances (e.g. the dangling it-worker-* skill links). See INVARIANTS.md.
 
+# ── Layout (ADR-0007) ─────────────────────────────────────────────────
+# Synced repos live in ~/Workspace; Michael's own projects in ~/Projects (not managed here);
+# ~/Documents keeps personal files only. agent-skills and docgen live inside this repo.
+WORKSPACE_DIR="~/Workspace"
+
 # Active repos to clone/sync: "remote|target_path" (role: active-repo)
 REPOS=(
-  "git@github:MGallo-Code/EA.git|~/Documents/EA"
-  # GalloGrid: the services' code, split out of EA 2026-10-01 (EA docs/plans/gallogrid-split.md).
-  "git@github:MGallo-Code/GalloGrid.git|~/Documents/GalloGrid"
+  "git@github:MGallo-Code/EA.git|~/Workspace/EA"
   "git@github:MGallo-Code/NVIM-Setup.git|~/.config/nvim"
-  "git@github:MGallo-Code/Wiki.git|~/Documents/Wiki"
-  "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
+  "git@github:MGallo-Code/Wiki.git|~/Workspace/Wiki"
+  "git@github:MGallo-Code/Notes.git|~/Workspace/Notes"
 )
+# Host-only repos (role: host-repo): sync and setup append them to REPOS on the MCP host only.
+# GalloGrid is the hub and its servers; every other machine reaches them over Tailscale.
+HOST_REPOS=(
+  "git@github:MGallo-Code/GalloGrid.git|~/Workspace/GalloGrid"
+)
+
+# ── Move out of ~/Documents (ADR-0007, INV-21; scripts/lib/workspace-migration.sh) ──
+# "name|remote|scope": each repo that left ~/Documents. scope "all" moves on every machine; "host"
+# moves on the MCP host and is parked (retired) on a client. On the host the move waits for its
+# window: until WORKSPACE_MOVE_GATE says "now", the repos stay put and this run's lists point at
+# them (apply_pending_workspace_paths). Every step is journaled; scripts/workspace-rollback.sh undoes it.
+LEGACY_REPO_HOME="~/Documents"
+WORKSPACE_MOVES=(
+  "EA|git@github:MGallo-Code/EA.git|all"
+  "Wiki|git@github:MGallo-Code/Wiki.git|all"
+  "Notes|git@github:MGallo-Code/Notes.git|all"
+  "GalloGrid|git@github:MGallo-Code/GalloGrid.git|host"
+)
+# Old clones that retire instead of moving ("name|remote"), parked only when nothing is unpushed.
+WORKSPACE_RETIRED_CLONES=(
+  "agent-skills|git@github:MGallo-Code/agent-skills.git"
+)
+RETIRED_CLONE_DIR="~/.local/share/dotfiles/retired-clones"
+WORKSPACE_MOVE_GATE="~/.config/dotfiles/workspace-move"
+WORKSPACE_JOURNAL="~/.local/share/dotfiles/workspace-migration.journal"
+# The GalloGrid-split switch file (INV-18 before ADR-0007): removed by the migration.
+RETIRED_CODE_ROOT_SWITCH="~/.config/dotfiles/code-root"
 
 # Archived repos: "remote|target_path" (role: archive-repo). NEVER synced; a tombstone for a
 # root kept locally but inactive. Currently EMPTY: IT-Worker's local copy was removed
@@ -28,12 +58,12 @@ REPOS=(
 # in ~/Documents/Customer-Work). Re-add an entry if a repo is ever archived-but-kept-local.
 ARCHIVED_REPOS=()
 
-# EA-only repos (skipped with --dev) - subset of active REPOS above
+# EA-only repos (skipped with --dev) - subset of active REPOS (+ HOST_REPOS) above
 EA_REPOS=(
-  "git@github:MGallo-Code/EA.git|~/Documents/EA"
-  "git@github:MGallo-Code/GalloGrid.git|~/Documents/GalloGrid"
-  "git@github:MGallo-Code/Wiki.git|~/Documents/Wiki"
-  "git@github:MGallo-Code/Notes.git|~/Documents/Notes"
+  "git@github:MGallo-Code/EA.git|~/Workspace/EA"
+  "git@github:MGallo-Code/GalloGrid.git|~/Workspace/GalloGrid"
+  "git@github:MGallo-Code/Wiki.git|~/Workspace/Wiki"
+  "git@github:MGallo-Code/Notes.git|~/Workspace/Notes"
 )
 
 # ── Codex CLI pin ─────────────────────────────────────────────────────────────
@@ -42,7 +72,7 @@ EA_REPOS=(
 # `codex mcp` re-wiring - see the 20db221 self-heal). Bump DELIBERATELY:
 #   1. scripts/codex-pin-preflight.sh <version>  (sandbox compat test, no system changes)
 #   2. update this pin (+ manifest.ps1 $CodexPin) and the kit baseline in
-#      ~/Documents/agent-skills/coding-mastermind/MANIFEST.md
+#      ~/.dotfiles/agent-skills/coding-mastermind/MANIFEST.md
 #   3. npm install -g @openai/codex@<pin> on EVERY machine (lockstep, next sync/sysupdate)
 # sync.sh/sync.ps1 warn when the installed version drifts from this pin.
 CODEX_PIN="0.147.0"
@@ -70,35 +100,27 @@ SYMLINKS=(
 # under an old prefix, live or dangling, to the same path under the new prefix. Only links are
 # touched, never a real file or dir. setup and sync run it before the repo pulls, while the old
 # targets still exist. Keep an entry until every machine has synced twice past the move.
+# First match wins, so the more specific prefix comes first.
 MOVED_LINK_SOURCES=(
-  "~/Documents/EA/claude-config|~/.dotfiles/claude-config"
-  "~/Documents/agent-skills|~/.dotfiles/agent-skills"
+  "~/Documents/EA/claude-config|~/.dotfiles/claude-config"   # stale-path-ok (ADR-0006)
+  "~/Documents/agent-skills|~/.dotfiles/agent-skills"        # stale-path-ok (ADR-0007)
+  "~/Documents/EA|~/Workspace/EA"                            # stale-path-ok (ADR-0007)
+  "~/Documents/Wiki|~/Workspace/Wiki"                        # stale-path-ok (ADR-0007)
+  "~/Documents/GalloGrid|~/Workspace/GalloGrid"              # stale-path-ok (ADR-0007)
 )
 
-# ── Code root (GalloGrid split, EA docs/plans/gallogrid-split.md) ──────
-# The services' code (nexus, courier, calendar, docgen, agent, ea_mcp_remote, ea-hub) moves from
-# EA into its own repo. Each machine resolves the root itself: GalloGrid once that checkout
-# exists, else EA, so no machine is stranded whatever order it pulls in. NEXUS_HOST_STORE is the
-# host's live store by its real path, for dotfiles' own checkpoint and backup only. It is never
-# exported: nexus's test harness treats a NEXUS_LIVE_DB in its environment as "copy his live
-# store", and the per-checkout nexus.db link is what keeps worktrees hermetic (hub session,
+# ── Code root (GalloGrid split; ADR-0007) ─────────────────────────────
+# The services' code (nexus, courier, calendar, agent, ea_mcp_remote, ea-hub) lives in GalloGrid,
+# on the MCP host only. The root is wherever GalloGrid is on this machine right now: ~/Workspace,
+# or ~/Documents while the host's move is pending, so a sync never re-renders the live services
+# before their window. A client has no code root and never needs one (docgen is in dotfiles).
+# NEXUS_HOST_STORE is the host's live store by its real path, for dotfiles' own checkpoint and backup
+# only. It is never exported: nexus's test harness treats a NEXUS_LIVE_DB in its environment as "copy
+# his live store", and the per-checkout nexus.db link is what keeps worktrees hermetic (hub session,
 # 2026-09-30). Parity: manifest.ps1 Resolve-CodeRoot.
-CODE_ROOT_NEW="~/Documents/GalloGrid"
-CODE_ROOT_OLD="~/Documents/EA"
-# The machine-local switch: a machine moves to GalloGrid only at its own cutover (EA plan B3/B5),
-# when this file is written to say "GalloGrid". Never by cloning alone: a fresh clone has no
-# venvs or build yet, and a sync that pointed live services at it would break them.
-CODE_ROOT_SWITCH="~/.config/dotfiles/code-root"
 NEXUS_HOST_STORE="~/.local/share/nexus/nexus.db"
 resolve_code_root() {
-    local new old switch
-    new="$(expand "$CODE_ROOT_NEW")"; old="$(expand "$CODE_ROOT_OLD")"; switch="$(expand "$CODE_ROOT_SWITCH")"
-    if [ -d "$new/.git" ] && [ "$(cat "$switch" 2>/dev/null)" = "GalloGrid" ]; then echo "$new"; return 0; fi
-    if [ -d "$old/nexus" ] || [ -d "$old/courier" ]; then echo "$old"; return 0; fi
-    # EA no longer holds the code (after the split): GalloGrid is the only home left.
-    if [ -d "$new/.git" ]; then echo "$new"; return 0; fi
-    warn "code root: no service code in $new or $old" >&2
-    echo "$old"
+    workspace_home GalloGrid
 }
 
 # The host's checkout link to its live store (GalloGrid split, hub session 2026-09-30): the per-checkout
@@ -124,7 +146,7 @@ ensure_host_store_link() {
 # dead one once the code moves. Removed when it is still exactly the docgen file setup generated;
 # a file someone edited is left alone with a warning. Parity: manifest.ps1 Remove-RetiredProjectMcp.
 RETIRED_PROJECT_MCP_FILES=(
-  "~/Documents/EA/.mcp.json"
+  "~/Workspace/EA/.mcp.json"
 )
 retire_project_mcp_files() {
     local entry f
@@ -222,6 +244,8 @@ retarget_moved_links() {
                     rest="${cur#"$old"}"
                     if [ -e "$new$rest" ]; then
                         ln -sfn "$new$rest" "$link" && ok "moved link: $link -> $new$rest"
+                    elif [ -e "$cur" ] && [ ! -e "$new" ]; then
+                        :   # the whole move is still pending here (ADR-0007 host window); the link works
                     else
                         warn "moved link: $link points at $cur, but $new$rest is missing - left as is"
                     fi
@@ -487,8 +511,8 @@ GLOBAL_SKILLS_DIR="~/.dotfiles/claude-config/global-skills"
 # Claude reads repo-local .claude skills itself; Codex gets namespaced global copies. The third Codex field is the propagation mode: link for Claude-compatible
 # sources, copy for a Codex-native source whose repo-local duplicate Codex must suppress.
 CODEX_PROJECT_SKILLS=(
-  "ea|~/Documents/EA/.claude/skills|link"
-  "wiki|~/Documents/Wiki/.claude/skills|link"
+  "ea|~/Workspace/EA/.claude/skills|link"
+  "wiki|~/Workspace/Wiki/.claude/skills|link"
 )
 # Archived project skills (role: archive-project-skills): sources whose repo stays on disk
 # but whose skills must no longer be generated anywhere. sync prunes every generated link
@@ -880,3 +904,7 @@ provision_all_client_tokens() {
     [ "$NEXUS_REMOTED" = "true" ] && provision_hub_client_token nexus "$NEXUS_TOKEN_FILE" NEXUS_BEARER
     ensure_client_bearer_exports
 }
+
+# ── ADR-0007 workspace migration (functions; settings above) ──────────
+# shellcheck source=scripts/lib/workspace-migration.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/lib/workspace-migration.sh"

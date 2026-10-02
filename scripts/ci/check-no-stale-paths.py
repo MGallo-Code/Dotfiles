@@ -6,8 +6,7 @@ into dotfiles. A live file (script, rule, skill, launcher, README) that still na
 ~/Documents/<repo> points every agent and machine at a folder that no longer exists.
 
 Scans the tracked files of the repo it runs in (default: this dotfiles checkout; --root for EA or
-the Wiki) for Documents/EA, Documents/Wiki, Documents/Notes, Documents/GalloGrid or
-Documents/agent-skills, either slash. Exempt:
+the Wiki) for Documents + EA, Wiki, Notes, GalloGrid or agent-skills, joined by either slash. Exempt:
   - history, which describes the past on purpose: docs/decisions/, docs/plans/, docs/history/,
     .claude/resume/, dated handoff and audit docs (a YYYY-MM-DD in the file name), log.md;
   - vendored trees: agent-skills/ (dotfiles);
@@ -73,13 +72,13 @@ def main() -> int:
         import tempfile
         with tempfile.TemporaryDirectory() as t:
             planted = Path(t) / "planted.sh"
-            planted.write_text('cd "$HOME/Documents/EA"\n')
+            planted.write_text('cd "$HOME/Documents/EA"\n')  # stale-path-ok
             history = Path(t) / "docs" / "plans"; history.mkdir(parents=True)
-            (history / "old.md").write_text("ran from ~/Documents/EA\n")
+            (history / "old.md").write_text("ran from ~/Documents/EA\n")  # stale-path-ok
             marked = Path(t) / "marked.sh"
             marked.write_text('OLD="~/Documents/EA"  # stale-path-ok\n')
             got = scan(Path(t), ["planted.sh", "docs/plans/old.md", "marked.sh"], [])
-            if got == ['planted.sh:1: cd "$HOME/Documents/EA"']:
+            if got == ['planted.sh:1: cd "$HOME/Documents/EA"']:  # stale-path-ok
                 print("revert-test ok: a live stale path fails; history and marked lines pass")
                 return 0
             print(f"revert-test FAILED: {got}")

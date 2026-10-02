@@ -180,12 +180,12 @@ matcher = "^Bash`$"
     $general["defaultApprovalMode"] = "auto_edit"
     # ONLY genuine project SOURCE roots - NOT the bulky parents (~/Documents, ~/Downloads) or the
     # agent-state dirs (~/.codex/.claude/.gemini, GB of tmp/logs/caches). A ~135GB workspace made
-    # gemini roam junk and confabulate it into reviews. Mirrors the claude sysupdate set (EA +
-    # agent-skills) + control-plane roots. Assigned (not appended) so a re-run prunes stale junk.
+    # gemini roam junk and confabulate it into reviews. Mirrors the claude sysupdate set (EA)
+    # + control-plane roots. Assigned (not appended) so a re-run prunes stale junk.
     $nvimRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "nvim" } else { Join-Path $HOME "AppData\Local\nvim" }
     $geminiWorkspaceRoots = @(
-        "$HOME\Documents\EA",
-        "$HOME\Documents\GalloGrid",
+        (Get-WorkspaceHome "EA"),
+        (Get-WorkspaceHome "GalloGrid"),
         "$HOME\.dotfiles",
         $nvimRoot
     ) | Where-Object { Test-Path $_ } | ForEach-Object { (Resolve-Path $_).Path }
@@ -476,6 +476,16 @@ foreach ($dir in $Directories) {
         Write-Ok "Created $dir"
     }
 }
+
+# ── Move repos out of ~\Documents (ADR-0007, INV-21) ────────────────
+# Before cloning, so an existing old clone is moved instead of a second copy being cloned next to
+# it. Mirror of setup.sh.
+$WorkspaceMoveFail = $false
+if ($Mode -ne "minimal") {
+    Write-Step "Workspace layout"
+    $WorkspaceMoveFail = -not (Move-ToWorkspace)
+}
+Set-PendingWorkspacePaths
 
 # ── Clone Repos ──────────────────────────────────────────────────────
 if ($Mode -ne "minimal") {
@@ -825,7 +835,7 @@ else {
 if ($Mode -eq "full") {
     Write-Step "Practice environment"
 
-    $exerciseDir = "$HOME\Documents\EA\exercises"
+    $exerciseDir = Join-Path (Get-WorkspaceHome "EA") "exercises"
     $venvDir = "$exerciseDir\.venv"
     $workspaceDir = "$exerciseDir\workspace"
 
@@ -853,6 +863,11 @@ if ($Mode -eq "full") {
     else {
         Write-Warn "EA not cloned yet - practice environment skipped"
     }
+}
+
+if ($WorkspaceMoveFail) {
+    Write-Warn "setup: a workspace move was blocked or a clone could not retire (see 'workspace:' above) - fix it and re-run"
+    exit 1
 }
 
 # ── Summary ──────────────────────────────────────────────────────────

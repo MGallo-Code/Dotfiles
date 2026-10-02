@@ -7,14 +7,39 @@
 # must NEVER appear in an active list or it resurrects stale generated affordances.
 # See manifest.sh for the full taxonomy and INVARIANTS.md.
 
+# ── Layout (ADR-0007; mirror of manifest.sh) ─────────────────────────
+# Synced repos live in ~\Workspace; Michael's own projects in ~\Projects (not managed here);
+# ~\Documents keeps personal files only. agent-skills and docgen live inside this repo.
+$WorkspaceDir = "$HOME\Workspace"
+
 # Active managed repos (role: active-repo). Parity: must match manifest.sh REPOS.
 $Repos = @(
-    @{ Remote = "git@github:MGallo-Code/EA.git";         Target = "$HOME\Documents\EA" }
-    @{ Remote = "git@github:MGallo-Code/GalloGrid.git";  Target = "$HOME\Documents\GalloGrid" }
+    @{ Remote = "git@github:MGallo-Code/EA.git";         Target = "$HOME\Workspace\EA" }
     @{ Remote = "git@github:MGallo-Code/NVIM-Setup.git";  Target = "$env:LOCALAPPDATA\nvim" }
-    @{ Remote = "git@github:MGallo-Code/Wiki.git";        Target = "$HOME\Documents\Wiki" }
-    @{ Remote = "git@github:MGallo-Code/Notes.git";       Target = "$HOME\Documents\Notes" }
+    @{ Remote = "git@github:MGallo-Code/Wiki.git";        Target = "$HOME\Workspace\Wiki" }
+    @{ Remote = "git@github:MGallo-Code/Notes.git";       Target = "$HOME\Workspace\Notes" }
 )
+# Host-only repos (mirror of HOST_REPOS). Windows is never the MCP host, so they are never added.
+$HostRepos = @(
+    @{ Remote = "git@github:MGallo-Code/GalloGrid.git";  Target = "$HOME\Workspace\GalloGrid" }
+)
+
+# ── Move out of ~\Documents (ADR-0007, INV-21; scripts\lib\workspace-migration.ps1) ──
+# Mirror of manifest.sh WORKSPACE_MOVES. Scope "host" repos are parked on Windows (never the host).
+$LegacyRepoHome = "$HOME\Documents"
+$WorkspaceMoves = @(
+    @{ Name = "EA";        Remote = "git@github:MGallo-Code/EA.git";        Scope = "all" }
+    @{ Name = "Wiki";      Remote = "git@github:MGallo-Code/Wiki.git";      Scope = "all" }
+    @{ Name = "Notes";     Remote = "git@github:MGallo-Code/Notes.git";     Scope = "all" }
+    @{ Name = "GalloGrid"; Remote = "git@github:MGallo-Code/GalloGrid.git"; Scope = "host" }
+)
+$WorkspaceRetiredClones = @(
+    @{ Name = "agent-skills"; Remote = "git@github:MGallo-Code/agent-skills.git" }
+)
+$RetiredCloneDir = "$HOME\.local\share\dotfiles\retired-clones"
+$WorkspaceMoveGate = "$HOME\.config\dotfiles\workspace-move"
+$WorkspaceJournal = "$HOME\.local\share\dotfiles\workspace-migration.journal"
+$RetiredCodeRootSwitch = "$HOME\.config\dotfiles\code-root"
 
 # Archived repos (role: archive-repo). NEVER synced. Currently EMPTY: IT-Worker local copy
 # removed 2026-06-19 (archive on GitHub; artifacts in Customer-Work). Parity: manifest.sh ARCHIVED_REPOS.
@@ -55,9 +80,13 @@ $Symlinks = @(
 # skill target dirs) whose target is under an Old prefix, live or dangling, to the same path
 # under New. Only links are touched, never a real file or dir. setup and sync run it before the
 # repo pulls. Keep an entry until every machine has synced twice past the move.
+# First match wins, so the more specific prefix comes first.
 $MovedLinkSources = @(
-    @{ Old = "$HOME\Documents\EA\claude-config"; New = "$HOME\.dotfiles\claude-config" }
-    @{ Old = "$HOME\Documents\agent-skills"; New = "$HOME\.dotfiles\agent-skills" }
+    @{ Old = "$HOME\Documents\EA\claude-config"; New = "$HOME\.dotfiles\claude-config" }  # stale-path-ok (ADR-0006)
+    @{ Old = "$HOME\Documents\agent-skills"; New = "$HOME\.dotfiles\agent-skills" }        # stale-path-ok (ADR-0007)
+    @{ Old = "$HOME\Documents\EA"; New = "$HOME\Workspace\EA" }                            # stale-path-ok (ADR-0007)
+    @{ Old = "$HOME\Documents\Wiki"; New = "$HOME\Workspace\Wiki" }                        # stale-path-ok (ADR-0007)
+    @{ Old = "$HOME\Documents\GalloGrid"; New = "$HOME\Workspace\GalloGrid" }              # stale-path-ok (ADR-0007)
 )
 
 # The link item at $Path, read from its parent's listing so a dangling link still resolves on
@@ -103,7 +132,10 @@ function Update-MovedLinks {
             if (-not ($current -ieq $old -or $current.StartsWith($old + '\', [StringComparison]::OrdinalIgnoreCase))) { continue }
             $dest = $move.New.TrimEnd('\') + $current.Substring($old.Length)
             if (-not (Test-Path -LiteralPath $dest)) {
-                Write-Warn "moved link: $path points at $current, but $dest is missing - left as is"
+                # Quiet while the whole move is still pending here (ADR-0007): the link still works.
+                if (-not ((Test-Path -LiteralPath $current) -and -not (Test-Path -LiteralPath $move.New))) {
+                    Write-Warn "moved link: $path points at $current, but $dest is missing - left as is"
+                }
                 break
             }
             try {
@@ -120,29 +152,18 @@ function Update-MovedLinks {
     }
 }
 
-# ── Code root (GalloGrid split, EA docs/plans/gallogrid-split.md) ──────
-# Mirror of manifest.sh resolve_code_root: GalloGrid once that checkout exists, else EA, so no
-# machine is stranded whatever order it pulls in. The live nexus store is pinned.
-$CodeRootNew = "$HOME\Documents\GalloGrid"
-$CodeRootOld = "$HOME\Documents\EA"
-# The machine-local switch (mirror of manifest.sh CODE_ROOT_SWITCH): a machine moves to GalloGrid
-# only at its own cutover, when this file says "GalloGrid". Never by cloning alone.
-$CodeRootSwitch = "$HOME\.config\dotfiles\code-root"
+# ── Code root (GalloGrid split; ADR-0007) ─────────────────────────────
+# Mirror of manifest.sh resolve_code_root: wherever GalloGrid is on this machine. Windows is never
+# the MCP host, so it has no code root and never uses one (docgen is in dotfiles).
 $NexusHostStore = "$HOME\.local\share\nexus\nexus.db"
 function Resolve-CodeRoot {
-    $switched = (Test-Path $CodeRootSwitch) -and ((Get-Content $CodeRootSwitch -Raw -ErrorAction SilentlyContinue).Trim() -eq "GalloGrid")
-    if ((Test-Path (Join-Path $CodeRootNew ".git")) -and $switched) { return $CodeRootNew }
-    if ((Test-Path (Join-Path $CodeRootOld "nexus")) -or (Test-Path (Join-Path $CodeRootOld "courier"))) { return $CodeRootOld }
-    # EA no longer holds the code (after the split): GalloGrid is the only home left.
-    if (Test-Path (Join-Path $CodeRootNew ".git")) { return $CodeRootNew }
-    Write-Warn "code root: no service code in $CodeRootNew or $CodeRootOld"
-    return $CodeRootOld
+    return (Get-WorkspaceHome "GalloGrid")
 }
 
 # Retired project MCP files. Mirror of manifest.sh retire_project_mcp_files: removed while it is
 # still exactly the generated docgen-only file; an edited one is kept with a warning.
 $RetiredProjectMcpFiles = @(
-    "$HOME\Documents\EA\.mcp.json"
+    "$HOME\Workspace\EA\.mcp.json"
 )
 function Remove-RetiredProjectMcp {
     foreach ($f in $RetiredProjectMcpFiles) {
@@ -460,8 +481,8 @@ $GlobalSkillsDir = "$HOME\.dotfiles\claude-config\global-skills"
 
 # ── Project skills -> each agent's native source, namespaced globally ────────
 $CodexProjectSkills = @(
-    @{ Label = "ea";   Dir = "$HOME\Documents\EA\.claude\skills";   Mode = "link" }
-    @{ Label = "wiki"; Dir = "$HOME\Documents\Wiki\.claude\skills"; Mode = "link" }
+    @{ Label = "ea";   Dir = "$HOME\Workspace\EA\.claude\skills";   Mode = "link" }
+    @{ Label = "wiki"; Dir = "$HOME\Workspace\Wiki\.claude\skills"; Mode = "link" }
 )
 # Archived project skills (role: archive-project-skills): repos stay on disk, their generated
 # skills are pruned everywhere. SBIC retired 2026-09-27 (ADR-0004). Parity: manifest.sh ARCHIVED_PROJECT_SKILLS.
@@ -693,3 +714,6 @@ function Register-AllHubMcp {
     Register-HubMcp $Cli $cmd.Source "calendar" "client" $CalendarRemoteUrl  "CALENDAR_BEARER"
     Write-Ok "$Cli`: global MCP wired (nexus + courier + docgen + calendar)"
 }
+
+# ── ADR-0007 workspace migration (functions; settings above) ──────────
+. (Join-Path $PSScriptRoot "scripts\lib\workspace-migration.ps1")

@@ -168,6 +168,47 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"function Test-NeedsLocalNexus[\s\S]*function Test-McpWiringReady"),
     },
     {
+        # INV-21 (ADR-0007): the move out of ~/Documents, its pending-path fallback, home lookup and rollback.
+        "name": "workspace migration (INV-21)",
+        "sh": ("scripts/lib/workspace-migration.sh", r"migrate_to_workspace\(\) \{"),
+        "ps1": ("scripts/lib/workspace-migration.ps1", r"function Move-ToWorkspace"),
+    },
+    {
+        "name": "pending workspace moves keep the old paths for the run",
+        "sh": ("scripts/lib/workspace-migration.sh", r"apply_pending_workspace_paths\(\) \{"),
+        "ps1": ("scripts/lib/workspace-migration.ps1", r"function Set-PendingWorkspacePaths"),
+    },
+    {
+        "name": "where a moved repo lives now",
+        "sh": ("scripts/lib/workspace-migration.sh", r"workspace_home\(\) \{"),
+        "ps1": ("scripts/lib/workspace-migration.ps1", r"function Get-WorkspaceHome"),
+    },
+    {
+        "name": "host move waits for its window",
+        "sh": ("scripts/lib/workspace-migration.sh", r"workspace_move_deferred\(\) \{"),
+        "ps1": ("scripts/lib/workspace-migration.ps1", r"function Test-WorkspaceMoveDeferred"),
+    },
+    {
+        "name": "workspace migration rollback",
+        "sh": ("scripts/workspace-rollback.sh", r"rollback_workspace_migration"),
+        "ps1": ("scripts/workspace-rollback.ps1", r"Undo-WorkspaceMigration"),
+    },
+    {
+        "name": "sync migrates first and fails on a skip",
+        "sh": ("sync.sh", r"(?m)^migrate_to_workspace \|\| WORKSPACE_MOVE_FAIL=1"),
+        "ps1": ("sync.ps1", r"(?m)^\$WorkspaceMoveFail = -not \(Move-ToWorkspace\)"),
+    },
+    {
+        "name": "setup migrates before cloning",
+        "sh": ("setup.sh", r"migrate_to_workspace \|\| WORKSPACE_MOVE_FAIL=1[\s\S]*step \"Cloning repos\""),
+        "ps1": ("setup.ps1", r"\$WorkspaceMoveFail = -not \(Move-ToWorkspace\)[\s\S]*Write-Step \"Cloning repos\""),
+    },
+    {
+        "name": "launchers use the repo's current home",
+        "sh": ("shell/ea.zsh", r"_ws_repo_dir\(\) \{"),
+        "ps1": ("shell/windows/ea.ps1", r"function Get-WsRepoDir"),
+    },
+    {
         # INV-20: sync's dirty-repo commit path pops only its own stash and commits only a usable message.
         "name": "sync pull keeps unrelated stashes (INV-20)",
         "sh": ("manifest.sh", r"pull_keeping_changes\(\) \{"),

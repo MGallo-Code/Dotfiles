@@ -12,7 +12,7 @@ This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the
 
 1. **The Challenger is a fresh subagent per candidate revision,** not a long-lived peer session.
    - The Orchestrator spawns the `challenger` agent (`~/.dotfiles/claude-config/global-agents/challenger.md`: Opus 5.5 `high`, Playwright inline and isolated, no CLAUDE.md).
-   - Its inbox lives outside the canonical checkout: `~/Documents/Worktrees/<project>-challenger/analysis_outputs/reviewer-evidence/inbox/<ID>/`, a plain folder.
+   - Its inbox lives outside the canonical checkout: `~/.worktrees/<project>-challenger/analysis_outputs/reviewer-evidence/inbox/<ID>/`, a plain folder.
    - It is given only the pass-1 materials. Its agent-scoped guard keeps it out of the canonical checkout (Read, Glob and Grep), so it cannot see builder deliverables, earlier reviews or the ledger.
    - After `PASS1_COMPLETE`, the Orchestrator sends the builder materials to the same instance with SendMessage for pass 2.
    - Record the instance's agent id in RESUME.md while it is live. If the Orchestrator is refreshed between `PASS1_COMPLETE` and pass 2 and the id is lost, spawn a fresh instance with the pass-1 report plus the builder materials.
@@ -69,7 +69,7 @@ This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the
 
 1. The brief and kickoff come from `/orchestrate new` phase 1. Then run the rest of the handoff's section 9 checklist: baseline manifests (after `new`, with `.claude/settings.local.json` expected), and the ledger skeleton with the additions.
 2. Write the briefs from `templates/`. The Orchestrator's goes in its checkout. The Builder's goes at `<builder worktree>/analysis_outputs/builder-notes/SESSION-BRIEF.md`, which the Orchestrator may write and which stays out of git. Challenger instructions go in each spawn prompt (`templates/challenger-spawn.md`).
-3. In a chat in the canonical checkout, Michael runs `/orchestrate new`. The transition creates the Builder worktree (`~/Documents/Worktrees/<repo>-<name>-builder`, branch `orchestration/<name>/builder`) and the Challenger folder (`<repo>-<name>-challenger/`). After `/wrap`, the fresh Orchestrator reads KICKOFF.md and continues here. Open each Builder as a new session in the Builder worktree, with its one-liner; it sets itself up. The Orchestrator arm is whatever model the chat runs on; record it in the ledger.
+3. In a chat in the canonical checkout, Michael runs `/orchestrate new`. The transition creates the Builder worktree (`~/.worktrees/<repo>-<name>-builder`, branch `orchestration/<name>/builder`) and the Challenger folder (`<repo>-<name>-challenger/`). After `/wrap`, the fresh Orchestrator reads KICKOFF.md and continues here. Open each Builder as a new session in the Builder worktree, with its one-liner; it sets itself up. The Orchestrator arm is whatever model the chat runs on; record it in the ledger.
 4. The first assignment is the smallest slice Michael can see.
 
 ## Overrides of the handoff (Michael)

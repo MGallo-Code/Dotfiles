@@ -30,7 +30,7 @@ Arguments: `$ARGUMENTS`. The helper is `python3 ~/.claude/hooks/context-card.py 
 
 5. Pick a short name for the orchestration (lowercase words joined by dashes). Write `tasks/<name>/brief.md` and `tasks/<name>/KICKOFF.md` in this repository.
 6. Run `orchestration new <name>`. It:
-   - creates the Builder worktree and the Challenger folder under `~/Documents/Worktrees/`;
+   - creates the Builder worktree and the Challenger folder under `~/.worktrees/`;
    - writes `tasks/<name>/RESUME.md`, pointing at the kickoff;
    - makes RESUME.md this chat's card;
    - sets the orchestrator role and autowrap (the 350K limit) for both checkouts.

@@ -1712,10 +1712,11 @@ def cmd_orchestration(args: list[str]) -> int:
         raise SystemExit(f"This session already runs orchestration {mine.get('name')}; /orchestrate end it first.")
     if not here:
         raise SystemExit("Run this from the Orchestrator's canonical checkout (a git repository).")
-    worktrees = Path(os.environ.get("CONTEXT_CARD_WORKTREES") or Path.home() / "Documents" / "Worktrees")
+    worktrees = Path(os.environ.get("CONTEXT_CARD_WORKTREES") or Path.home() / ".worktrees")
     if builder_arg is None:
         # The handoff's section 9 layout, made for Michael: a Builder worktree on its own branch and
-        # a plain Challenger folder, both under ~/Documents/Worktrees (dotfiles INV-8).
+        # a plain Challenger folder, both under ~/.worktrees (dotfiles INV-8; ~/Documents/Worktrees
+        # until 2026-10-02, when ADR-0007 left ~/Documents to his personal files).
         target = worktrees / f"{here.name}-{name}-builder"
         if not target.exists():
             branch = f"orchestration/{name}/builder"

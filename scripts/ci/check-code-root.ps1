@@ -32,6 +32,8 @@ function Invoke-Fixtures {
         New-Item -ItemType Directory -Path (Join-Path $pending '.git') -Force | Out-Null
         Expect "move pending: the old home" ((Resolve-CodeRoot) -eq $pending)
         New-Item -ItemType Directory -Path (Join-Path $new '.git') -Force | Out-Null
+        Expect "a stray clone at the new home switches nothing" ((Resolve-CodeRoot) -eq $pending)
+        Remove-Item -Recurse -Force $pending
         Expect "moved: the Workspace home" ((Resolve-CodeRoot) -eq $new)
 
         $mcp = Join-Path $WorkspaceDir 'EA\.mcp.json'

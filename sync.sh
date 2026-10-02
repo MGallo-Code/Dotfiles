@@ -104,14 +104,14 @@ gemini_workspace_roots = [
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
-# EA everywhere, GalloGrid on the host: wherever each is now (ADR-0007: ~/Workspace, or the old
-# ~/Documents home while a move is pending). A missing dir is never listed.
+# EA everywhere, GalloGrid on the host: wherever each is now (ADR-0007: the old ~/Documents home
+# while it still holds the repo, else ~/Workspace). A missing dir is never listed.
 def _ws_home(name):
-    for base in ("Workspace", "Documents"):
-        p = os.path.join(os.path.expanduser("~"), base, name)
-        if os.path.isdir(p):
-            return p
-    return None
+    old = os.path.join(os.path.expanduser("~"), "Documents", name)
+    new = os.path.join(os.path.expanduser("~"), "Workspace", name)
+    if os.path.isdir(os.path.join(old, ".git")):
+        return old
+    return new if os.path.isdir(new) else None
 gemini_workspace_roots = [p for p in [_ws_home("EA")] if p] + gemini_workspace_roots
 gemini_workspace_roots += [p for p in [_ws_home("GalloGrid")] if p]
 context = data.setdefault("context", {})
@@ -627,7 +627,9 @@ if mcp_wiring_ready; then
 
     # MCP HOST: refresh the HTTP service(s) clients connect to - one per hub in hubs.json
     # (courier today). Idempotent repair.
-    if is_mcp_host; then
+    if is_mcp_host && [ "${WORKSPACE_MOVE_FAIL:-0}" = 1 ]; then
+        warn "Hub host bootstrap skipped: a workspace move was blocked this run (fix it first; see 'workspace:' above)"
+    elif is_mcp_host; then
         echo -e "\n${GREEN}==>${NC} Hub host bootstrap ($MCP_HOST)"
         # sync.sh runs `set -uo pipefail` (NO -e), so honor the rc explicitly: bootstrap_all_hubs returns
         # non-zero on a nexus bootstrap failure (loopback/PROP-2 self-test). A bare `|| warn` is VISIBLE but

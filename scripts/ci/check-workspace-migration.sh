@@ -37,13 +37,15 @@ run_fixtures() {
             git -C "$D/$1" branch -q --set-upstream-to=origin/main 2>/dev/null
             git -C "$D/$1" remote set-url origin "$2"
         }
+        unacl() { [ "$(uname -s)" = Darwin ] && chmod -a "group:everyone deny delete" "$W" 2>/dev/null; return 0; }
         fixture() {
-            rm -rf "$HOME" "$T/origin"; mkdir -p "$HOME/.codex" "$M" "$HOME/.config/dotfiles"
+            unacl; rm -rf "$HOME" "$T/origin"; mkdir -p "$HOME/.codex" "$M" "$HOME/.config/dotfiles"
             mkrepo EA git@github:MGallo-Code/EA.git
             mkrepo Wiki git@github:MGallo-Code/Wiki.git
             mkrepo Notes https://github.com/mgallo-code/notes
             mkrepo GalloGrid git@github.com:MGallo-Code/GalloGrid.git
             mkrepo agent-skills git@github:MGallo-Code/agent-skills.git
+            WORKSPACE_RETIRED_CLONES=("agent-skills|git@github:MGallo-Code/agent-skills.git|$(git -C "$D/agent-skills" rev-parse HEAD)")
             # EA: ignored data, worktrees outside and inside, an absolute hooksPath, a venv naming the old path
             printf 'secret/\n.venv/\n.worktrees/\n.githooks/\n' > "$D/EA/.gitignore"; git -C "$D/EA" add .gitignore; git -C "$D/EA" commit -qm ig
             git -C "$D/EA" push -q origin HEAD:main 2>/dev/null; git -C "$D/EA" update-ref refs/remotes/origin/main HEAD
@@ -57,12 +59,22 @@ run_fixtures() {
             mkdir -p "$M/$(key "$D/EA")" "$M/$(key "$D/EA/sub")" "$M/$(key "$D/EA 2")"
             printf '[projects."%s"]\n"%s/sub" = 1\n"%s-backing" = 2\n' "$D/EA" "$D/EA" "$D/EA" > "$HOME/.codex/config.toml"
             echo GalloGrid > "$HOME/.config/dotfiles/code-root"
+            echo now > "$HOME/.config/dotfiles/workspace-move"   # armed; the unarmed cases remove it
         }
+
+        echo "-- unarmed: nothing moves or retires anywhere"
+        fixture; rm -f "$HOME/.config/dotfiles/workspace-move"
+        migrate_to_workspace; check "$?" "0" "an unarmed client succeeds"
+        check "$(yes_no '[ -d "$D/EA/.git" ] && [ -d "$D/agent-skills/.git" ] && [ -d "$D/GalloGrid/.git" ] && [ ! -e "$W" ]')" yes "and moves, parks and creates nothing"
+        check "$(yes_no '[ -f "$HOME/.config/dotfiles/code-root" ]')" yes "and keeps the switch file"
 
         echo "-- client: everything moves, retires and is re-pointed"
         fixture
         migrate_to_workspace; check "$?" "0" "migration succeeds"
         check "$(yes_no '[ -d "$W/EA/.git" ] && [ ! -e "$D/EA" ]')" yes "EA moved to ~/Workspace"
+        if [ "$(uname -s)" = Darwin ]; then
+            check "$(ls -led "$W" | grep -c 'group:everyone deny delete')" 1 "~/Workspace carries the delete-protection ACL"
+        fi
         check "$(yes_no '[ -d "$W/Wiki/.git" ] && [ -d "$W/Notes/.git" ]')" yes "Wiki and Notes moved (remote forms compared as owner/repo)"
         check "$(cat "$W/EA/secret/health.txt")" s "ignored data moved with the repo"
         check "$(git -C "$HOME/.claude-worktrees/w/EA" rev-parse --abbrev-ref HEAD 2>&1)" wt-out "a worktree outside the repo still works"
@@ -106,12 +118,32 @@ run_fixtures() {
         check "$(yes_no '[ -f "$D/agent-skills/new.txt" ]')" yes "and is kept in place"
         fixture; git -C "$D/Wiki" remote set-url origin git@github:someone/else.git
         migrate_to_workspace; check "$?" "1" "a different repo at the old home fails the run"
+        fixture; (cd "$D/agent-skills" && echo z > g && git add g && git commit -qm two && git update-ref refs/remotes/origin/main HEAD) 2>/dev/null
+        migrate_to_workspace; check "$?" "1" "an agent-skills clone newer than the import fails the run"
+        check "$(yes_no '[ -d "$D/agent-skills/.git" ]')" yes "and is kept in place"
+        fixture
+        cat > "$T/run.sh" <<RUN
+export HOME="$HOME" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_SSH_COMMAND=false
+ok() { :; }; warn() { :; }; err() { :; }; expand() { echo "\${1/#\~/\$HOME}"; }
+source "$ROOT/manifest.sh"
+is_mcp_host() { return 1; }
+WORKSPACE_RETIRED_CLONES=("${WORKSPACE_RETIRED_CLONES[0]}")
+migrate_to_workspace
+RUN
+        (cd "$D/EA" && bash "$T/run.sh"; echo "rc=$?" > "$T/rc")
+        check "$(cat "$T/rc")" "rc=1" "a sync started from a shell inside EA fails the run"
+        check "$(yes_no '[ -d "$D/EA/.git" ] && [ ! -e "$W/EA" ]')" yes "and EA stays where that shell is"
 
         echo "-- host: waits for its window, then moves GalloGrid too"
-        fixture; HOSTMODE=1
+        fixture; HOSTMODE=1; rm -f "$HOME/.config/dotfiles/workspace-move"
         migrate_to_workspace; check "$?" "0" "a deferred host succeeds"
         check "$(yes_no '[ -d "$D/EA/.git" ] && [ ! -e "$W/EA" ]')" yes "and moves nothing"
         check "$(resolve_code_root)" "$D/GalloGrid" "the code root stays at the old home"
+        check "$(yes_no '[ -f "$HOME/.config/dotfiles/code-root" ]')" yes "the switch file stays while the host waits"
+        mkdir -p "$W/GalloGrid/.git"
+        check "$(resolve_code_root)" "$D/GalloGrid" "a stray clone at the new home switches nothing"
+        migrate_to_workspace; check "$?" "1" "and the run flags it"
+        rm -rf "$W/GalloGrid"
         apply_pending_workspace_paths
         check "$(printf '%s\n' "${REPOS[@]}" | grep -c '~/Documents/')" 3 "this run's repo list points at the old homes"
         check "$(printf '%s\n' "${CODEX_PROJECT_SKILLS[@]}" | grep -c '~/Documents/')" 2 "so do the project-skill sources"
@@ -122,9 +154,12 @@ run_fixtures() {
 
         echo "-- sync and setup call it first, and fail on a skip"
         check "$(grep -c '^migrate_to_workspace || WORKSPACE_MOVE_FAIL=1' "$ROOT/sync.sh")" 1 "sync migrates"
+        check "$(awk '/^migrate_to_workspace \|\|/{m=NR} /^retarget_moved_links$/{r=NR} /bootstrap_all_hubs "\$DOTFILES_DIR/{b=NR} END{print (m && r && b && m<r && r<b) ? "in order" : "out of order"}' "$ROOT/sync.sh")" "in order" "sync migrates before it retargets links and bootstraps the hubs"
+        check "$(grep -c 'is_mcp_host && \[ "\${WORKSPACE_MOVE_FAIL:-0}" = 1 \]' "$ROOT/sync.sh")" 1 "sync skips the hub bootstrap after a blocked move"
         check "$(grep -c 'migrate_to_workspace || WORKSPACE_MOVE_FAIL=1' "$ROOT/setup.sh")" 1 "setup migrates"
         check "$(awk '/migrate_to_workspace \|\|/{m=NR} /step "Cloning repos"/{c=NR} END{print (m && c && m<c) ? "before" : "after"}' "$ROOT/setup.sh")" before "setup migrates before cloning"
     ) || rc=1
+    [ "$(uname -s)" = Darwin ] && chmod -a "group:everyone deny delete" "$T/home/Workspace" 2>/dev/null
     rm -rf "$T"
     return "$rc"
 }

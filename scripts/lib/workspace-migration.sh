@@ -12,14 +12,29 @@
 
 WS_PATHS_PY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ws_paths.py"
 
+# Every machine moves only when armed: its WORKSPACE_MOVE_GATE says "now" (written over SSH per
+# machine, and on the MCP host at its window). Until then nothing moves or retires there, and every
+# list points at the real old home.
 workspace_move_deferred() {
-    is_mcp_host && [ "$(cat "$(expand "$WORKSPACE_MOVE_GATE")" 2>/dev/null)" != "now" ]
+    [ "$(cat "$(expand "$WORKSPACE_MOVE_GATE")" 2>/dev/null)" != "now" ]
 }
 
+# macOS: give ~/Workspace the ACL ~/Documents carries, so nothing can rename the root away.
+_ws_protect_root() {
+    local root; root="$(expand "$WORKSPACE_DIR")"
+    mkdir -p "$root"
+    [ "$(uname -s)" = Darwin ] || return 0
+    ls -led "$root" 2>/dev/null | grep -q "group:everyone deny delete" && return 0
+    chmod +a "group:everyone deny delete" "$root" 2>/dev/null && ok "workspace: $root protected against delete and rename" \
+        || warn "workspace: could not set the delete-protection ACL on $root"
+}
+
+# The old home wins while it still holds the repo: a stray clone or an empty folder at the new home
+# never switches anything (the live services keep running from the old home until its window).
 workspace_home() {
     local new old
     new="$(expand "$WORKSPACE_DIR")/$1"; old="$(expand "$LEGACY_REPO_HOME")/$1"
-    if [ -e "$new" ]; then echo "$new"; elif [ -e "$old/.git" ]; then echo "$old"; else echo "$new"; fi
+    if [ -e "$old/.git" ]; then echo "$old"; else echo "$new"; fi
 }
 
 # Rewrite "~/Workspace/NAME" to "~/Documents/NAME" in this run's lists for every move still pending.
@@ -46,18 +61,14 @@ _ws_same_remote() {
     [ "$(python3 "$WS_PATHS_PY" owner-repo "$url")" = "$(python3 "$WS_PATHS_PY" owner-repo "$2")" ]
 }
 
-# 0 when a process other than this one and its parents has its working directory inside $1.
+# 0 when any process has its working directory inside $1: a shell, editor or agent there, including
+# the one that started this sync (migrate_to_workspace runs from $HOME, so this process never counts).
 # Fails closed (0) when there is no way to look (no /proc, no lsof).
 _ws_busy() {
-    local dir chain pid p cwd
+    local dir p cwd
     dir="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
-    chain=" $$ "; pid=$$
-    while [ "${pid:-1}" -gt 1 ] 2>/dev/null; do
-        pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"; [ -n "$pid" ] || break; chain="$chain$pid "
-    done
     if [ -d /proc/self ]; then
         for p in /proc/[0-9]*; do
-            pid="${p#/proc/}"; case "$chain" in *" $pid "*) continue ;; esac
             cwd="$(readlink "$p/cwd" 2>/dev/null)" || continue
             case "$cwd" in "$dir"|"$dir"/*) return 0 ;; esac
         done
@@ -65,10 +76,9 @@ _ws_busy() {
     fi
     if command -v lsof >/dev/null 2>&1; then
         # lsof exits 1 whenever some process can't be read; capture first so pipefail can't mask a hit.
-        local listing; listing="$(lsof -a -d cwd -F pn 2>/dev/null || true)"
-        printf '%s\n' "$listing" | awk -v d="$dir" -v self="$chain" '
-            /^p/ { pid = substr($0, 2) }
-            /^n/ { n = substr($0, 2); if ((n == d || index(n, d "/") == 1) && index(self, " " pid " ") == 0) f = 1 }
+        local listing; listing="$(lsof -a -d cwd -F n 2>/dev/null || true)"
+        printf '%s\n' "$listing" | awk -v d="$dir" '
+            /^n/ { n = substr($0, 2); if (n == d || index(n, d "/") == 1) f = 1 }
             END { exit f ? 0 : 1 }'
         return $?
     fi
@@ -76,9 +86,13 @@ _ws_busy() {
     return 0
 }
 
+# 0 when $1 holds an iCloud-only (dataless) file, or when that can't be checked (fails closed: a
+# permissions error over SSH must block, not pass). macOS's own find; elsewhere there is no iCloud.
 _ws_dataless() {
+    local hit
     [ "$(uname -s)" = Darwin ] || return 1
-    [ -n "$(find "$1" -flags +dataless -print -quit 2>/dev/null || true)" ]
+    hit="$(/usr/bin/find "$1" -flags +dataless -print -quit 2>/dev/null)" || return 0
+    [ -n "$hit" ]
 }
 
 _ws_rewrite() {
@@ -114,12 +128,23 @@ _ws_move_one() {
 }
 
 # Park a clone that retires instead of moving (agent-skills everywhere; GalloGrid on a client), only
-# when nothing in it is uncommitted, unpushed or stashed. Never deleted.
+# when nothing in it is uncommitted, unpushed or stashed, nothing is iCloud-only, and (with $3, the
+# commit dotfiles imported) nothing in it or on its origin is newer than that import. Never deleted.
 _ws_retire_clone() {
-    local remote="$1" old="$2" dest
+    local remote="$1" old="$2" imported="${3:-}" dest ref
     [ -e "$old/.git" ] || return 0
     _ws_same_remote "$old" "$remote" || { warn "workspace: $old is not a clone of $remote - left as is"; return 1; }
     git -C "$old" fetch -q 2>/dev/null || true
+    if [ -n "$imported" ]; then
+        for ref in HEAD refs/remotes/origin/main; do
+            git -C "$old" rev-parse -q --verify "$ref" >/dev/null 2>&1 || continue
+            if ! git -C "$old" merge-base --is-ancestor "$ref" "$imported" 2>/dev/null; then
+                warn "workspace: $old has commits after the dotfiles import ($imported) on $ref - kept; fold them in (git subtree pull), then re-run sync"
+                return 1
+            fi
+        done
+    fi
+    if _ws_dataless "$old"; then warn "workspace: $old has iCloud-only files (or could not be checked) - kept; download them, then re-run sync"; return 1; fi
     if [ -n "$(git -C "$old" status --porcelain 2>/dev/null | head -1)" ] \
         || [ -n "$(git -C "$old" log --branches --not --remotes --oneline 2>/dev/null | head -1)" ] \
         || [ -n "$(git -C "$old" stash list 2>/dev/null | head -1)" ]; then
@@ -130,16 +155,16 @@ _ws_retire_clone() {
     dest="$(expand "$RETIRED_CLONE_DIR")/$(basename "$old")-$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$(dirname "$dest")"
     mv "$old" "$dest" || { warn "workspace: could not park $old"; return 1; }
-    _ws_journal "park|$old|$dest"; ok "workspace: retired $old -> $dest (delete it whenever you like)"
+    _ws_journal "park|$old|$dest"; ok "workspace: retired $old -> $dest (its ignored files came along; check them before deleting it)"
 }
 
 migrate_to_workspace() {
-    local spec name remote scope old new entry blocked=0 pending=() switch
+    local spec name remote scope imported old new entry blocked=0 pending=() retire=() switch
     cd "$HOME" || return 1
     for spec in "${WORKSPACE_MOVES[@]}"; do
         IFS='|' read -r name remote scope <<< "$spec"
         old="$(expand "$LEGACY_REPO_HOME")/$name"; new="$(expand "$WORKSPACE_DIR")/$name"
-        if [ "$scope" = host ] && ! is_mcp_host; then _ws_retire_clone "$remote" "$old" || blocked=1; continue; fi
+        if [ "$scope" = host ] && ! is_mcp_host; then [ -e "$old/.git" ] && retire+=("$remote|$old|"); continue; fi
         [ -e "$old/.git" ] || continue
         if [ -e "$new" ]; then
             warn "workspace: both $old and $new exist - left as is; keep one and move or remove the other by hand"
@@ -148,9 +173,18 @@ migrate_to_workspace() {
         _ws_same_remote "$old" "$remote" || { warn "workspace: $old is not a clone of $remote - not moved"; blocked=1; continue; }
         pending+=("$old|$new")
     done
-    if [ ${#pending[@]} -gt 0 ] && workspace_move_deferred; then
-        ok "workspace: ${#pending[@]} repo(s) stay in $(expand "$LEGACY_REPO_HOME") until this host's move window (echo now > $WORKSPACE_MOVE_GATE)"
-    elif [ ${#pending[@]} -gt 0 ]; then
+    for spec in "${WORKSPACE_RETIRED_CLONES[@]}"; do
+        IFS='|' read -r name remote imported <<< "$spec"
+        old="$(expand "$LEGACY_REPO_HOME")/$name"
+        [ -e "$old/.git" ] && retire+=("$remote|$old|$imported")
+    done
+    if workspace_move_deferred; then
+        if [ $(( ${#pending[@]} + ${#retire[@]} )) -gt 0 ]; then
+            ok "workspace: waiting for this machine's move ($(( ${#pending[@]} + ${#retire[@]} )) repo(s) still in $(expand "$LEGACY_REPO_HOME")); arm it with: echo now > $WORKSPACE_MOVE_GATE"
+        fi
+        [ "$blocked" = 0 ]; return
+    fi
+    if [ ${#pending[@]} -gt 0 ]; then
         local preflight=0
         for entry in "${pending[@]}"; do
             old="${entry%%|*}"
@@ -158,16 +192,21 @@ migrate_to_workspace() {
             if _ws_dataless "$old"; then warn "workspace: $old has iCloud-only files - download them (Finder: Download Now), then re-run"; preflight=1; fi
         done
         if [ "$preflight" = 0 ]; then
+            _ws_protect_root
             for entry in "${pending[@]}"; do _ws_move_one "${entry%%|*}" "${entry##*|}" || blocked=1; done
         else
             warn "workspace: nothing moved (the repos move together or not at all)"; blocked=1
         fi
     fi
-    for spec in "${WORKSPACE_RETIRED_CLONES[@]}"; do
-        _ws_retire_clone "${spec##*|}" "$(expand "$LEGACY_REPO_HOME")/${spec%%|*}" || blocked=1
-    done
+    if [ ${#retire[@]} -gt 0 ]; then
+        for entry in "${retire[@]}"; do
+            IFS='|' read -r remote old imported <<< "$entry"
+            _ws_retire_clone "$remote" "$old" "$imported" || blocked=1
+        done
+    fi
+    # The switch file goes only once nothing here is still waiting to move.
     switch="$(expand "$RETIRED_CODE_ROOT_SWITCH")"
-    if [ -f "$switch" ]; then
+    if [ -f "$switch" ] && [ "$blocked" = 0 ]; then
         _ws_journal "switch|$switch|$(cat "$switch")"; rm -f "$switch" && ok "workspace: retired the code-root switch file"
     fi
     [ "$blocked" = 0 ]

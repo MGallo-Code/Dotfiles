@@ -137,3 +137,27 @@ Decision: `docs/decisions/0007-workspace-layout.md`. Each phase is gated: its te
     - **Memory keys:** renamed only for the exact repo key and for keys of subfolders that exist (no prefix sweep, so a sibling like iCloud's `EA 2` is safe).
     - **Process:** sync and setup `cd ~` first, and the cwd probe ignores the sync process and its parents.
     - **Windows:** moves use `[IO.Directory]::Move`.
+
+## Second review (the diff, 2026-10-01) and Learning's window review, folded in
+
+- **Arming.**
+  - Every machine moves only when armed: `~/.config/dotfiles/workspace-move` says `now`. That is written over SSH per client, and on the mini at its window.
+  - A pushed dotfiles moves nothing anywhere until then.
+  - Until a machine is armed, nothing moves or retires there; the code root, lists and launchers use the real old home.
+- **The old home wins.** While `~/Documents/<name>/.git` exists, the old home is used even if something exists at the new one. A stray clone or empty folder never switches the code root; the run flags it.
+- **Hub bootstrap.** A blocked move skips the host's hub bootstrap for that run.
+- **Busy check.** It exempts nothing: a shell or agent sitting in a repo, including the one that started sync, blocks the move.
+- **iCloud check.** It is macOS `/usr/bin/find`, fail-closed, and runs on retired clones too.
+- **agent-skills.** It parks only if its HEAD and origin/main are ancestors of the imported 0b1fea2.
+- **Windows.** The library runs in Continue mode, since `setup.ps1` uses Stop. Python is checked before anything moves, post-move steps can't abort the run, and a leftover `*.ws-probe` stops it.
+- **ACL.** `~/Workspace` gets `group:everyone deny delete` on macOS (Learning's point 2).
+- **Phase 3 additions.**
+  - Repoint the PC's WSL-hosted docgen entry (`~\.claude.json`, `/root/Documents/GalloGrid/docgen`) to `/root/.dotfiles/tools/docgen` before arming WSL.
+  - The laptop's ignored files are already copied to `/Volumes/Media/Archive/laptop-ignored-before-move-2026-10-01`.
+- **Phase 4 additions (Learning).**
+  - Learning's `workspace-move` branch merges after the move succeeds, not before.
+  - Step 0 boots out the web daemon, agent-http and the music/media jobs.
+  - The installed-profile smoke needs Michael's sudo at step 5.
+  - Rollback after the promote means re-promoting the previous commit (GalloGrid's window runbook).
+  - Re-scope or retire `check-tcc-grants.sh`, which has no ~/Documents target after the move.
+- **Open (Michael): the TCC trade-off.** `~/Documents` is TCC-guarded; `~/Workspace` is not. On the mini and the laptop, an unsandboxed process without a Documents grant could read EA's `profile/health` and write GalloGrid.

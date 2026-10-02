@@ -34,7 +34,7 @@ $WorkspaceMoves = @(
     @{ Name = "GalloGrid"; Remote = "git@github:MGallo-Code/GalloGrid.git"; Scope = "host" }
 )
 $WorkspaceRetiredClones = @(
-    @{ Name = "agent-skills"; Remote = "git@github:MGallo-Code/agent-skills.git" }
+    @{ Name = "agent-skills"; Remote = "git@github:MGallo-Code/agent-skills.git"; Imported = "0b1fea2" }
 )
 $RetiredCloneDir = "$HOME\.local\share\dotfiles\retired-clones"
 $WorkspaceMoveGate = "$HOME\.config\dotfiles\workspace-move"

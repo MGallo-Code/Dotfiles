@@ -10,8 +10,7 @@ typeset -g _MICHAEL_WORKSPACE_DIAGNOSTIC="$_MICHAEL_WORKSPACE_DOTFILES/scripts/w
 # while that move is still pending (the MCP host until its window). Both are real directories, never
 # links, so the redirect rule below holds either way.
 _ws_repo_dir() {
-    if [[ -e "$HOME/Workspace/$1" ]]; then print -r -- "$HOME/Workspace/$1"
-    elif [[ -e "$HOME/Documents/$1/.git" ]]; then print -r -- "$HOME/Documents/$1"
+    if [[ -e "$HOME/Documents/$1/.git" ]]; then print -r -- "$HOME/Documents/$1"
     else print -r -- "$HOME/Workspace/$1"; fi
 }
 

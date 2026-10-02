@@ -31,5 +31,9 @@ guessing or searching for where something lives, consult the authoritative point
 - SBIC (former employer) is archived at `/Volumes/Media/Archive/SBIC-2026-10-01.zip` on the mini;
   no machine keeps a working copy.
 
+A machine's EA, Wiki, Notes (and GalloGrid on the mini) stay at `~/Documents/<name>` until that
+machine's move is armed (ADR-0007; the mini moves last, in a window). When a `~/Workspace` path is
+missing, try the `~/Documents` one.
+
 If a root you need isn't listed, or a pointer looks stale, read `~/.dotfiles/manifest.sh` (the
 source of truth) and flag the gap so this map gets fixed.

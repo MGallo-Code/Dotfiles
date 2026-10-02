@@ -6,6 +6,9 @@ set -uo pipefail
 
 DOTFILES_DIR="${DOTFILES_DIR_OVERRIDE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 source "$DOTFILES_DIR/manifest.sh"
+# ADR-0007: the same repo list sync uses (host-only repos on the host; the old home while a move waits).
+is_mcp_host && REPOS+=("${HOST_REPOS[@]}")
+apply_pending_workspace_paths
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

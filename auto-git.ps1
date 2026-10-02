@@ -4,6 +4,8 @@
 $ErrorActionPreference = "Stop"
 $DotfilesDir = if ($env:DOTFILES_DIR_OVERRIDE) { $env:DOTFILES_DIR_OVERRIDE } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $DotfilesDir "manifest.ps1")
+# ADR-0007: the same repo list sync uses (the old home while a move waits; Windows has no host repos).
+Set-PendingWorkspacePaths
 
 function Write-Ok   { param($msg) Write-Host "[ok] $msg" -ForegroundColor Green }
 function Write-Warn { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }

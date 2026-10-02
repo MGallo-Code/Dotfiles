@@ -48,7 +48,7 @@ set -euo pipefail
 
 # The file every probe tries to open: EA's CLAUDE.md wherever EA lives (ADR-0007: ~/Workspace, or the
 # old ~/Documents home while its move is pending). Outside ~/Documents, TCC no longer guards it.
-EA_HOME="$HOME/Workspace/EA"; [ -e "$EA_HOME" ] || EA_HOME="$HOME/Documents/$(printf EA)"
+EA_HOME="$HOME/Documents/EA"; [ -e "$EA_HOME/.git" ] || EA_HOME="$HOME/Workspace/EA"   # stale-path-ok (the pending home)
 TARGET="${TCC_CHECK_TARGET:-$EA_HOME/CLAUDE.md}"
 AGENT_DIR="${TCC_CHECK_AGENT_DIR:-$HOME/Library/LaunchAgents}"
 STATE_DIR="${TCC_CHECK_STATE_DIR:-$HOME/.local/state/tcc-drift}"

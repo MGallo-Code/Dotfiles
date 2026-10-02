@@ -32,9 +32,10 @@ HOST_REPOS=(
 
 # ── Move out of ~/Documents (ADR-0007, INV-21; scripts/lib/workspace-migration.sh) ──
 # "name|remote|scope": each repo that left ~/Documents. scope "all" moves on every machine; "host"
-# moves on the MCP host and is parked (retired) on a client. On the host the move waits for its
-# window: until WORKSPACE_MOVE_GATE says "now", the repos stay put and this run's lists point at
-# them (apply_pending_workspace_paths). Every step is journaled; scripts/workspace-rollback.sh undoes it.
+# moves on the MCP host and is parked (retired) on a client. Every machine moves only when armed:
+# until its WORKSPACE_MOVE_GATE says "now", nothing moves or retires there and this run's lists point
+# at the old homes (apply_pending_workspace_paths). Every step is journaled; scripts/workspace-rollback.sh
+# undoes it.
 LEGACY_REPO_HOME="~/Documents"
 WORKSPACE_MOVES=(
   "EA|git@github:MGallo-Code/EA.git|all"
@@ -42,9 +43,10 @@ WORKSPACE_MOVES=(
   "Notes|git@github:MGallo-Code/Notes.git|all"
   "GalloGrid|git@github:MGallo-Code/GalloGrid.git|host"
 )
-# Old clones that retire instead of moving ("name|remote"), parked only when nothing is unpushed.
+# Old clones that retire instead of moving ("name|remote|imported commit"), parked only when nothing
+# is unpushed and nothing is newer than the commit this repo imported (agent-skills: subtree 0b1fea2).
 WORKSPACE_RETIRED_CLONES=(
-  "agent-skills|git@github:MGallo-Code/agent-skills.git"
+  "agent-skills|git@github:MGallo-Code/agent-skills.git|0b1fea2"
 )
 RETIRED_CLONE_DIR="~/.local/share/dotfiles/retired-clones"
 WORKSPACE_MOVE_GATE="~/.config/dotfiles/workspace-move"

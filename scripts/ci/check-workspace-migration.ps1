@@ -33,6 +33,7 @@ function Invoke-Fixtures {
         $RetiredCloneDir = Join-Path $H '.local\share\dotfiles\retired-clones'
         $WorkspaceJournal = Join-Path $H '.local\share\dotfiles\workspace-migration.journal'
         $RetiredCodeRootSwitch = Join-Path $H '.config\dotfiles\code-root'
+        $WorkspaceMoveGate = Join-Path $H '.config\dotfiles\workspace-move'
         $D = $LegacyRepoHome; $W = $WorkspaceDir; $M = Join-Path $H '.claude\projects'
         function Key { param([string]$Path) return (Invoke-WsPaths key $Path | Select-Object -First 1) }
 
@@ -54,6 +55,7 @@ function Invoke-Fixtures {
             New-Repo 'Notes' 'https://github.com/mgallo-code/notes'
             New-Repo 'GalloGrid' 'git@github.com:MGallo-Code/GalloGrid.git'
             New-Repo 'agent-skills' 'git@github:MGallo-Code/agent-skills.git'
+            $script:AsSha = (git -C (Join-Path $D 'agent-skills') rev-parse HEAD)
             $ea = Join-Path $D 'EA'
             Set-Content -Path (Join-Path $ea '.gitignore') -Value "secret/`n.venv/`n.worktrees/`n.githooks/"
             git -C $ea add .gitignore 2>$null; git -C $ea commit -qm ig 2>$null; git -C $ea push -q origin HEAD:main 2>$null
@@ -70,11 +72,22 @@ function Invoke-Fixtures {
             $low = $ea.ToLower()
             Set-Content -Path (Join-Path $H '.codex\config.toml') -Value "[projects.'$low']`n[projects.'$low\sub']`n[projects.'$low-backing']"
             Set-Content -Path $RetiredCodeRootSwitch -Value GalloGrid
+            Set-Content -Path $WorkspaceMoveGate -Value now   # armed; the unarmed case removes it
         }
 
-        Write-Host "-- Windows client: everything moves, retires and is re-pointed"
+        Write-Host "-- unarmed: nothing moves or retires"
+        New-Fixture; Remove-Item -LiteralPath $WorkspaceMoveGate
+        Expect "an unarmed client succeeds" (Move-ToWorkspace)
+        Expect "and moves, parks and creates nothing" ((Test-Path (Join-Path $D 'EA\.git')) -and (Test-Path (Join-Path $D 'agent-skills\.git')) -and (Test-Path (Join-Path $D 'GalloGrid\.git')) -and -not (Test-Path $W))
+        Expect "and keeps the switch file" (Test-Path $RetiredCodeRootSwitch)
+
+        Write-Host "-- Windows client: everything moves, retires and is re-pointed (under setup.ps1's Stop mode)"
         New-Fixture
-        Expect "migration succeeds" (Move-ToWorkspace)
+        $WorkspaceRetiredClones = @(@{ Name = "agent-skills"; Remote = "git@github:MGallo-Code/agent-skills.git"; Imported = $script:AsSha })
+        $ErrorActionPreference = 'Stop'
+        try { $moved = Move-ToWorkspace } catch { $moved = $false; Write-Host "  (threw: $($_.Exception.Message))" }
+        $ErrorActionPreference = 'Continue'
+        Expect "migration succeeds, and nothing throws under Stop" ($moved)
         Expect "EA moved to Workspace" ((Test-Path (Join-Path $W 'EA\.git')) -and -not (Test-Path (Join-Path $D 'EA')))
         Expect "Wiki and Notes moved (remote forms compared as owner/repo)" ((Test-Path (Join-Path $W 'Wiki\.git')) -and (Test-Path (Join-Path $W 'Notes\.git')))
         Expect "ignored data moved with the repo" ((Get-Content (Join-Path $W 'EA\secret\health.txt')) -eq 's')
@@ -117,6 +130,16 @@ function Invoke-Fixtures {
         New-Fixture; Set-Content -Path (Join-Path $D 'agent-skills\new.txt') -Value dirty
         Expect "a dirty clone fails the run" (-not (Move-ToWorkspace))
         Expect "and is kept in place" (Test-Path (Join-Path $D 'agent-skills\new.txt'))
+        New-Fixture; $WorkspaceRetiredClones = @(@{ Name = "agent-skills"; Remote = "git@github:MGallo-Code/agent-skills.git"; Imported = $script:AsSha })
+        $as = Join-Path $D 'agent-skills'
+        Set-Content -Path (Join-Path $as 'g') -Value z; git -C $as add g 2>$null; git -C $as commit -qm two 2>$null; git -C $as update-ref refs/remotes/origin/main HEAD
+        Expect "an agent-skills clone newer than the import fails the run" (-not (Move-ToWorkspace))
+        Expect "and is kept in place" (Test-Path (Join-Path $as '.git'))
+        New-Fixture; New-Item -ItemType Directory -Path (Join-Path $W 'EA') -Force | Out-Null
+        Expect "a stray folder at the new home switches nothing" ((Get-WorkspaceHome 'EA') -eq (Join-Path $D 'EA'))
+        New-Fixture; New-Item -ItemType Directory -Path (Join-Path $D 'EA.ws-probe') -Force | Out-Null
+        Expect "a leftover rename probe stops the run" (-not (Move-ToWorkspace))
+        Expect "and nothing moves" ((Test-Path (Join-Path $D 'EA\.git')) -and -not (Test-Path (Join-Path $W 'EA')))
 
         Write-Host "-- sync and setup call it first, and fail on a skip"
         $sync = Get-Content (Join-Path $Root 'sync.ps1'); $setup = Get-Content (Join-Path $Root 'setup.ps1')
@@ -132,7 +155,7 @@ function Invoke-Fixtures {
 }
 
 Write-Host "check-workspace-migration (ps1): fixtures$(if ($RevertTest) { ' (revert test)' })"
-Invoke-Fixtures
+try { Invoke-Fixtures } catch { Write-Host "  FAIL  a fixture threw: $($_.Exception.Message)"; $script:Fail = $true }
 if ($RevertTest) {
     if ($script:Fail) { Write-Host "revert-test ok: a blind preflight fails the fixtures"; exit 0 }
     Write-Host "revert-test FAILED: a blind preflight still passes"; exit 1

@@ -837,10 +837,10 @@ if ($Mode -eq "full") {
 
     $exerciseDir = Join-Path (Get-WorkspaceHome "EA") "exercises"
     $venvDir = "$exerciseDir\.venv"
-    $workspaceDir = "$exerciseDir\workspace"
+    $practiceWorkspace = "$exerciseDir\workspace"
 
     if (Test-Path $exerciseDir) {
-        New-Item -ItemType Directory -Path $workspaceDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $practiceWorkspace -Force | Out-Null
 
         $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
         if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }

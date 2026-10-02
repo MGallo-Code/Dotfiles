@@ -31,9 +31,12 @@ run_fixtures() {
         check "$(resolve_code_root 2>/dev/null)" "$NEW" "no GalloGrid anywhere (a client): the Workspace path"
         mkdir -p "$PENDING/.git" "$PENDING/nexus"
         check "$(resolve_code_root 2>/dev/null)" "$PENDING" "host move pending: the old home, where the services run"
+        mkdir -p "$NEW"
+        check "$(resolve_code_root 2>/dev/null)" "$PENDING" "an empty folder at the new home switches nothing"
         mkdir -p "$NEW/.git" "$NEW/nexus"
-        check "$(resolve_code_root 2>/dev/null)" "$NEW" "moved: ~/Workspace/GalloGrid"
+        check "$(resolve_code_root 2>/dev/null)" "$PENDING" "a stray clone at the new home switches nothing"
         rm -rf "$PENDING"
+        check "$(resolve_code_root 2>/dev/null)" "$NEW" "moved: ~/Workspace/GalloGrid"
         mkdir -p "$HOME/.config/dotfiles"; echo EA > "$HOME/.config/dotfiles/code-root"
         check "$(resolve_code_root 2>/dev/null)" "$NEW" "a leftover switch file changes nothing"
 

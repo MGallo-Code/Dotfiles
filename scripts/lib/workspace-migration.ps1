@@ -33,13 +33,18 @@ function Invoke-WsPaths {
     return @($out | Where-Object { "$_" -ne "" })
 }
 
-function Test-WorkspaceMoveDeferred { return $false }   # Windows is never the MCP host
+# Every machine moves only when armed: its gate file says "now" (mirror of workspace_move_deferred).
+function Test-WorkspaceMoveDeferred {
+    if (-not (Test-Path -LiteralPath $WorkspaceMoveGate)) { return $true }
+    return ((Get-Content -Raw -LiteralPath $WorkspaceMoveGate).Trim() -ne "now")
+}
 
 function Get-WorkspaceHome {
     param([string]$Name)
     $new = Join-Path $WorkspaceDir $Name
     $old = Join-Path $LegacyRepoHome $Name
-    if (Test-Path -LiteralPath $new) { return $new }
+    # The old home wins while it still holds the repo (mirror of workspace_home): a stray clone or an
+    # empty folder at the new home never switches anything.
     if (Test-Path -LiteralPath (Join-Path $old ".git")) { return $old }
     return $new
 }
@@ -88,12 +93,10 @@ function Test-WsSameRemote {
 function Test-WsMovable {
     param([string]$Dir)
     $probe = "$Dir.ws-probe"
-    try {
-        [IO.Directory]::Move($Dir, $probe)
-        [IO.Directory]::Move($probe, $Dir)
-        return $true
-    } catch {
-        if ((Test-Path -LiteralPath $probe) -and -not (Test-Path -LiteralPath $Dir)) { [IO.Directory]::Move($probe, $Dir) }
+    try { [IO.Directory]::Move($Dir, $probe) } catch { return $false }
+    try { [IO.Directory]::Move($probe, $Dir); return $true }
+    catch {
+        Write-Warn "workspace: $Dir is parked at $probe and could not be renamed back ($($_.Exception.Message)) - rename it back by hand before anything else"
         return $false
     }
 }
@@ -107,6 +110,7 @@ function Update-WsPathsInFile {
 
 function Move-WsOne {
     param([string]$Old, [string]$New)
+    $ErrorActionPreference = 'Continue'   # setup.ps1 runs with Stop; nothing after the move may abort it
     $oldFwd = $Old -replace '\\', '/'
     $inside = @()
     foreach ($line in @(git -C $Old worktree list --porcelain 2>$null)) {
@@ -116,28 +120,49 @@ function Move-WsOne {
     if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
     try { [IO.Directory]::Move($Old, $New) } catch { Write-Warn "workspace: could not move $Old ($($_.Exception.Message))"; return $false }
     Add-WsJournal "repo|$Old|$New"; Write-Ok "workspace: moved $Old -> $New"
-    git -C $New worktree repair @inside 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Warn "workspace: git worktree repair reported a problem in $New (run it there by hand)" }
+    $ok = $true
+    try {
+        git -C $New worktree repair @inside 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warn "workspace: git worktree repair reported a problem in $New (run it there by hand)" }
+    } catch { Write-Warn "workspace: git worktree repair failed in $New ($($_.Exception.Message))"; $ok = $false }
     $configs = @(Join-Path $New ".git\config") + @(Get-ChildItem (Join-Path $New ".git\worktrees") -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName "config.worktree" })
-    foreach ($f in $configs) { Update-WsPathsInFile $f $Old $New }
-    Update-WsPathsInFile (Join-Path $WsHome ".codex\config.toml") $Old $New
-    foreach ($line in (Invoke-WsPaths memory (Join-Path $WsHome ".claude\projects") $Old $New)) {
-        if ($line -like "memory|*") { Add-WsJournal $line; Write-Ok "workspace: Claude memory $(Split-Path $line -Leaf)" }
-        elseif ($line -like "warn|*") { Write-Warn "workspace: $($line.Substring(5))" }
+    foreach ($f in @($configs) + @(Join-Path $WsHome ".codex\config.toml")) {
+        try { Update-WsPathsInFile $f $Old $New } catch { Write-Warn "workspace: could not re-point paths in $f ($($_.Exception.Message))"; $ok = $false }
     }
-    foreach ($v in (Invoke-WsPaths venvs $New $Old)) {
-        Remove-Item -LiteralPath $v -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Ok "workspace: removed $v (it named the old path; it rebuilds on next use)"
-    }
-    return $true
+    try {
+        foreach ($line in (Invoke-WsPaths memory (Join-Path $WsHome ".claude\projects") $Old $New)) {
+            if ($line -like "memory|*") { Add-WsJournal $line; Write-Ok "workspace: Claude memory $(Split-Path $line -Leaf)" }
+            elseif ($line -like "warn|*") { Write-Warn "workspace: $($line.Substring(5))" }
+        }
+    } catch { Write-Warn "workspace: could not move Claude memory for $Old ($($_.Exception.Message))"; $ok = $false }
+    try {
+        foreach ($v in (Invoke-WsPaths venvs $New $Old)) {
+            Remove-Item -LiteralPath $v -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Ok "workspace: removed $v (it named the old path; it rebuilds on next use)"
+        }
+    } catch { Write-Warn "workspace: could not check venvs in $New ($($_.Exception.Message))" }
+    return $ok
 }
 
-# Park a clone that retires instead of moving, only when nothing in it is uncommitted, unpushed or stashed.
+# Park a clone that retires instead of moving, only when nothing in it is uncommitted, unpushed or
+# stashed and (with $Imported, the commit dotfiles imported) nothing in it or on its origin is newer.
 function Invoke-WsRetireClone {
-    param([string]$Remote, [string]$Old)
+    param([string]$Remote, [string]$Old, [string]$Imported = "")
+    $ErrorActionPreference = 'Continue'
     if (-not (Test-Path -LiteralPath (Join-Path $Old ".git"))) { return $true }
     if (-not (Test-WsSameRemote $Old $Remote)) { Write-Warn "workspace: $Old is not a clone of $Remote - left as is"; return $false }
     git -C $Old fetch -q 2>$null | Out-Null
+    if ($Imported) {
+        foreach ($ref in @("HEAD", "refs/remotes/origin/main")) {
+            git -C $Old rev-parse -q --verify $ref 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { continue }
+            git -C $Old merge-base --is-ancestor $ref $Imported 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warn "workspace: $Old has commits after the dotfiles import ($Imported) on $ref - kept; fold them in (git subtree pull), then re-run sync"
+                return $false
+            }
+        }
+    }
     $dirty = @(git -C $Old status --porcelain 2>$null).Count -gt 0
     $unpushed = @(git -C $Old log --branches --not --remotes --oneline 2>$null).Count -gt 0
     $stashed = @(git -C $Old stash list 2>$null).Count -gt 0
@@ -148,19 +173,24 @@ function Invoke-WsRetireClone {
     $dest = Join-Path $RetiredCloneDir ("{0}-{1}" -f (Split-Path $Old -Leaf), (Get-Date -Format "yyyyMMdd-HHmmss"))
     New-Item -ItemType Directory -Path $RetiredCloneDir -Force | Out-Null
     try { [IO.Directory]::Move($Old, $dest) } catch { Write-Warn "workspace: $Old is in use - kept; close it, then re-run sync"; return $false }
-    Add-WsJournal "park|$Old|$dest"; Write-Ok "workspace: retired $Old -> $dest (delete it whenever you like)"
+    Add-WsJournal "park|$Old|$dest"; Write-Ok "workspace: retired $Old -> $dest (its ignored files came along; check them before deleting it)"
     return $true
 }
 
 function Move-ToWorkspace {
+    $ErrorActionPreference = 'Continue'   # setup.ps1 runs with Stop; a move must never abort halfway
     $blocked = $false
     $pending = New-Object System.Collections.Generic.List[object]
+    $retire = New-Object System.Collections.Generic.List[object]
     Push-Location $WsHome   # never hold a repo open ourselves
     try {
         foreach ($m in $WorkspaceMoves) {
             $old = Join-Path $LegacyRepoHome $m.Name
             $new = Join-Path $WorkspaceDir $m.Name
-            if ($m.Scope -eq "host") { if (-not (Invoke-WsRetireClone $m.Remote $old)) { $blocked = $true }; continue }
+            if ($m.Scope -eq "host") {
+                if (Test-Path -LiteralPath (Join-Path $old ".git")) { $retire.Add(@($m.Remote, $old, "")) }
+                continue
+            }
             if (-not (Test-Path -LiteralPath (Join-Path $old ".git"))) { continue }
             if (Test-Path -LiteralPath $new) {
                 Write-Warn "workspace: both $old and $new exist - left as is; keep one and move or remove the other by hand"
@@ -169,8 +199,24 @@ function Move-ToWorkspace {
             if (-not (Test-WsSameRemote $old $m.Remote)) { Write-Warn "workspace: $old is not a clone of $($m.Remote) - not moved"; $blocked = $true; continue }
             $pending.Add(@($old, $new))
         }
+        foreach ($c in $WorkspaceRetiredClones) {
+            $old = Join-Path $LegacyRepoHome $c.Name
+            if (Test-Path -LiteralPath (Join-Path $old ".git")) { $retire.Add(@($c.Remote, $old, $c.Imported)) }
+        }
+        if (Test-WorkspaceMoveDeferred) {
+            if (($pending.Count + $retire.Count) -gt 0) {
+                Write-Ok "workspace: waiting for this machine's move ($($pending.Count + $retire.Count) repo(s) still in $LegacyRepoHome); arm it with: Set-Content $WorkspaceMoveGate now"
+            }
+            return (-not $blocked)
+        }
+        $leftover = @(Get-ChildItem -LiteralPath $LegacyRepoHome -Directory -Filter "*.ws-probe" -ErrorAction SilentlyContinue)
+        if ($leftover.Count -gt 0) {
+            Write-Warn "workspace: a probe rename was left behind ($($leftover.FullName -join ', ')) - rename it back by hand, then re-run"
+            return $false
+        }
         if ($pending.Count -gt 0) {
             $preflight = $true
+            if (-not (Get-WsPython)) { Write-Warn "workspace: no working Python for the path rewrites - nothing moved"; $preflight = $false }
             foreach ($p in $pending) {
                 if (-not (Test-WsMovable $p[0])) { Write-Warn "workspace: $($p[0]) is in use (a shell, editor or agent in it) - close it, then re-run"; $preflight = $false }
             }
@@ -180,10 +226,11 @@ function Move-ToWorkspace {
                 Write-Warn "workspace: nothing moved (the repos move together or not at all)"; $blocked = $true
             }
         }
-        foreach ($c in $WorkspaceRetiredClones) {
-            if (-not (Invoke-WsRetireClone $c.Remote (Join-Path $LegacyRepoHome $c.Name))) { $blocked = $true }
+        foreach ($r in $retire) {
+            if (-not (Invoke-WsRetireClone $r[0] $r[1] $r[2])) { $blocked = $true }
         }
-        if (Test-Path -LiteralPath $RetiredCodeRootSwitch) {
+        # The switch file goes only once nothing here is still waiting to move (mirror of the bash side).
+        if ((Test-Path -LiteralPath $RetiredCodeRootSwitch) -and -not $blocked) {
             Add-WsJournal "switch|$RetiredCodeRootSwitch|$((Get-Content -Raw $RetiredCodeRootSwitch).Trim())"
             Remove-Item -LiteralPath $RetiredCodeRootSwitch -Force
             Write-Ok "workspace: retired the code-root switch file"
@@ -193,6 +240,7 @@ function Move-ToWorkspace {
 }
 
 function Undo-WorkspaceMigration {
+    $ErrorActionPreference = 'Continue'
     if (-not (Test-Path -LiteralPath $WorkspaceJournal)) { Write-Warn "workspace rollback: no journal at $WorkspaceJournal - nothing to undo"; return $false }
     Push-Location $WsHome
     try {

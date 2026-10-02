@@ -152,14 +152,14 @@ gemini_workspace_roots = [
     os.path.expanduser("~/.dotfiles"),
     os.path.expanduser("~/.config/nvim"),
 ]
-# EA everywhere, GalloGrid on the host: wherever each is now (ADR-0007: ~/Workspace, or the old
-# ~/Documents home while a move is pending). A missing dir is never listed.
+# EA everywhere, GalloGrid on the host: wherever each is now (ADR-0007: the old ~/Documents home
+# while it still holds the repo, else ~/Workspace). A missing dir is never listed.
 def _ws_home(name):
-    for base in ("Workspace", "Documents"):
-        p = os.path.join(os.path.expanduser("~"), base, name)
-        if os.path.isdir(p):
-            return p
-    return None
+    old = os.path.join(os.path.expanduser("~"), "Documents", name)
+    new = os.path.join(os.path.expanduser("~"), "Workspace", name)
+    if os.path.isdir(os.path.join(old, ".git")):
+        return old
+    return new if os.path.isdir(new) else None
 gemini_workspace_roots = [p for p in [_ws_home("EA")] if p] + gemini_workspace_roots
 gemini_workspace_roots += [p for p in [_ws_home("GalloGrid")] if p]
 context = data.setdefault("context", {})
@@ -500,7 +500,9 @@ if [[ "$MODE" == "--full" ]]; then
     # Keyed on CAPABILITY (is_mcp_host) so the real host always (re)serves on a plain `setup.sh`,
     # OR on explicit --host (intent) so `setup.sh --host` on a renamed/misnamed Mac REACHES
     # hub-host-bootstrap's LOUD "LocalHostName != MCP_HOST" refusal instead of silently degrading.
-    if is_mcp_host || [ "$ROLE" = "host" ]; then
+    if [ "${WORKSPACE_MOVE_FAIL:-0}" = 1 ] && { is_mcp_host || [ "$ROLE" = "host" ]; }; then
+        warn "Hub host bootstrap skipped: a workspace move was blocked this run (fix it first; see 'workspace:' above)"
+    elif is_mcp_host || [ "$ROLE" = "host" ]; then
         step "Hub host bootstrap (MCP host: $MCP_HOST)"
         bootstrap_all_hubs "$DOTFILES_DIR/hubs.json" "$DOTFILES_DIR/scripts/hub-host-bootstrap.sh"
     fi
@@ -717,10 +719,10 @@ if [[ "$MODE" == "--full" ]]; then
 
     EXERCISE_DIR="$(workspace_home EA)/exercises"
     VENV_DIR="$EXERCISE_DIR/.venv"
-    WORKSPACE_DIR="$EXERCISE_DIR/workspace"
+    PRACTICE_WORKSPACE="$EXERCISE_DIR/workspace"
 
     if [ -d "$EXERCISE_DIR" ]; then
-        mkdir -p "$WORKSPACE_DIR"
+        mkdir -p "$PRACTICE_WORKSPACE"
 
         if [ -d "$VENV_DIR" ]; then
             ok "Practice venv already exists"

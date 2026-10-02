@@ -15,7 +15,6 @@ function Get-WsRepoDir {
     param([string]$Name)
     $new = Join-Path (Join-Path $HOME "Workspace") $Name
     $old = Join-Path (Join-Path $HOME "Documents") $Name
-    if (Test-Path -LiteralPath $new) { return $new }
     if (Test-Path -LiteralPath (Join-Path $old ".git")) { return $old }
     return $new
 }

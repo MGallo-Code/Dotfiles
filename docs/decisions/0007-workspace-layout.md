@@ -1,6 +1,6 @@
 # 0007 - Repos leave ~/Documents; dotfiles carries every machine's tools; GalloGrid is mini-only
 
-- Status: proposed, 2026-10-01. Nothing has moved yet except Michael's own projects (below).
+- Status: accepted 2026-10-01 (Michael: "1. Yes."). Build plan: `docs/plans/0007-workspace-build.md`. Nothing has moved yet except Michael's own projects (below).
 - Decided by: Michael, 2026-10-01: "Let's move them out of documents everywhere"; "~/Projects" for his projects; "Sure" to `~/Workspace` with GalloGrid on the mini only; docgen and agent-skills into dotfiles (his suggestion, pending his yes on this record).
 - Amends: ADR-0006 (dotfiles also holds agent-skills and docgen); INV-18 (the code root).
 
@@ -24,7 +24,8 @@
    | `~/Apps` (mini) | deployed services (KeepTheCall) | no |
    | `~/Documents` | personal files only | no |
 
-2. **docgen moves into dotfiles** at `tools/docgen/`, with its history (5 commits).
+2. **docgen moves into dotfiles** at `tools/docgen/`, copied without history, as `claude-config` was in ADR-0006.
+   - Dotfiles is public. docgen's 19 tracked files are generic, but its 5 history commits carry shared EA/GalloGrid messages, so its history stays in GalloGrid.
    - Every machine, the mini included, wires docgen from there.
    - Its Chromium goes to a cache folder outside the repo.
    - Dotfiles CI gains a docgen test job.
@@ -68,6 +69,9 @@
 - The `ea` launcher starts in `~/Workspace/EA`. Starting at `~/Workspace` itself would not load EA's `CLAUDE.md`, skills or settings.
 - Off the mini, nothing under launchd or SSH needs Documents access any more.
 - Rollback: the moves are renames. Rename back, then re-run sync from the previous dotfiles commit.
+
+- **No stale pointers.** A check fails when a live file (not history: decision logs, old plans, handoffs) still names `~/Documents/EA`, `Wiki`, `Notes`, `GalloGrid` or `agent-skills`.
+- **GalloGrid's services.** The hub web app runs from a deployed copy (`/opt/ea-hub`). courier, calendar and nexus run straight from the checkout, which is why the move needs their re-bootstrap. Giving them deployed copies is a follow-up for Learning.
 
 ## Open
 

@@ -1,0 +1,104 @@
+# ADR-0007 build plan: ~/Workspace, docgen and agent-skills in dotfiles, GalloGrid mini-only
+
+Decision: `docs/decisions/0007-workspace-layout.md`. Each phase is gated: its tests green locally and in CI before the next starts. Nothing moves on a machine until phase 1 is pushed and green.
+
+## Phase 1 - dotfiles (one branch, one push)
+
+1. **docgen in.** Copy `GalloGrid/docgen` tracked files at the current GalloGrid `main` to `tools/docgen/`. No history; the source commit goes in the commit message.
+   - `.gitignore`: `tools/docgen/.venv/`, `tools/docgen/output/*` (keep `.gitkeep`).
+   - Chromium leaves the repo: `DOCGEN_BROWSERS` = `~/.cache/docgen-playwright` (`$HOME\.cache\docgen-playwright` on Windows).
+   - `DOCGEN_PATH` = `$DOTFILES_DIR/tools/docgen` in setup and sync, both platforms. It no longer comes from the code root.
+   - CI: a `docgen` job (uv, `playwright install chromium`, pytest) on Linux. A Windows smoke run (import and `docgen-server --help`), since the PC wires docgen locally.
+   - Gate: check-no-secrets over `tools/docgen`; a personal-data grep (emails, home paths) is zero hits.
+2. **agent-skills in.** `git subtree add --prefix=agent-skills <fork> main`. This keeps history; the repo is already public. An `upstream` note in the README tells how to pull upstream by hand.
+   - `AGENT_SKILLS_DIR` / `$AgentSkillsDir` = `$DOTFILES_DIR/agent-skills`.
+   - sync stops pulling it as a separate repo. The dirty-repo commit path's agent-skills branch goes.
+   - The `sysupdate` launcher drops its `--add-dir agent-skills`, since it is inside dotfiles now.
+   - Check how its own `hooks/` and `CLAUDE.md` are used today. Nothing of it may register twice.
+3. **Paths.** One root: `WORKSPACE_DIR="~/Workspace"` (`$WorkspaceDir`).
+   - **REPOS** (and `EA_REPOS`): EA, Wiki, Notes under `~/Workspace`. GalloGrid moves to a new `HOST_REPOS` list, cloned and synced only when `is_mcp_host`. Windows has no host repos.
+   - **Code root (INV-18 rewrite):** `resolve_code_root` = `~/Workspace/GalloGrid` on the host. A client has none and never needs one (`needs_local_nexus` is false after the cutover, and docgen is in dotfiles). The switch file `~/.config/dotfiles/code-root` is retired with a tombstone, and the EA fallback goes. `hubs.json` keeps `$CODE_ROOT`.
+   - **Every live reference** in the tracked-file list from the 2026-10-01 grep:
+     - manifest sh/ps1, setup sh/ps1, sync sh/ps1;
+     - `shell/ea.zsh` and `shell/windows/ea.ps1`: `ea`, `wiki`, `sysupdate`, practice;
+     - the Gemini and Codex trust lists;
+     - check-workspace-access py/ps1 and workspace-access-diagnostics;
+     - check-tcc-grants;
+     - the global rules (`workspace-map.md`, `email-tools.md`), skills and agents that name paths;
+     - README, CLAUDE.md and AGENTS.md.
+4. **Migration** (new manifest functions `migrate_to_workspace` / `Move-ToWorkspace`), run by setup and sync before any repo sync or linking. For each managed repo (EA, Wiki, Notes; GalloGrid on the host; the old `~/Documents/agent-skills` clone):
+   - **Act only when** the old path is a git repo whose origin matches the manifest remote AND the new path does not exist. Otherwise: no-op if already moved; warn and leave both if both exist. Never merge, never overwrite.
+   - **Refuse, warn and skip:**
+     - on macOS, any dataless (iCloud-only) file;
+     - a process with its working directory inside (macOS/Linux `lsof -d cwd`; Windows: the move fails as a locked folder and is reported);
+     - for agent-skills, a dirty tree or unpushed commits.
+   - **Move:**
+     - same-disk rename to `~/Workspace/X`;
+     - `git worktree repair` from the new main checkout (this re-points the linked worktrees under `~/.claude-worktrees` and `~/.codex/worktrees`), then `git worktree prune` only for entries whose folder is already gone;
+     - the old agent-skills clone is not moved but parked in a dated leftovers folder, after the clean check above.
+   - **Re-point:**
+     - Claude memory folders: every `~/.claude/projects/<key>` whose key starts with key(old path) is renamed to key(new path) plus the same suffix (key = path with each non-alphanumeric character turned into `-`). It is skipped if the target exists;
+     - Codex `config.toml` project paths, as a text replace of the exact old path prefix;
+     - links: `MOVED_LINK_SOURCES` gains `~/Documents/EA`, `Wiki`, `GalloGrid` -> `~/Workspace/...` and `~/Documents/agent-skills` -> `~/.dotfiles/agent-skills` (ADR-0006 machinery: live or dangling links, Windows junctions).
+   - **Not touched:**
+     - `~/.claude.json` project keys, which running Claude processes rewrite: each moved folder asks for trust once;
+     - the Claude Desktop app config;
+     - the old empty `~/Documents/X` folder, which is removed only if empty.
+   - **Idempotent:** a second run is a no-op.
+5. **Gates (new invariants, both platforms):**
+   - **INV-21, migration:** `check-workspace-migration` sh+ps1, hermetic, using real repos plus a linked worktree, memory folders and a Codex config. It checks:
+     - the repo moves;
+     - the worktree still works;
+     - the memory keys are renamed;
+     - Codex is re-pointed;
+     - a second run is a no-op;
+     - an existing target is never overwritten;
+     - a cwd-busy repo is skipped.
+     A revert test plants an unconditional move.
+   - **INV-22, no stale pointers:** `check-no-stale-paths` fails on `Documents/(EA|Wiki|Notes|GalloGrid|agent-skills)` in tracked live files. History is allowlisted: `docs/decisions/`, `docs/plans/` older than 0007, and dated handoffs.
+   - **INV-18:** rewritten fixtures (host has a code root, a client has none, the switch file is ignored).
+   - Parity rows for every new function. CI jobs on Linux, macOS and Windows (pwsh and Windows PowerShell).
+6. **Doubt pass on the diff** (fresh-context reviewer), then push; CI green.
+
+## Phase 2 - content repos (same day, after phase 1 is green)
+
+- **EA:** live pointers to `~/Documents/...` become `~/Workspace/...`:
+  - `CLAUDE.md`, skills, `.claude/settings.json` hooks, `context/`, `profile/index.md`;
+  - the KeepTheCall pointers (done in `8e63f30c`).
+  - History docs stay. EA's own stale-path check if EA has a gate surface; otherwise dotfiles' check covers the rules it ships.
+- **Wiki:** `index.md` and live pages (17 files). Lab notes keep the dated paths they describe.
+- Push each with its own gate (EA `scripts/verify.sh`).
+
+## Phase 3 - clients: PC, WSL, laptop (over SSH)
+
+- Per machine:
+  - pre-check no session is open in the repos;
+  - `git -C ~/.dotfiles pull`, then one `sync`;
+  - verify: `/mcp` shows docgen from `~/.dotfiles/tools/docgen`, links and the machine checks pass.
+- **PC:** the WSL-hosted docgen entry in the PC's Claude config (B5 repointed it to `/root/Documents/GalloGrid/docgen`) moves to `/root/.dotfiles/tools/docgen`.
+- **Clients drop their GalloGrid clone** (to the leftovers folder) and the switch file.
+- **Laptop:** moving out of iCloud deletes iCloud's copies. Everything moved is on GitHub; the dataless check guards the rest.
+
+## Phase 4 - the mini, with Learning (window like B3; Michael present for the promote)
+
+1. **Learning, before the window:**
+   - GalloGrid drops `docgen/` and its CI job;
+   - GalloGrid's live path references (about 350 lines, mostly docs) become `~/Workspace/GalloGrid`;
+   - the hub's `ea_root` setting and any EA paths the services read become `~/Workspace/EA`;
+   - Learning's sessions pause.
+2. **The window:**
+   - **Dotfiles sync on the mini:** the migration moves EA, Wiki, Notes and GalloGrid and repairs their worktrees. It re-points MCP, re-bootstraps courier, calendar and nexus-http from the new code root, and wires docgen from dotfiles.
+   - **Learning's installers** re-run from `~/Workspace/GalloGrid`: agent-http, media-intake, media-pull, playback-poll, music poller and drip.
+   - **Checks:** `hub status`, launchd integrity, each installer's `--check-installed`.
+   - **Promote (Michael):** `cd ~/Workspace/GalloGrid/ea-hub && ./scripts/promote_production.py`.
+   - **After:**
+     - the `hub` function in `~/.zshrc`;
+     - the Desktop preview server;
+     - the hub chats reopen in `~/Workspace/GalloGrid/ea-hub`.
+3. **Rollback until the promote:** rename back, then sync from the previous dotfiles commit and re-run the installers.
+
+## Phase 5 - cleanup
+
+- Archive `MGallo-Code/agent-skills` on GitHub (Michael's go).
+- Retire the code-root switch-file tombstone after every machine has synced once.
+- Card and workspace-map updated; the leftovers folders listed for Michael.

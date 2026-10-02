@@ -53,8 +53,11 @@ CONTEXT_HOOKS = (
     # The request queue (ADR-0008) sweeps the transcript at the end of each turn. Not
     # UserPromptSubmit: in Claude Code 2.1.285 that hook makes mid-turn messages wait for the turn.
     ("Stop", None, "request-capture"),
+    # Builder subagents (ADR-0010): which ones a session has open, so /wrap waits for their retirement.
+    # No matcher: the script filters on agent_type itself, so a matcher change can't silence it.
+    ("SubagentStart", None, "subagent-start"),
 )
-_CONTEXT_SUB = re.compile(r"""context-card\.py["']?\s+(session-start|pre-compact|clear-guard|role-guard|request-capture)\b""")
+_CONTEXT_SUB = re.compile(r"""context-card\.py["']?\s+(session-start|pre-compact|clear-guard|role-guard|request-capture|subagent-start)\b""")
 _CONTEXT_TOKEN = re.compile(r"""(?:^|[\s"'/\\])context-card\.py(?=["'\s]|$)""")
 SKILLS_END = "# dotfiles: end Codex duplicate skill suppression"
 

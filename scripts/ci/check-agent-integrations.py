@@ -271,6 +271,7 @@ CONTEXT_SUBS = {
     "clear-guard": ("PreToolUse", "mcp__ccd_session_mgmt__clear_session"),
     "role-guard": ("PreToolUse", "Edit|Write|NotebookEdit|Bash|PowerShell"),
     "request-capture": ("Stop", None),  # the request queue (ADR-0008)
+    "subagent-start": ("SubagentStart", None),  # open Builder subagents (ADR-0010)
 }
 CONTEXT_EVENTS = sorted({event for event, _ in CONTEXT_SUBS.values()})
 

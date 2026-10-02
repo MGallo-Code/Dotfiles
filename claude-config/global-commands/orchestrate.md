@@ -38,4 +38,4 @@ Arguments: `$ARGUMENTS`. The helper is `python3 ~/.claude/hooks/context-card.py 
 
 ## Phase 2 (in the cleared chat)
 
-Only RESUME.md is loaded. Its next action is to read `KICKOFF.md` and `brief.md`, then follow the `build-orchestration` skill: ledger skeleton, briefs, baseline manifests, and the first assignment. Tell Michael to open each Builder as a new session in the Builder worktree; it sets itself up. Challengers are fresh `challenger` subagents per revision.
+Only RESUME.md is loaded. Its next action is to read `KICKOFF.md` and `brief.md`, then follow the `build-orchestration` skill: ledger skeleton, briefs, baseline manifests, and the first assignment. Builders are `builder` / `builder-high` subagents it spawns per slice in the background (ADR-0010): record each one's agent id in the ledger, send revisions with SendMessage, retire it at acceptance (`context-card.py builders retire <id>`), and never `/wrap` mid-slice. Challengers are fresh `challenger` subagents per revision. Michael opens a peer chat Builder in the Builder worktree only for a slice he wants to watch.

@@ -307,8 +307,10 @@ def fixtures(s: Suite) -> None:
     ):
         r = guard("local_orch", tool, tool_input, name="challenger-guard", agent_type="challenger")
         s.check(f"challenger guard: {tool} {str(tool_input)[-48:]} -> {want}", r.returncode == want, f"rc={r.returncode}")
-    r = guard("local_orch", "Write", {"file_path": str(mine / "src.py")}, agent_type="challenger")
-    s.check("the session role guard leaves the Challenger to its own guard", r.returncode == 0, f"rc={r.returncode}")
+    r1 = guard("local_orch", "Write", {"file_path": str(mine / "src.py")}, agent_type="challenger")
+    r2 = guard("local_orch", "Write", {"file_path": str(inbox / "review" / "report.md")}, agent_type="challenger")
+    s.check("the session role guard applies the Challenger's own rules, not the Orchestrator's", r1.returncode == 3 and r2.returncode == 0,
+            f"rc={r1.returncode}/{r2.returncode}")
 
     # /orchestrate: one switch in the Orchestrator; new Builder sessions set themselves up.
     canon = s.repo("canon", "git@github:MGallo-Code/app.git")
@@ -436,9 +438,67 @@ def fixtures(s: Suite) -> None:
     s.check("a Builder cannot pause the orchestration", r.returncode != 0, r.stdout)
     r = s.run(["orchestration", "off"], canon, host="local_nobody")
     s.check("a chat with no role cannot pause it", r.returncode != 0, r.stdout)
+
+    # Builder subagents (ADR-0010): their calls carry the Orchestrator's session. role-guard routes them
+    # to the Builder rules (as their own agent hook does), and an open Builder holds off the clear.
+    def sub(tool: str, tool_input: dict, name: str = "role-guard", host: str = "local_o9"):
+        return s.run([name], canon, {"tool_name": tool, "tool_input": tool_input, "agent_type": "builder", "agent_id": "a-b1"}, host=host)
+    cdw = f"cd {bwt} && "
+    for tool, tool_input, want in (
+        ("Edit", {"file_path": str(bwt / "app.py")}, 0),
+        ("Write", {"file_path": str(bwt / "src" / "new.py")}, 0),
+        ("Edit", {"file_path": str(canon / "README.md")}, 3),
+        ("Write", {"file_path": str(bwt / ".claude" / "agents" / "builder.md")}, 3),
+        ("Write", {"file_path": str(bwt / ".git" / "hooks" / "pre-push")}, 3),
+        ("Bash", {"command": cdw + "pytest -q"}, 0),
+        ("Bash", {"command": f'cd "{bwt}/src"; ls'}, 0),
+        ("Bash", {"command": "pytest -q"}, 3),
+        ("Bash", {"command": f"cd {canon} && git status"}, 3),
+        ("Bash", {"command": cdw + "git commit -qm wip"}, 0),
+        ("Bash", {"command": cdw + "git push"}, 3),
+        ("Bash", {"command": cdw + "python3 ~/.claude/hooks/context-card.py queue add x"}, 3),
+        ("Bash", {"command": cdw + "python3 ~/.claude/hooks/context-card.py status"}, 0),
+        ("PowerShell", {"command": f"Set-Location '{bwt}'; Get-ChildItem"}, 0),
+    ):
+        for name in ("role-guard", "builder-guard"):
+            r = sub(tool, tool_input, name)
+            shown = next(iter(tool_input.values())).replace(str(bwt), "<wt>").replace(str(canon), "<canon>")
+            s.check(f"builder subagent ({name}): {tool} {shown} -> {want}", r.returncode == want, f"rc={r.returncode} {r.stderr[:160]}")
+    r = sub("Edit", {"file_path": str(bwt / "app.py")}, "builder-guard", host="local_nobody")
+    s.check("a Builder subagent outside a session that leads an orchestration does nothing", r.returncode == 3, f"rc={r.returncode}")
+    agents = SCRIPT.parents[1] / "global-agents"
+    bodies = {n: (agents / f"{n}.md").read_text(encoding="utf-8").split("\n---\n", 1) for n in ("builder", "builder-high")}
+    s.check("both Builder agents: one body, a fail-closed builder-guard hook, no Agent or messaging tools",
+            bodies["builder"][1] == bodies["builder-high"][1] and all(
+                'builder-guard; rc=$?; [ "$rc" -eq 0 ] || exit 2' in head and "\ntools: " in head
+                and not any(t in head.split("\ntools: ", 1)[1].split("\n", 1)[0] for t in ("Agent", "SendMessage"))
+                for head, _ in bodies.values()), "")
+
+    wrap9 = s.transcript("wrap9", [typed(WRAP, -60), EXPANSION])
+    clear9 = lambda: s.run(["clear-guard"], canon, {"tool_input": {"session_id": "self"}, "transcript_path": wrap9}, host="local_o9")
+    compact9 = lambda: s.run(["pre-compact"], canon, {"trigger": "auto", "transcript_path": fable}, host="local_o9")
+    for agent, aid in (("builder", "a-b1"), ("builder-high", "a-b2"), ("Explore", "a-x"), ("builder", "a-b1")):
+        s.run(["subagent-start"], canon, {"agent_type": agent, "agent_id": aid}, host="local_o9")
+    listed = s.run(["builders"], canon, host="local_o9").stdout
+    c1, p1 = clear9(), compact9()
+    s.check("open Builders are recorded (not other subagents); /wrap refused while one is open; compaction asks for the full context",
+            "a-b1" in listed and "a-b2" in listed and "a-x" not in listed and c1.returncode == 2 and "still open" in c1.stderr
+            and "full working context" in p1.stdout and "Summarize only what happened after" not in p1.stdout, listed + c1.stderr + p1.stdout[:300])
+    s.run(["builders", "retire", "a-b1"], canon, host="local_o9")
+    listed, c2 = s.run(["builders"], canon, host="local_o9").stdout, clear9()
+    s.check("retire closes one Builder; the clear still waits for the other", "a-b1" not in listed and "a-b2" in listed and "still open" in c2.stderr, listed + c2.stderr)
+    s.run(["builders", "forget"], canon, host="local_o9")
+    c3, p3 = clear9(), compact9()
+    s.check("forget clears the records: the clear and compaction are back to normal",
+            "still open" not in c3.stderr and "full working context" not in p3.stdout, c3.stderr + p3.stdout[:300])
+    s.run(["subagent-start"], canon, {"agent_type": "builder", "agent_id": "a-b3"}, host="local_o9")
+
     s.run(["orchestration", "off"], canon, host="local_o9")
+    r = sub("Edit", {"file_path": str(bwt / "app.py")}, "builder-guard")
+    s.check("a paused orchestration holds its Builder subagents idle", r.returncode == 3 and "paused" in r.stderr, r.stderr)
     r = s.run(["orchestration", "end"], canon, host="local_o9")
     s.check("end works while paused", r.returncode == 0 and not role_of("local_p1") and not role_of("local_o9"), r.stdout + r.stderr)
+    s.check("end drops the Orchestrator's open Builder records", not list((s.state / "open-builders").glob("*.json")), "")
 
     # One window record per folder: autowrap and an orchestration share it; the old limit returns last.
     for order in ("autowrap-first", "orchestration-first"):
@@ -718,7 +778,7 @@ def main() -> int:
         ok = True
         plants = [(m, m + "    return 0  # REVERT-TEST: always allows\n") for m in (
             "def hook_clear_guard(data: dict) -> int:\n", "def hook_role_guard(data: dict) -> int:\n",
-            "def hook_challenger_guard(data: dict) -> int:\n")]
+            "def hook_challenger_guard(data: dict) -> int:\n", "def hook_builder_guard(data: dict) -> int:\n")]
         plants += [('data.get("source") == "startup" and ', ""),  # activation on any source
                    ("                remove(path)\n                cleaned += 1", "                cleaned += 1"),  # end skips Builders
                    ('binding.get("kind") != "file" and cards.get(sid)', 'cards.get(sid)'),  # autowrap off unbinds file cards
@@ -731,13 +791,26 @@ def main() -> int:
                    ("    return headless() or print_mode()", "    return headless()"),  # nested claude -p captured
                    ('len(inbox) >= QUEUE_NAG_UNREVIEWED and not data.get("stop_hook_active")', 'False'),  # the nag never fires
                    (' and not data.get("stop_hook_active"):', ':'),  # the nag repeats forever
-                   ("            for transcript in known_transcripts(sid):", "            for transcript in []:")]  # reviewed does not sweep
-        labels = ["clear guard always allows", "role guard always allows", "challenger guard always allows",
+                   ("            for transcript in known_transcripts(sid):", "            for transcript in []:"),  # reviewed does not sweep
+                   ("    if agent in BUILDER_AGENTS:\n        return hook_builder_guard(data)", "    if False:\n        pass"),  # Orchestrator rules judge Builders
+                   ("    running = open_builders(sid)\n", "    running = {}\n"),  # clear ignores open Builders
+                   ("    if not sid or agent not in BUILDER_AGENTS", "    if True or agent not in BUILDER_AGENTS"),  # Builders never recorded
+                   ('        return role_block("The orchestration is paused (/orchestrate on resumes it); the Builder is held idle.")',
+                    "        pass"),  # a paused orchestration's Builder works
+                   ("        if not where or not _under(", "        if False and not _under("),  # shell may start anywhere
+                   ('        if _under(target, str(real_root / ".claude")) or', '        if False and _under(target, str(real_root / ".claude")) or'),
+                   ('        if helper and helper.group(1) != "status":', "        if False:"),  # Builder runs Orchestrator helpers
+                   ("    if open_builders(sid):\n        # This compaction", "    if False:\n        # This compaction"),  # narrowing kept
+                   ("            remove(open_builders_path(orch_sid))", "            pass")]  # end keeps open Builders
+        labels = ["clear guard always allows", "role guard always allows", "challenger guard always allows", "builder guard always allows",
                   "activation on any source", "end skips Builder cleanup", "autowrap off unbinds a file card",
                   "limit has no upper bound", "queue drops typed prompts", "queue drops mid-turn messages",
                   "queue captures peers", "queue not restored after compaction", "queue captures codex exec",
                   "queue captures a nested claude -p", "the checklist nag never fires", "the checklist nag repeats forever",
-                  "queue reviewed does not sweep first"]
+                  "queue reviewed does not sweep first",
+                  "role guard judges Builders by the Orchestrator's rules", "clear ignores open Builders", "Builders never recorded",
+                  "a paused orchestration's Builder works", "a Builder shell may start anywhere", "a Builder may edit .claude/",
+                  "a Builder may run Orchestrator helpers", "compaction narrows while a Builder is open", "end keeps open Builder records"]
         for (marker, replacement), label in zip(plants, labels):
             if marker not in text:
                 print(f"revert-test: plant anchor not found: {marker.strip()[:60]}", file=sys.stderr)

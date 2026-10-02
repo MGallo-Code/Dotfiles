@@ -17,6 +17,13 @@ Hook subcommands (registered by dotfiles `configure-agent-integrations.py`):
                   role (skill `build-orchestration`) for sessions that set one; silent for everyone else.
                   Blocks with exit 3 (the registered wrapper maps 3 to 2), so an interpreter's own
                   exit 2 (script missing or unreadable) can never block a session.
+  builder-guard   PreToolUse rules for the `builder` / `builder-high` subagents (ADR-0010), run by role-guard for
+                  them and by their own agent files: edits only in the Builder worktree of the orchestration
+                  this session leads (never its .claude/ or .git/), every shell command starting with
+                  `cd <worktree> &&`, the Builder git rules, no context-card helpers but status; refused when
+                  there is no live orchestration or it is paused. Fails closed.
+  subagent-start  SubagentStart (matcher builder|builder-high): record an open Builder subagent, so the
+                  clear guard refuses /wrap until the Orchestrator retires it (`builders retire <id>`).
   challenger-guard  Agent-scoped PreToolUse for the `challenger` subagent (its frontmatter):
                   pass-1 isolation from the canonical checkout, evidence-only writes, read-only git.
 Helper subcommands (run by /wrap and the orchestrate skill):
@@ -56,6 +63,11 @@ WINDOW = 350000
 WINDOW_MIN = 150000   # below this, ~70K of fixed load refills the chat right after each compaction (thrash)
 WINDOW_MAX = 1000000
 CARD_LINES_MAX = 200
+CARD_HELP = "python3 ~/.claude/hooks/context-card.py"
+# Hooks report a SUBAGENT's compaction with the parent's session and transcript (ADR-0010,
+# finding 6), so everything a card or checklist hook prints may land in a subagent's context.
+SUBAGENT_NOTE = ("(This belongs to the conversation's main agent. A subagent compacting inside this "
+                 "conversation, such as a Builder or Challenger, ignores it and keeps its own task's context.)")
 TAIL_BYTES = 4 * 1024 * 1024
 STALE_BINDING_DAYS = 30
 
@@ -740,7 +752,7 @@ def queue_block(sid: str | None) -> str:
     tasks, inbox = open_items(sid), unreviewed(sid)
     if not tasks and not inbox:
         return ""
-    out = [f"Checklist for this conversation ({len(tasks)} open; `{QUEUE_HELP}` to manage it):"]
+    out = [f"Checklist for this conversation ({len(tasks)} open; `{QUEUE_HELP}` to manage it) {SUBAGENT_NOTE}:"]
     out += [f"- [ ] {t['id']} {t['title']}" for t in tasks] or ["- (no open tasks)"]
     if inbox:
         shown = inbox[-QUEUE_SHOW_INBOX:]
@@ -946,7 +958,7 @@ def session_start_card(data: dict) -> bool:
         touch_binding(sid)
         card = Path(binding["card"])
         if refreshed:
-            print(f"This session was just refreshed. Its resume card ({card}), last updated {fmt_time(card_updated(binding))}, is the current state of the work:\n")
+            print(f"This session was just refreshed. Its resume card ({card}), last updated {fmt_time(card_updated(binding))}, is the current state of the work {SUBAGENT_NOTE}:\n")
             print(show_card(binding))
             print()
         else:
@@ -982,9 +994,17 @@ def hook_pre_compact(data: dict) -> int:
     if waiting or pending:
         print(f"This conversation's checklist ({len(waiting)} open: {', '.join(i['id'] for i in waiting)}) and any "
               "unreviewed messages are restored right after this compaction. Refer to tasks by id and record "
-              "progress on each; do not restate them.\n")
+              f"progress on each; do not restate them. {SUBAGENT_NOTE}\n")
     binding = load_binding(sid)
     if not binding:
+        return 0
+    if open_builders(sid):
+        # This compaction may be the Builder's own (the hooks cannot tell, ADR-0010 finding 6), so no
+        # "summarize only what is new" scope that would drop its slice. A stale card widens; it never drops.
+        print(SUBAGENT_NOTE)
+        print("A Builder subagent is open in this conversation and this compaction may be its own: summarize the "
+              "full working context of the task being compacted, whichever agent it belongs to.")
+        log("pre-compact", f"open builders: wide scope sid={sid}")
         return 0
     model = working_model(data.get("transcript_path"))
     profile = PROFILES / f"{model}.md" if model else None
@@ -992,6 +1012,7 @@ def hook_pre_compact(data: dict) -> int:
         profile = PROFILES / "default.md"
     since = card_updated(binding)
     stamp = fmt_time(since)
+    print(SUBAGENT_NOTE)
     print(
         "Resume-card compaction. This session works from the resume card "
         f"{binding['card']}, last updated {stamp}. The card and git history hold everything "
@@ -1041,6 +1062,11 @@ def hook_clear_guard(data: dict) -> int:
             "latest message. Leave the chat as it is and continue, or suggest /wrap."
         )
     sid = session_id()
+    running = open_builders(sid)
+    if running:
+        return block(f"A Builder subagent is still open in this session ({', '.join(sorted(running))}); a clear would cut "
+                     "the Orchestrator off from messaging it (ADR-0010). Retire it at acceptance "
+                     f"(`{CARD_HELP} builders retire <id>`), or `{CARD_HELP} builders forget` if it is gone.")
     binding = load_binding(sid)
     if not binding or not sid:
         return block("No resume card is bound to this session; /wrap binds one and checkpoints it before clearing.")
@@ -1484,8 +1510,17 @@ def builder_git_violation(command: str) -> str | None:
 
 
 def hook_role_guard(data: dict) -> int:
-    if headless() or data.get("agent_type") == "challenger":
-        return 0  # the challenger has its own agent-scoped guard
+    agent = data.get("agent_type")
+    # A subagent's tool calls carry its parent's session (ADR-0010, finding 6), so the parent's role
+    # would judge them. Builders and the Challenger get their own rules here, from this global hook,
+    # which fires even when a project-level agent file of the same name shadows the user-level one
+    # (whose agent-scoped hooks then never run) and always runs on the stable runner.
+    if agent in BUILDER_AGENTS:
+        return hook_builder_guard(data)
+    if agent == "challenger":
+        return hook_challenger_guard(data)
+    if headless():
+        return 0
     role = load_role(session_id())
     if not role:
         return 0
@@ -1539,6 +1574,117 @@ def hook_challenger_guard(data: dict) -> int:
             if tokens[0] == "gh" or sub not in READ_ONLY_GIT:
                 return role_block(f"The Challenger runs read-only git only (not `{' '.join(tokens[:3])}`).")
     return 0
+
+
+# ---------------------------------------------------------------- Builder subagents (ADR-0010)
+
+BUILDER_AGENTS = ("builder", "builder-high")
+OPEN_BUILDER_TTL = 7 * 86400  # an open-Builder record this old is forgotten (retire or forget sooner)
+CD_PREFIX = re.compile(r"""^\s*(?:cd|Set-Location|pushd)\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)""")
+
+
+def hook_builder_guard(data: dict) -> int:
+    """Agent-scoped (builder.md / builder-high.md frontmatter), so it runs only for a Builder
+    subagent. Its session is the Orchestrator's: the role record names the Builder worktree."""
+    tool = data.get("tool_name")
+    tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    role = load_role(session_id())
+    orch = (role or {}).get("orchestration") or {}
+    root = Path(orch["builder_worktree"]) if role and role.get("role") == "orchestrator" and orch.get("builder_worktree") else None
+    act = load_activation(root, include_paused=True) if root else None
+    if not act:
+        return role_block("A Builder subagent runs only inside a live orchestration this session leads "
+                          "(/orchestrate status); nothing to build for.")
+    if act.get("paused"):
+        return role_block("The orchestration is paused (/orchestrate on resumes it); the Builder is held idle.")
+    real_root = root.resolve()
+    if tool in ("Edit", "Write", "NotebookEdit"):
+        raw = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+        target = Path(raw)
+        if not target.is_absolute():
+            target = Path(str(data.get("cwd") or os.getcwd())) / target
+        target = target.resolve()
+        if not raw or not _under(target, str(real_root)):
+            return role_block(f"A Builder edits only inside its worktree {root} (not {target}).")
+        if _under(target, str(real_root / ".claude")) or _under(target, str(real_root / ".git")):
+            return role_block("A Builder never edits its worktree's .claude/ (agent and settings files) or .git/.")
+    if tool in ("Bash", "PowerShell"):
+        command = str(tool_input.get("command", ""))
+        # Its shell starts in the ORCHESTRATOR's checkout (a subagent's cwd resets on every call):
+        # one forgotten cd and a commit or `git clean` lands on main. Every command starts in the worktree.
+        start = CD_PREFIX.match(command)
+        where = next((g for g in start.groups() if g), "") if start else ""
+        if not where or not _under(Path(os.path.expanduser(os.path.expandvars(where))).resolve(), str(real_root)):
+            return role_block(f"A Builder starts every shell command with `cd {root} && ...` (its shell begins in the "
+                              "Orchestrator's checkout).")
+        bad = builder_git_violation(command)
+        if bad:
+            return role_block(f"A Builder never runs {bad}; the Orchestrator integrates.")
+        helper = re.search(r"context-card\.py[\"']?\s+([a-z-]+)", command)
+        if helper and helper.group(1) != "status":
+            return role_block("A Builder never runs context-card.py helpers but `status`: they would act on the "
+                              "Orchestrator's card, checklist and roles (its session is the Orchestrator's).")
+    return 0
+
+
+def open_builders_path(sid: str) -> Path:
+    return STATE / "open-builders" / f"{sid}.json"
+
+
+def open_builders(sid: str | None) -> dict:
+    """agent id -> first start, for the Builder subagents this session has open: spawned and not yet
+    retired by the Orchestrator at acceptance. Open is longer than running on purpose: between two
+    reports a clear would cut the Orchestrator off from the Builder it still has to message."""
+    if not sid:
+        return {}
+    data = read_json(open_builders_path(sid)) or {}
+    now = time.time()
+    return {aid: at for aid, at in data.items() if isinstance(at, (int, float)) and now - at < OPEN_BUILDER_TTL}
+
+
+def _set_open_builders(sid: str, change) -> dict:
+    with QueueLock(f"{sid}.builders"):
+        current = open_builders(sid)
+        change(current)
+        path = open_builders_path(sid)
+        if current:
+            atomic_write(path, json.dumps(current))
+        else:
+            remove(path)
+    return current
+
+
+def hook_subagent_start(data: dict) -> int:
+    """SubagentStart: a Builder subagent opens (a resume by SendMessage keeps its first start)."""
+    sid, agent, aid = session_id(), data.get("agent_type"), data.get("agent_id")
+    if not sid or agent not in BUILDER_AGENTS or not isinstance(aid, str) or not aid:
+        return 0
+    now = _set_open_builders(sid, lambda live: live.setdefault(aid, time.time()))
+    log("builders", f"sid={sid} open {aid} open={len(now)}")
+    return 0
+
+
+def cmd_builders(args: list[str]) -> int:
+    """builders [list] | retire <agent-id>... | forget  (the Orchestrator's open Builder subagents, ADR-0010)"""
+    sid = need_sid()
+    sub = args[0] if args else "list"
+    if sub == "list":
+        live = open_builders(sid)
+        for aid, at in sorted(live.items(), key=lambda kv: kv[1]):
+            print(f"{aid} open since {fmt_time(at)}")
+        if not live:
+            print("No open Builder subagents in this session.")
+        return 0
+    if sub == "retire" and args[1:]:
+        left = _set_open_builders(sid, lambda live: [live.pop(a, None) for a in args[1:]])
+        print(f"retired {', '.join(args[1:])}; open: {', '.join(left) or 'none'}")
+        return 0
+    if sub == "forget":
+        _set_open_builders(sid, lambda live: live.clear())
+        print("forgot every open Builder record for this session")
+        return 0
+    print(cmd_builders.__doc__, file=sys.stderr)
+    return 1
 
 
 SKILL_TEMPLATES = Path(__file__).resolve().parent.parent / "global-skills" / "build-orchestration" / "templates"
@@ -1704,6 +1850,8 @@ def cmd_orchestration(args: list[str]) -> int:
         binding = read_json(binding_path(orch_sid)) or {}
         if binding.get("card") == act.get("resume"):
             remove(binding_path(orch_sid))
+        if orch_sid:
+            remove(open_builders_path(orch_sid))  # its Builder subagents end with it
         orole = read_json(role_path(orch_sid)) or {}
         if (orole.get("orchestration") or {}).get("name") == act.get("name"):
             remove(role_path(orch_sid))  # last: a failure above leaves off re-runnable
@@ -1821,12 +1969,13 @@ def activate_builder(sid: str, root: Path | None) -> str | None:
 
 
 HOOKS = {"session-start": hook_session_start, "pre-compact": hook_pre_compact,
-         "request-capture": hook_request_capture,
+         "request-capture": hook_request_capture, "builder-guard": hook_builder_guard,
+         "subagent-start": hook_subagent_start,
          "clear-guard": hook_clear_guard, "role-guard": hook_role_guard,
          "challenger-guard": hook_challenger_guard}
 HELPERS = {"status": cmd_status, "bind": cmd_bind, "unbind": cmd_unbind, "commit": cmd_commit,
            "autowrap": cmd_autowrap, "role": cmd_role, "orchestration": cmd_orchestration,
-           "queue": cmd_queue}
+           "queue": cmd_queue, "builders": cmd_builders}
 
 
 def main(argv: list[str]) -> int:
@@ -1858,16 +2007,16 @@ def main(argv: list[str]) -> int:
             return hook_clear_guard(data)
         except BaseException as exc:  # fail closed: an error must never allow a clear
             return block(f"clear guard error ({type(exc).__name__}); not clearing.")
-    if name in ("role-guard", "challenger-guard"):
+    if name in ("role-guard", "challenger-guard", "builder-guard"):
         # Silent for sessions without a role, even when broken; fail closed (exit 3) for a
-        # session with a role, and always for the Challenger.
+        # session with a role, and always for the Challenger and a Builder subagent.
         try:
             data = json.loads(sys.stdin.read())
             if not isinstance(data, dict):
                 raise ValueError("hook input is not a JSON object")
             return HOOKS[name](data)
         except BaseException as exc:
-            if name == "challenger-guard" or load_role(session_id()):
+            if name in ("challenger-guard", "builder-guard") or load_role(session_id()):
                 return role_block(f"{name} error ({type(exc).__name__}); not running this tool.")
             return 0
     if name in HOOKS:

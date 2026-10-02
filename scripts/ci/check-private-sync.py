@@ -84,6 +84,14 @@ def fixtures(script: Path) -> list[str]:
     check("staggered versioning keeps 30 days", folder["versioning"]["type"] == "staggered"
           and folder["versioning"]["params"]["maxAge"] == str(30 * 86400), folder["versioning"])
     check("a second pass changes nothing", m.desired(want, manifest, ME, me, home) == want)
+    check("devices and folder devices are sorted by ID, as Syncthing stores them",
+          [d["deviceID"] for d in want["devices"]] == sorted(ids)
+          and [d["deviceID"] for d in folder["devices"]] == sorted(ids))
+    flipped = {**manifest, "peers": [{"name": "laptop", "tailscale_ip": "100.64.0.2", "device_id": PEER},
+                                     {"name": "mini", "tailscale_ip": "100.64.0.1", "device_id": ME}]}
+    other = m.desired(want, flipped, PEER, m.find_self(flipped, PEER, set()), home)
+    check("the peer whose ID sorts last converges too (no rewrite every run)",
+          [d["deviceID"] for d in other["devices"]] == [d["deviceID"] for d in want["devices"]])
     check("the input config is not modified", current["devices"][-1]["deviceID"] == STRANGER)
 
     boot = m.desired(base, {**manifest, "peers": [{"name": "mini", "tailscale_ip": "100.64.0.1", "device_id": ""},

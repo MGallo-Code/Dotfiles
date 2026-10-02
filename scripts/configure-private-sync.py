@@ -96,6 +96,7 @@ def desired(current: dict, manifest: dict, my_id: str, me: dict, home: Path) -> 
                     "addresses": [f"tcp://{peer['tailscale_ip']}:{port}"],
                     "autoAcceptFolders": False, "introducer": False, "paused": False})
         devices.append(dev)
+    devices.sort(key=lambda d: d["deviceID"])  # Syncthing stores devices sorted by ID; match it or every run rewrites
     cfg["devices"] = devices
 
     fid = manifest["folder_id"]

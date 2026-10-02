@@ -1,16 +1,17 @@
-# Request Queue
+# Checklist
 
-Every message Michael types lands on this conversation's request queue automatically, as
-`R1`, `R2`, ... (hooks capture it, including messages sent mid-turn; dotfiles ADR-0008). After a
-compaction or resume the open items come back verbatim, so a summary can never lose one.
+Every conversation keeps a checklist of what Michael asked for (dotfiles ADR-0008), managed with
+`python3 ~/.claude/hooks/context-card.py queue`. It exists the whole time, not only at compaction.
 
-- Your part is closing items: `python3 ~/.claude/hooks/context-card.py queue done R3 R4` when a
-  request is finished or answered, `queue drop R5 --note "superseded by R7"` when it no longer
-  applies. Close plain acknowledgements ("yes", "go ahead") together with the item they answer.
-- `queue list` shows what is open (`--all` adds closed items, `--project` shows other
-  conversations' open items in this folder); `queue show R3` prints one in full.
-- A request that arrived another way (a peer session relaying Michael, an email) goes on with
-  `queue add "<text>"`.
-- Before a final report, run `queue list`: report each open item as done, not done, or waiting on
-  Michael, and close what is done.
-- Never tell Michael "I'll add this to the queue": it is already there.
+- When Michael asks for something, add it as one short task: `queue add "<what, in a few words>"`.
+  Close it when it is done (`queue done R3 [--note ...]`) or no longer applies (`queue drop R5
+  --note why`); `queue title R3 "<better title>"` renames one. Questions, answers and
+  acknowledgements are not tasks.
+- Hooks also capture every message he types into an inbox. After turning the requests in it into
+  tasks, run `queue reviewed`. If three or more pile up unreviewed, the Stop hook asks once.
+- `queue list` shows the open tasks (`--all` adds closed ones, `--project` other conversations'
+  in this folder); `queue inbox` shows unreviewed messages. After a compaction or resume both come
+  back on their own.
+- Before a final report, run `queue list` and report each open task as done, not done, or
+  waiting on Michael.
+- Never tell Michael "I'll add this to the queue": just add it.

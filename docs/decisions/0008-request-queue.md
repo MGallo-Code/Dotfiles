@@ -42,6 +42,26 @@ A per-conversation request queue, captured by hooks (not by the agent rememberin
   report. An item nobody closes stays open and keeps showing: the failure mode is noise, never loss.
 - **Retention.** A queue file untouched for 90 days is pruned, open items or not.
 
+## Amendment 2026-10-02: a checklist, not a message log
+
+Michael, after a day of use: "I just want it to persist things I request in a work queue so it
+doesn't lose track of tasks as new ones are added ... Otherwise isn't that a context mess?" and
+"Between compactions I still want the work queue to exist, essentially just a checklist of items".
+Restoring every captured message verbatim brought back acknowledgements and answered questions
+next to the real work, and the transcript already keeps the full history.
+
+- **Two layers.** Tasks (`R<n>`, one short title each) are the checklist: the agent adds one when
+  a request arrives (`queue add`), retitles (`queue title`) and closes them (`queue done|drop`) as
+  it works. The hooks' capture stays, but into an inbox (`m<n>`), not the checklist; the agent
+  marks it reviewed (`queue reviewed`) once its requests are tasks.
+- **What comes back** after a compaction or resume: open tasks, one line each, then only the
+  unreviewed messages (newest ten, one line each). A reviewed message never comes back.
+- **The backstop is mechanical.** Three or more unreviewed messages make the Stop hook block once
+  (`decision: block`, never twice in a row via `stop_hook_active`) and ask for the update. An agent
+  that keeps the checklist current never sees it. Codex captures but is not nagged (its Stop
+  blocking is unverified).
+- Items written before the amendment read as tasks titled by their text.
+
 ## Why not
 
 - **The resume card as the queue:** only bound sessions have one, it is git-tracked, and writing

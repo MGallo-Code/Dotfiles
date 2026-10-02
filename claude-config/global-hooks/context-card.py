@@ -430,16 +430,22 @@ def iso_epoch(stamp: str) -> float | None:
 
 # ---------------------------------------------------------------- request queue (ADR-0008)
 #
-# Every message Michael types becomes an item R<n>, captured by hooks rather than by the agent
-# remembering. The hooks sweep the agent's own transcript (Claude: typed prompts and messages typed
-# mid-turn; Codex: user_message events) at the end of each turn, before each compaction and at
-# session start. No UserPromptSubmit hook: in Claude Code 2.1.285 one makes mid-turn messages wait
-# for the turn to end. One append-only file per conversation: {"op":"add",...} items and
-# {"op":"close"|"reopen"} events.
+# A checklist of what Michael asked for, kept all the time and not only at compaction (his ask,
+# 2026-10-02: "just a checklist of items ... it should add/remove tasks as they are worked on").
+# Two layers, one append-only file per conversation:
+# - tasks R<n>: short titles the agent adds as requests come in and closes as they are done;
+# - an inbox m<n>: every message he types, captured by hooks (the transcript sweep at the end of
+#   each turn, before a compaction, at session start), unreviewed until the agent has turned the
+#   requests in it into tasks and run `queue reviewed`.
+# After a compaction or resume the open tasks come back one line each, plus any unreviewed
+# messages, so a request survives even if the agent never wrote it down. Three or more unreviewed
+# messages make the Stop hook ask the agent, once, to update the checklist. No UserPromptSubmit
+# hook: in Claude Code 2.1.285 one makes mid-turn messages wait for the turn to end.
 
-QUEUE_TEXT_MAX = 8000        # stored per item
-QUEUE_SHOW_MAX = 1500        # printed per item after a compaction
-QUEUE_SHOW_TOTAL = 12000     # printed in all after a compaction
+QUEUE_TEXT_MAX = 8000        # stored per captured message
+QUEUE_TITLE_MAX = 120        # a task title, and a message's one-line view
+QUEUE_NAG_UNREVIEWED = 3     # unreviewed messages that make the Stop hook ask for a checklist update
+QUEUE_SHOW_INBOX = 10        # unreviewed messages printed after a compaction (newest)
 QUEUE_PRUNE_DAYS = 90        # by age alone: unattended queues (scripted runs) must not pile up
 QUEUE_LOOKBACK = 900         # a conversation's first sweep also takes the last 15 minutes
 QUEUE_FIRST_BYTES = 8 * 1024 * 1024
@@ -450,6 +456,7 @@ CONTROL_RE = re.compile(r"^/[A-Za-z0-9:_-]+$")  # a bare slash command, e.g. /cl
 # they are not Michael's words.
 REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 ID_RE = re.compile(r"^R(\d+)$")
+MSG_RE = re.compile(r"^m(\d+)$")
 CODEX_INTERACTIVE = ("cli", "vscode")  # session_meta sources Michael types into (not exec, not subagents)
 
 
@@ -492,13 +499,17 @@ class QueueLock:
             pass
 
 
-def load_queue(sid: str) -> list[dict]:
-    """Items in id order, each with its current status ("open", "done" or "dropped")."""
-    items: dict[str, dict] = {}
+def load_state(sid: str | None) -> tuple[list[dict], list[dict]]:
+    """(tasks, messages). A task has a title and a status ("open", "done" or "dropped"); a captured
+    message has its text and whether it was reviewed. A pre-checklist item (an "add" with only a
+    text) reads as a task titled by its first line."""
+    tasks: dict[str, dict] = {}
+    msgs: dict[str, dict] = {}
+    reviewed_through = 0
     try:
-        lines = queue_path(sid).read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = queue_path(sid).read_text(encoding="utf-8", errors="replace").splitlines() if sid else []
     except OSError:
-        return []
+        lines = []
     for line in lines:
         try:
             rec = json.loads(line)
@@ -506,14 +517,33 @@ def load_queue(sid: str) -> list[dict]:
             continue  # a torn last line from a crashed writer
         if not isinstance(rec, dict):
             continue
-        if rec.get("op") == "add" and isinstance(rec.get("id"), str):
-            items[rec["id"]] = {**rec, "status": "open"}
-        elif rec.get("op") in ("close", "reopen"):
+        op = rec.get("op")
+        if op == "add" and isinstance(rec.get("id"), str):
+            title = rec.get("title") or " ".join(str(rec.get("text", "")).split())[:QUEUE_TITLE_MAX]
+            tasks[rec["id"]] = {**rec, "title": title, "status": "open"}
+        elif op == "msg" and isinstance(rec.get("id"), str):
+            msgs[rec["id"]] = dict(rec)
+        elif op == "title" and rec.get("id") in tasks:
+            tasks[rec["id"]]["title"] = rec.get("title") or tasks[rec["id"]]["title"]
+        elif op in ("close", "reopen"):
             for rid in rec.get("ids") or []:
-                if rid in items:
-                    items[rid]["status"] = rec.get("status", "done") if rec["op"] == "close" else "open"
-                    items[rid]["note"] = rec.get("note") or items[rid].get("note")
-    return sorted(items.values(), key=lambda i: int(ID_RE.match(i["id"]).group(1)) if ID_RE.match(i["id"]) else 0)
+                if rid in tasks:
+                    tasks[rid]["status"] = rec.get("status", "done") if op == "close" else "open"
+                    tasks[rid]["note"] = rec.get("note") or tasks[rid].get("note")
+        elif op == "reviewed":
+            m = MSG_RE.match(str(rec.get("through", "")))
+            reviewed_through = max(reviewed_through, int(m.group(1)) if m else 0)
+    def num(rx, key):
+        m = rx.match(key)
+        return int(m.group(1)) if m else 0
+    for mid, msg in msgs.items():
+        msg["reviewed"] = num(MSG_RE, mid) <= reviewed_through
+    return (sorted(tasks.values(), key=lambda i: num(ID_RE, i["id"])),
+            sorted(msgs.values(), key=lambda i: num(MSG_RE, i["id"])))
+
+
+def load_queue(sid: str | None) -> list[dict]:
+    return load_state(sid)[0]
 
 
 def queue_append(sid: str, rec: dict) -> None:
@@ -536,25 +566,40 @@ def capturable(text: object) -> str | None:
     return text
 
 
-def queue_add_many(sid: str, entries: list[tuple[str, str, str]]) -> list[str]:
-    """Append (text, source, timestamp) entries; a source already on the queue is skipped. Returns new ids."""
+def _next_id(items: list[dict], rx: re.Pattern) -> int:
+    return max((int(m.group(1)) for i in items for m in [rx.match(i["id"])] if m), default=0) + 1
+
+
+def capture_messages(sid: str, entries: list[tuple[str, str, str]]) -> list[str]:
+    """Append (text, source, timestamp) messages to the inbox; a source already captured is
+    skipped. Returns the new message ids."""
     added: list[str] = []
     with QueueLock(sid):
-        items = load_queue(sid)
-        seen = {i.get("src") for i in items if i.get("src")}
-        n = max((int(m.group(1)) for i in items for m in [ID_RE.match(i["id"])] if m), default=0)
+        _, msgs = load_state(sid)
+        seen = {i.get("src") for i in msgs if i.get("src")}
+        n = _next_id(msgs, MSG_RE)
         for text, src, stamp in entries:
             if src and src in seen:
                 continue
-            n += 1
-            rid = f"R{n}"
             if len(text) > QUEUE_TEXT_MAX:
                 text = text[:QUEUE_TEXT_MAX] + f" [cut at {QUEUE_TEXT_MAX} characters; the transcript has the rest]"
-            queue_append(sid, {"op": "add", "id": rid, "ts": stamp or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+            mid = f"m{n}"
+            queue_append(sid, {"op": "msg", "id": mid, "ts": stamp or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                                "text": text, "src": src, "cwd": str(project_dir().resolve())})
             seen.add(src)
-            added.append(rid)
+            added.append(mid)
+            n += 1
     return added
+
+
+def add_task(sid: str, title: str) -> str:
+    title = " ".join(title.split())[:QUEUE_TITLE_MAX]
+    with QueueLock(sid):
+        rid = f"R{_next_id(load_queue(sid), ID_RE)}"
+        queue_append(sid, {"op": "add", "id": rid, "kind": "task", "title": title,
+                           "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                           "cwd": str(project_dir().resolve())})
+    return rid
 
 
 def claude_human(entry: dict) -> tuple[str, str, str] | None:
@@ -654,7 +699,7 @@ def queue_sweep(sid: str, transcript: str | None) -> list[str]:
         hit = parse(entry) if isinstance(entry, dict) else None
         if hit and (iso_epoch(hit[2]) or time.time()) >= since:
             found.append(hit)
-    added = queue_add_many(sid, found) if found else []
+    added = capture_messages(sid, found) if found else []
     offsets[transcript] = offset + end
     atomic_write(state_file, json.dumps(state))
     return added
@@ -665,33 +710,34 @@ def when(item: dict) -> str:
     return fmt_time(epoch) if epoch else str(item.get("ts", ""))[:16]
 
 
-def snippet(text: str, words: int = 9) -> str:
-    flat = " ".join(text.split())
-    parts = flat.split(" ")
-    return " ".join(parts[:words]) + ("..." if len(parts) > words else "")
-
-
 def open_items(sid: str | None) -> list[dict]:
-    return [i for i in load_queue(sid) if i["status"] == "open"] if sid else []
+    return [i for i in load_queue(sid) if i["status"] == "open"]
+
+
+def unreviewed(sid: str | None) -> list[dict]:
+    return [m for m in load_state(sid)[1] if not m["reviewed"]]
+
+
+def one_line(text: str, limit: int = QUEUE_TITLE_MAX) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 3] + "..."
 
 
 def queue_block(sid: str | None) -> str:
-    """Every open item verbatim, for the start of a refreshed or resumed conversation."""
-    items = open_items(sid)
-    if not items:
+    """The checklist, for the start of a refreshed or resumed conversation: open tasks one line
+    each, then any message not yet reviewed into the checklist."""
+    tasks, inbox = open_items(sid), unreviewed(sid)
+    if not tasks and not inbox:
         return ""
-    out = [f"Michael's open requests in this conversation ({len(items)}), restored verbatim from the request queue. "
-           f"Work them or confirm they are done; close each with `{QUEUE_HELP} done <ids>` (`{QUEUE_HELP} drop <id> --note why` if superseded):"]
-    used = 0
-    for item in items:
-        text = item["text"]
-        if len(text) > QUEUE_SHOW_MAX:
-            text = text[:QUEUE_SHOW_MAX] + f" [... `{QUEUE_HELP} show {item['id']}` for the rest]"
-        if used + len(text) > QUEUE_SHOW_TOTAL:
-            out.append(f"{item['id']} ({when(item)}): {snippet(item['text'], 20)} [`{QUEUE_HELP} show {item['id']}`]")
-            continue
-        used += len(text)
-        out.append(f"{item['id']} ({when(item)}): {text}")
+    out = [f"Checklist for this conversation ({len(tasks)} open; `{QUEUE_HELP}` to manage it):"]
+    out += [f"- [ ] {t['id']} {t['title']}" for t in tasks] or ["- (no open tasks)"]
+    if inbox:
+        shown = inbox[-QUEUE_SHOW_INBOX:]
+        out.append(f"Michael's messages not yet reviewed into the checklist ({len(inbox)}): add a task for each "
+                   f"request (`{QUEUE_HELP} add \"<short title>\"`), then `{QUEUE_HELP} reviewed`.")
+        out += [f"- {m['id']} ({when(m)}): {one_line(m['text'], 200)}" for m in shown]
+        if len(inbox) > len(shown):
+            out.append(f"  (+{len(inbox) - len(shown)} older: `{QUEUE_HELP} inbox`)")
     return "\n".join(out)
 
 
@@ -707,7 +753,8 @@ def prune_queues() -> None:
 
 
 def cmd_queue(args: list[str]) -> int:
-    """queue [list [--all|--project]] | show <id> | done <ids> [--note ...] | drop <ids> [--note ...] | reopen <ids> | add <text>"""
+    """queue [list [--all|--project]] | add <title> | done|drop|reopen <ids> [--note ...] | title <id> <title>
+    | inbox | reviewed [<m-id>] | show <id>"""
     sid = need_sid()
     sub = args[0] if args else "list"
     rest = args[1:]
@@ -716,8 +763,9 @@ def cmd_queue(args: list[str]) -> int:
         at = rest.index("--note")
         note = " ".join(rest[at + 1:]) or None
         rest = rest[:at]
-    items = load_queue(sid)
-    by_id = {i["id"]: i for i in items}
+    tasks, msgs = load_state(sid)
+    by_id = {i["id"]: i for i in tasks + msgs}
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     if sub == "list":
         if "--project" in rest:
             here = str((repo_root(project_dir()) or project_dir()).resolve())
@@ -725,46 +773,77 @@ def cmd_queue(args: list[str]) -> int:
             for path in sorted((STATE / "queue").glob("*.jsonl")):
                 if path.stem == sid:
                     continue
-                for item in open_items(path.stem):
-                    if _under(Path(str(item.get("cwd", ""))), here):
-                        print(f"[{path.stem}] {item['id']} ({when(item)}): {snippet(item['text'], 30)}")
+                for task in open_items(path.stem):
+                    if _under(Path(str(task.get("cwd", ""))), here):
+                        print(f"[{path.stem}] [ ] {task['id']} {task['title']}")
                         shown += 1
             if not shown:
-                print(f"No open requests from other conversations under {here}.")
+                print(f"No open tasks from other conversations under {here}.")
             return 0
-        chosen = items if "--all" in rest else [i for i in items if i["status"] == "open"]
+        chosen = tasks if "--all" in rest else [t for t in tasks if t["status"] == "open"]
+        for task in chosen:
+            mark = "[ ]" if task["status"] == "open" else "[x]" if task["status"] == "done" else "[-]"
+            tail = f"  ({task['note']})" if task.get("note") and task["status"] != "open" else ""
+            print(f"{mark} {task['id']} {task['title']}{tail}")
         if not chosen:
-            print("No open requests in this conversation." if items else "The request queue for this conversation is empty.")
-        for item in chosen:
-            mark = "" if item["status"] == "open" else f" [{item['status']}{': ' + item['note'] if item.get('note') else ''}]"
-            print(f"{item['id']} ({when(item)}){mark}: {snippet(item['text'], 40)}")
+            print("No open tasks." if tasks else "The checklist is empty.")
+        inbox = [m for m in msgs if not m["reviewed"]]
+        if inbox:
+            print(f"Unreviewed messages: {len(inbox)} (`{QUEUE_HELP} inbox`)")
+        return 0
+    if sub == "inbox":
+        inbox = [m for m in msgs if not m["reviewed"]]
+        for m in inbox:
+            print(f"{m['id']} ({when(m)}): {one_line(m['text'], 300)}")
+        if not inbox:
+            print("No unreviewed messages.")
+        return 0
+    if sub == "reviewed":
+        target = rest[0] if rest else (msgs[-1]["id"] if msgs else "")
+        if target and not MSG_RE.match(target):
+            print(f"queue reviewed: {target} is not a message id (m<n>)", file=sys.stderr)
+            return 1
+        if target:
+            with QueueLock(sid):
+                queue_append(sid, {"op": "reviewed", "through": target, "ts": now})
+        print(f"reviewed through {target or '(nothing captured)'}; {len(open_items(sid))} open task(s).")
         return 0
     if sub == "show":
         for rid in rest:
-            item = by_id.get(rid.upper())
-            print(f"{rid}: {item['text']}" if item else f"{rid}: no such request")
+            item = by_id.get(rid if rid.startswith("m") else rid.upper())
+            print(f"{rid}: {item.get('text') or item.get('title')}" if item else f"{rid}: not found")
         return 0
     if sub == "add":
-        text = capturable(" ".join(rest))
-        if not text:
-            print("queue add: give the request text", file=sys.stderr)
+        title = capturable(" ".join(rest))
+        if not title:
+            print("queue add: give a short task title", file=sys.stderr)
             return 1
-        print(f"added {', '.join(queue_add_many(sid, [(text, '', '')]))}")
+        print(f"added {add_task(sid, title)}")
+        return 0
+    if sub == "title":
+        rid = rest[0].upper() if rest else ""
+        title = " ".join(rest[1:]).strip()
+        if rid not in {t["id"] for t in tasks} or not title:
+            print("queue title: give a task id and its new title", file=sys.stderr)
+            return 1
+        with QueueLock(sid):
+            queue_append(sid, {"op": "title", "id": rid, "title": " ".join(title.split())[:QUEUE_TITLE_MAX], "ts": now})
+        print(f"retitled {rid}")
         return 0
     if sub in ("done", "drop", "reopen"):
         ids = []
+        task_ids = {t["id"] for t in tasks}
         for raw in rest:
             for part in raw.replace(",", " ").split():
                 rid = part.upper()
-                if rid not in by_id:
-                    print(f"queue {sub}: no request {part} in this conversation", file=sys.stderr)
+                if rid not in task_ids:
+                    print(f"queue {sub}: no task {part} in this conversation", file=sys.stderr)
                     return 1
                 ids.append(rid)
         if not ids:
-            print(f"queue {sub}: give one or more ids (R3 R4)", file=sys.stderr)
+            print(f"queue {sub}: give one or more task ids (R3 R4)", file=sys.stderr)
             return 1
-        rec = {"op": "reopen" if sub == "reopen" else "close", "ids": ids,
-               "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+        rec = {"op": "reopen" if sub == "reopen" else "close", "ids": ids, "ts": now}
         if sub != "reopen":
             rec["status"] = "done" if sub == "done" else "dropped"
         if note:
@@ -772,21 +851,29 @@ def cmd_queue(args: list[str]) -> int:
         with QueueLock(sid):
             queue_append(sid, rec)
         left = open_items(sid)
-        print(f"{sub}: {', '.join(ids)}. Open: {', '.join(i['id'] for i in left) or 'none'}.")
+        print(f"{sub}: {', '.join(ids)}. Open: {', '.join(t['id'] for t in left) or 'none'}.")
         return 0
     print(cmd_queue.__doc__, file=sys.stderr)
     return 1
 
 
 def hook_request_capture(data: dict) -> int:
-    """Stop (and Codex Stop): sweep this turn's typed and mid-turn messages onto the queue. Silent."""
+    """Stop (and Codex Stop): sweep this turn's messages into the inbox. When three or more sit
+    unreviewed, ask the agent once (Claude only; never twice in a row) to update the checklist."""
     if quiet_lane():
         return 0
     sid = session_id()
     if not sid:
         return 0
     added = queue_sweep(sid, data.get("transcript_path"))
-    log("request-capture", f"sid={sid} agent={HOOK_AGENT} added={','.join(added) or '-'}")
+    inbox = unreviewed(sid)
+    log("request-capture", f"sid={sid} agent={HOOK_AGENT} added={','.join(added) or '-'} unreviewed={len(inbox)}")
+    if HOOK_AGENT == "claude" and len(inbox) >= QUEUE_NAG_UNREVIEWED and not data.get("stop_hook_active"):
+        print(json.dumps({"decision": "block", "reason": (
+            f"Checklist upkeep: {len(inbox)} of Michael's messages are not reviewed into the checklist "
+            f"({', '.join(m['id'] for m in inbox[-5:])}). Add a task for each request "
+            f"(`{QUEUE_HELP} add \"<short title>\"`), close finished ones (`{QUEUE_HELP} done <ids>`), "
+            f"then run `{QUEUE_HELP} reviewed`. `{QUEUE_HELP} inbox` lists them.")}))
     return 0
 
 
@@ -868,13 +955,14 @@ def hook_pre_compact(data: dict) -> int:
         if sid:
             queue_sweep(sid, data.get("transcript_path"))  # a mid-turn message lands before it can be summarized away
         waiting = open_items(sid)
+        pending = unreviewed(sid)
     except Exception as exc:
         log("pre-compact", f"queue error: {type(exc).__name__}: {exc}")
-        waiting = []
-    if waiting:
-        print(f"Michael's {len(waiting)} open request(s) ({', '.join(i['id'] for i in waiting)}) are kept verbatim in a "
-              "request queue and restored right after this compaction. Refer to them by id and record progress on "
-              "each; do not restate their text.\n")
+        waiting, pending = [], []
+    if waiting or pending:
+        print(f"This conversation's checklist ({len(waiting)} open: {', '.join(i['id'] for i in waiting)}) and any "
+              "unreviewed messages are restored right after this compaction. Refer to tasks by id and record "
+              "progress on each; do not restate them.\n")
     binding = load_binding(sid)
     if not binding:
         return 0

@@ -550,8 +550,9 @@ def fixtures(s: Suite) -> None:
 
 
 def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
-    """ADR-0008: every message Michael types lands on the request queue (swept from the transcript
-    at Stop, PreCompact and SessionStart), nothing else does, and open items come back verbatim."""
+    """ADR-0008 (amended 2026-10-02): a checklist the agent keeps (tasks R<n>, one line each) plus an
+    inbox the hooks fill with every message Michael types (m<n>), swept from the transcript at Stop,
+    PreCompact and SessionStart. Restores show open tasks and unreviewed messages only."""
     work = s.repo("queue-work", None)
     host = "local_queue"
     q = s.state / "queue" / f"{host}.jsonl"
@@ -575,16 +576,21 @@ def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
     def stop(path: str = tpath, hook: str = "request-capture", **extra) -> subprocess.CompletedProcess:
         return s.run([hook], work, {"transcript_path": path, **extra}, host=host)
 
-    def texts() -> list[str]:
+    def queue(*args: str, who: str = host) -> subprocess.CompletedProcess:
+        return s.run(["queue", *args], work, host=who)
+
+    def inbox() -> list[str]:
         try:
-            return [json.loads(line)["text"] for line in q.read_text().splitlines() if '"op": "add"' in line]
+            return [json.loads(line)["text"] for line in q.read_text().splitlines() if '"op": "msg"' in line]
         except OSError:
             return []
 
     append(tpath, said("Sort the iCloud docs and CODEWORD-WREN", "u1"))
     r = stop()
-    s.check("queue: the turn's typed prompt is captured verbatim as R1, silently", r.returncode == 0 and r.stdout == ""
-            and texts() == ["Sort the iCloud docs and CODEWORD-WREN"], f"{texts()} {r.stdout} {r.stderr}")
+    s.check("queue: the turn's typed message lands in the inbox verbatim, silently", r.returncode == 0 and r.stdout == ""
+            and inbox() == ["Sort the iCloud docs and CODEWORD-WREN"], f"{inbox()} {r.stdout} {r.stderr}")
+    s.check("queue: a captured message is not a task", "No open tasks" in queue("list").stdout or "empty" in queue("list").stdout,
+            queue("list").stdout)
 
     append(tpath,
            midturn("mid-turn: CODEWORD-FINCH", "m1"),
@@ -602,53 +608,73 @@ def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
            said("<system-reminder>\nCODEWORD-NOTICE only\n</system-reminder>", "r2"),
            PEER, SUMMARY, TOOL_RESULT, EXPANSION,
            raw='{"type": "attachment", "attachment": {"type": "queued_command", "prompt": "half-writ')
-    stop()
-    got = texts()
+    r = stop()
+    got = inbox()
     s.check("queue: mid-turn messages and slash commands with arguments are captured, harness notices stripped",
             got[1:] == ["mid-turn: CODEWORD-FINCH", "/loop check CI", "keep only this: CODEWORD-CROW"], str(got))
-    s.check("queue: a message that is only a harness notice is not captured", "CODEWORD-NOTICE" not in " ".join(got), str(got))
-    s.check("queue: peers, task notifications, subagents, meta, summaries, tool results and bare commands are never captured",
-            not any(w in " ".join(got) for w in ("CODEWORD-PEER", "CODEWORD-TASK", "CODEWORD-SIDE", "CODEWORD-META", "continued from", "Resume cards", "/wrap")), str(got))
+    s.check("queue: peers, task notifications, subagents, meta, summaries, tool results, bare commands and pure notices are never captured",
+            not any(w in " ".join(got) for w in ("CODEWORD-PEER", "CODEWORD-TASK", "CODEWORD-SIDE", "CODEWORD-META",
+                                                 "CODEWORD-NOTICE", "continued from", "Resume cards", "/wrap")), str(got))
     s.check("queue: the first sweep reaches back minutes, never to older history", not any("old" in x for x in got), str(got))
+    nag = json.loads(r.stdout) if r.stdout.strip().startswith("{") else {}
+    s.check("queue: three or more unreviewed messages make the Stop hook ask for a checklist update",
+            nag.get("decision") == "block" and "queue add" in nag.get("reason", "") and "queue reviewed" in nag.get("reason", ""), r.stdout)
+    r = stop(stop_hook_active=True)
+    s.check("queue: the Stop hook never asks twice in a row", r.stdout == "", r.stdout)
 
     append(tpath, raw='ten", "origin": {"kind": "human"}, "commandMode": "prompt", "source_uuid": "half", "timestamp": "' + iso() + '"}}\n')
     append(tpath, midturn("mid-turn: CODEWORD-FINCH", "m1"))  # Claude Code re-writes a queued message later with the same id
-    stop()
-    stop()
-    got = texts()
+    stop(stop_hook_active=True)
+    stop(stop_hook_active=True)
+    got = inbox()
     s.check("queue: a line finished after a sweep lands once; a re-written message and a second sweep add nothing",
             got.count("half-written") == 1 and got.count("mid-turn: CODEWORD-FINCH") == 1 and len(got) == 5, str(got))
-
     other = s.transcript("queue-after-clear", [said("after the clear: CODEWORD-HAWK", "c1")])
-    stop(other)
+    stop(other, stop_hook_active=True)
     append(tpath, said("back on the first transcript: CODEWORD-KITE", "k1"))
-    stop()
-    got = texts()
+    stop(stop_hook_active=True)
+    got = inbox()
     s.check("queue: offsets are kept per transcript (a new one after a clear, then the old one again)",
             got[5:] == ["after the clear: CODEWORD-HAWK", "back on the first transcript: CODEWORD-KITE"], str(got))
 
-    r = s.run(["queue", "done", "R3"], work, host=host)
-    r2 = s.run(["queue", "list"], work, host=host)
-    s.check("queue done closes an item and list shows only open ones", r.returncode == 0 and "R3 " not in r2.stdout and "R1 " in r2.stdout,
-            r.stdout + r2.stdout + r.stderr)
-    r = s.run(["queue", "done", "R99"], work, host=host)
-    s.check("queue done refuses an unknown id", r.returncode == 1, r.stdout + r.stderr)
-    r = s.run(["queue", "add", "relayed by a peer: CODEWORD-DOVE"], work, host=host)
-    s.check("queue add puts a request on by hand", r.returncode == 0 and "relayed by a peer: CODEWORD-DOVE" in texts(), r.stdout + r.stderr)
+    r1, r2 = queue("add", "Sort iCloud Documents"), queue("add", "Loop CI checks")
+    queue("title", "R2", "Watch CI until green")
+    r = queue("reviewed")
+    lst = queue("list").stdout
+    s.check("queue: add and title make a one-line checklist; reviewed clears the inbox",
+            r1.stdout.strip() == "added R1" and "[ ] R1 Sort iCloud Documents" in lst and "[ ] R2 Watch CI until green" in lst
+            and "Unreviewed" not in lst and r.returncode == 0, lst + r.stderr)
+    r = stop()
+    s.check("queue: with the inbox reviewed the Stop hook stays quiet", r.stdout == "", r.stdout)
+    r = queue("done", "R2", "--note", "green")
+    lst, everything = queue("list").stdout, queue("list", "--all").stdout
+    s.check("queue done checks a task off; --all shows it", "R2" not in lst and "[x] R2 Watch CI until green  (green)" in everything,
+            lst + everything + r.stderr)
+    s.check("queue done refuses an unknown or message id", queue("done", "R99").returncode == 1 and queue("done", "m1").returncode == 1)
 
     append(tpath, midturn("typed just before an auto-compaction: CODEWORD-LARK", "m2"))
     r = stop(hook="pre-compact", trigger="auto")
     s.check("queue: PreCompact sweeps first, so a mid-turn message is never summarized away",
-            "CODEWORD-LARK" in " ".join(texts()) and "restored" in r.stdout, r.stdout + r.stderr)
+            "CODEWORD-LARK" in " ".join(inbox()) and "restored" in r.stdout, r.stdout + r.stderr)
     r = stop(hook="session-start", source="compact")
-    s.check("queue: after a compaction every open item comes back verbatim, closed ones do not",
-            all(w in r.stdout for w in ("CODEWORD-WREN", "CODEWORD-FINCH", "CODEWORD-LARK", "half-written")) and "/loop check CI" not in r.stdout,
-            r.stdout + r.stderr)
+    out = r.stdout
+    s.check("queue: after a compaction the checklist comes back one line per open task",
+            "- [ ] R1 Sort iCloud Documents" in out and "R2" not in out, out)
+    s.check("queue: only unreviewed messages come back, never the reviewed ones",
+            "CODEWORD-LARK" in out and "CODEWORD-WREN" not in out and "CODEWORD-FINCH" not in out, out)
+    s.check("queue: the restore stays small", len(out) < 2500, len(out))
+
+    q2 = s.state / "queue" / "local_queue-legacy.jsonl"
+    q2.write_text(json.dumps({"op": "add", "id": "R1", "ts": iso(), "text": "an older free-text request\nwith a second line",
+                              "src": "", "cwd": str(work)}) + "\n")
+    r = queue("list", who="local_queue-legacy")
+    s.check("queue: an item written before the checklist reads as a task titled by its text",
+            "[ ] R1 an older free-text request with a second line" in r.stdout, r.stdout + r.stderr)
 
     r = s.run(["session-start"], work, {"source": "startup"}, host="local_queue-other")
-    s.check("queue: another conversation starts empty", "CODEWORD" not in r.stdout, r.stdout)
-    r = s.run(["queue", "list", "--project"], work, host="local_queue-other")
-    s.check("queue list --project shows other conversations' open items here", "CODEWORD-WREN" in r.stdout, r.stdout + r.stderr)
+    s.check("queue: another conversation starts empty", "CODEWORD" not in r.stdout and "Sort iCloud" not in r.stdout, r.stdout)
+    r = queue("list", "--project", who="local_queue-other")
+    s.check("queue list --project shows other conversations' open tasks here", "Sort iCloud Documents" in r.stdout, r.stdout + r.stderr)
 
     def rollout(name: str, source: object, *messages: str) -> str:
         lines = [{"type": "session_meta", "payload": {"id": name, "source": source, "originator": "Codex Desktop"}},
@@ -657,11 +683,11 @@ def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
                   for i, m in enumerate(messages)]
         return s.transcript(name, lines)
 
-    live = rollout("codex-live", "vscode", "codex: CODEWORD-OWL")
+    live = rollout("codex-live", "vscode", "codex: CODEWORD-OWL", "two", "three", "four")
     r = s.run(["request-capture", "--agent", "codex"], work, {"session_id": "th-1", "transcript_path": live}, host=None,
               extra={"CODEX_THREAD_ID": "stale"})
     cq = s.state / "queue" / "codex-th-1.jsonl"
-    s.check("queue: Codex sweeps what Michael typed under its thread id, silently", r.returncode == 0 and r.stdout == ""
+    s.check("queue: Codex sweeps what Michael typed into its inbox, silently (no Stop nag)", r.returncode == 0 and r.stdout == ""
             and cq.is_file() and "CODEWORD-OWL" in cq.read_text() and "CODEWORD-AGENTS" not in cq.read_text(), r.stdout + r.stderr)
     for source in ("exec", {"subagent": {"other": "guardian"}}):
         scripted = rollout(f"codex-{'exec' if source == 'exec' else 'sub'}", source, "scripted: CODEWORD-BOT")
@@ -698,12 +724,14 @@ def main() -> int:
                    ('origin.get("kind") != "human"', 'origin.get("kind") == "nobody"'),  # peers captured
                    ("        print((\"\\n\" if status else \"\") + block)", "        pass"),  # nothing restored after compaction
                    ("    return source in CODEX_INTERACTIVE", "    return True"),  # codex exec captured
-                   ("    return headless() or print_mode()", "    return headless()")]  # nested claude -p captured
+                   ("    return headless() or print_mode()", "    return headless()"),  # nested claude -p captured
+                   ('len(inbox) >= QUEUE_NAG_UNREVIEWED and not data.get("stop_hook_active")', 'False'),  # the nag never fires
+                   (' and not data.get("stop_hook_active"):', ':')]  # the nag repeats forever
         labels = ["clear guard always allows", "role guard always allows", "challenger guard always allows",
                   "activation on any source", "end skips Builder cleanup", "autowrap off unbinds a file card",
                   "limit has no upper bound", "queue drops typed prompts", "queue drops mid-turn messages",
                   "queue captures peers", "queue not restored after compaction", "queue captures codex exec",
-                  "queue captures a nested claude -p"]
+                  "queue captures a nested claude -p", "the checklist nag never fires", "the checklist nag repeats forever"]
         for (marker, replacement), label in zip(plants, labels):
             if marker not in text:
                 print(f"revert-test: plant anchor not found: {marker.strip()[:60]}", file=sys.stderr)

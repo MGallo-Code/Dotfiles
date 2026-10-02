@@ -8,6 +8,6 @@
   "port": 22000,
   "peers": [
     {"name": "mikes-mac-mini", "tailscale_ip": "100.122.77.123", "device_id": "WGGDPFB-BY4B66J-WMCWONQ-BIQ4RSP-IA75ZNL-XJLOCD5-QLHQDUA-TJ5GFAL"},
-    {"name": "michaels-macbook-pro", "tailscale_ip": "100.67.196.41", "device_id": ""}
+    {"name": "michaels-macbook-pro", "tailscale_ip": "100.67.196.41", "device_id": "MLNKP23-YQ7ZQZL-AU2XFOK-HIPA3PJ-35VDPPY-4WIASWQ-2HWE72X-EGMP5QP"}
   ]
 }

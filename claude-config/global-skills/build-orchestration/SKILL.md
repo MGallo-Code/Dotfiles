@@ -5,7 +5,7 @@ description: Run Michael's Orchestrator/Builder/Challenger build system on a pro
 
 # Orchestrate
 
-The protocol of record is Michael's handoff, pinned verbatim: `~/Documents/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`. Its sha256 is in the Wiki lab note "Orchestrated Build-Critique System". Read it all before starting; its bootstrap checklist (section 9) is the setup.
+The protocol of record is Michael's handoff, pinned verbatim: `~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`. Its sha256 is in the Wiki lab note "Orchestrated Build-Critique System". Read it all before starting; its bootstrap checklist (section 9) is the setup.
 This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the lab note's decisions log, EA ADR-0004). Where the two differ, the handoff wins, except for the overrides listed at the end.
 
 ## What changed from the handoff

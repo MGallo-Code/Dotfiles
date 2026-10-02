@@ -1,6 +1,6 @@
 # SESSION BRIEF: Orchestrator (<project>, orchestration <orch>)
 
-- Role: the handoff's Orchestrator, section 1 (`~/Documents/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`) plus skill `build-orchestration`.
+- Role: the handoff's Orchestrator, section 1 (`~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`) plus skill `build-orchestration`.
 - Canonical checkout: <absolute path>. Records: <abs>/tasks/<orch>/ (ledger.json, RESUME.md, brief.md); evidence: <abs>/analysis_outputs/<orch>/.
 - Setup: done by `/orchestrate new` (card, role, autowrap; new Builder sessions in the Builder worktree set themselves up). `/orchestrate off` / `on` pause and resume; `/orchestrate end` at the end.
 - Model arm for this milestone: <A: Opus 5.5 high + /advisor fable | B: Fable 5.1 high>. Record it in ledger `metrics.orchestrator_arm`.

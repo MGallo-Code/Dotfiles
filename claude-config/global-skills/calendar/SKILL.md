@@ -9,7 +9,7 @@ Manage Google Calendar events via the first-party `calendar` MCP.
 
 ## Tools
 
-- `calendar` (sibling of `nexus`, lives in the code repo's `calendar/`: `~/Documents/GalloGrid`, or EA until the split lands) wraps the Google Calendar API directly. It is the canonical path for all Google Calendar reads and writes via the `mcp__calendar__*` tools. (The old Claude-hosted `/calendar` connector has been removed.)
+- `calendar` (sibling of `nexus`, lives in GalloGrid's `calendar/` on the Mac mini, `~/Workspace/GalloGrid`; other machines reach it over Tailscale) wraps the Google Calendar API directly. It is the canonical path for all Google Calendar reads and writes via the `mcp__calendar__*` tools. (The old Claude-hosted `/calendar` connector has been removed.)
 - The canonical Google account is `michaelgallo.va@gmail.com`. `calendar_status` should report that account before making changes.
 - Calendar tools return object envelopes like `{ok: true, events: [...]}` or `{ok: false, error: "..."}`. Never expect a top-level array.
 - `calendar_delete_event` is destructive and requires `confirm=true`.

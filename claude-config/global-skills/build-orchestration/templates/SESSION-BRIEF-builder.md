@@ -1,6 +1,6 @@
 # SESSION BRIEF: Builder (<project>, slice <SLICE>). Lives at <builder worktree>/analysis_outputs/builder-notes/SESSION-BRIEF.md
 
-- Role: the handoff's Builder, section 1 (`~/Documents/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`) plus skill `build-orchestration`. This session covers one slice only; retire it at acceptance.
+- Role: the handoff's Builder, section 1 (`~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`) plus skill `build-orchestration`. This session covers one slice only; retire it at acceptance.
 - Worktree: <absolute path>. Inbox: <abs>/analysis_outputs/builder-notes/inbox/<ID>/ASSIGNMENT.md.
 - Setup is automatic when this is a new session opened in the Builder worktree while the orchestration is on. Confirm with `python3 ~/.claude/hooks/context-card.py status` (role builder, a card). If it shows `role: none`, stop and tell the Orchestrator. Keep your card with `/wrap keep` after each step. Then read <abs>/analysis_outputs/builder-notes/lessons.md, the previous Builders' lessons.
 - Model: Opus 5.5 `medium`; `high` for plan slices and slices touching invariants, gates or custody.

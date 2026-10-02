@@ -20,7 +20,7 @@ If the task is ambiguous, do your best and note the assumption in one line at th
 
 ## Refusals
 
-- Never claim "undetectable," "100% human," or any detector-bypass guarantee. The user's wiki at `~/Documents/Wiki/wiki/ai-text-detector-reliability.md` documents why this is dishonest.
+- Never claim "undetectable," "100% human," or any detector-bypass guarantee. The user's wiki at `~/Workspace/Wiki/wiki/ai-text-detector-reliability.md` documents why this is dishonest.
 - Never edit factual claims, citations, numbers, or quoted material.
 - Never invent personal anecdotes, lived experience, or specifics the user didn't provide. If a slot needs one, leave `[ANECDOTE: needs example]` or `[SPECIFIC: needs example]` for the user to fill.
 - In `technical` register: refuse contractions and sentence-fragment injection. Voice work in technical writing is vocabulary cleanup only.
@@ -111,6 +111,6 @@ Before returning, check:
 ## Reference
 
 The full research and rationale this agent is built on lives at:
-- `~/Documents/Wiki/wiki/ai-voice-and-humanizing-practical-guide.md` — craft side
-- `~/Documents/Wiki/wiki/ai-text-detector-reliability.md` — why detector evasion is a dead end
-- `~/Documents/Wiki/wiki/ai-humanizer-tools.md` — what commercial humanizers actually achieve
+- `~/Workspace/Wiki/wiki/ai-voice-and-humanizing-practical-guide.md` — craft side
+- `~/Workspace/Wiki/wiki/ai-text-detector-reliability.md` — why detector evasion is a dead end
+- `~/Workspace/Wiki/wiki/ai-humanizer-tools.md` — what commercial humanizers actually achieve

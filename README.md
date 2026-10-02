@@ -66,12 +66,15 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 
 | Root | Location | Role |
 |------|----------|------|
-| EA | ~/Documents/EA | active-repo (synced; `--full`) |
-| Wiki | ~/Documents/Wiki | active-repo (synced; `--full`) |
-| Notes | ~/Documents/Notes | active-repo (synced; `--full`) |
+| EA | ~/Workspace/EA | active-repo (synced; `--full`) |
+| Wiki | ~/Workspace/Wiki | active-repo (synced; `--full`) |
+| Notes | ~/Workspace/Notes | active-repo (synced; `--full`) |
+| GalloGrid | ~/Workspace/GalloGrid | active-repo, Mac mini only (the hub host) |
 | NVIM-Setup | ~/.config/nvim (Mac) / %LOCALAPPDATA%\nvim (Win) | active-repo (synced; `--dev` + `--full`) |
-| agent-skills | ~/Documents/agent-skills | active fork (synced with origin; upstream pulled by hand, ADR-0004) |
-| IT-Worker | ~/Documents/IT-Worker | archive-repo (NOT synced; legacy reference, active ops moved to EA/business/michaelgit) |
+| agent-skills | ~/.dotfiles/agent-skills | inside this repo (ADR-0007; upstream pulled by hand with `git subtree pull`) |
+| docgen | ~/.dotfiles/tools/docgen | inside this repo (ADR-0007); the DOCX/PDF MCP server every machine runs |
+
+Michael's own projects live in `~/Projects` (not managed here). `~/Documents` keeps personal files only (ADR-0007).
 
 **Generated for codex on every sync** (never hand-edit; the targets are read-only):
 - Combined agent rules from `claude-config/global-rules/*.md` (this repo) -> `~/.codex/AGENTS.md`
@@ -88,22 +91,22 @@ Every root has one role (see the taxonomy at the top of `manifest.sh`):
 - Windows setup installs PowerShell 7, Windows Terminal, WezTerm, and Starship when package installation is accepted.
 - SSH aliases separate the two PC entrypoints: `pc-pwsh` for native Windows PowerShell and `pc-wsl` for the default WSL distro through the Windows OpenSSH server.
 
-**MCP servers** (EA, configured in `EA/.mcp.json`): nexus, courier, docgen, calendar.
+**MCP servers** (wired globally for Claude, Codex and Gemini): docgen runs locally from `tools/docgen`; nexus, courier and calendar run on the Mac mini and every other machine reaches them over Tailscale.
 
 ## Updating This System
 
-"This system" = the whole Michael Workspace (dotfiles + the EA sources it distributes + the
-agent-skills kit). When you change the **plumbing** (manifest, sync/setup, the CI checks, or
+"This system" = the whole Michael Workspace (dotfiles, including the agent-skills kit and docgen,
+plus the EA sources it distributes). When you change the **plumbing** (manifest, sync/setup, the CI checks, or
 the rules/commands/skills sources), start the agent in the **control plane** - this repo:
 
 ```bash
-sysupdate     # = cd ~/.dotfiles && claude --add-dir ~/Documents/EA --add-dir ~/Documents/agent-skills
+sysupdate     # = cd ~/.dotfiles && claude --add-dir ~/Workspace/EA
 ```
 
 - `manifest.sh` is the single, always-current **map** of every managed root and its role -
   read it to see the whole system from one file (no separate map to drift).
 - `INVARIANTS.md` + the pre-commit hook + CI are the rules and their mechanical enforcers.
-- Claude Code scopes to its launch dir, so `sysupdate` adds the EA + agent-skills source roots.
+- Claude Code scopes to its launch dir, so `sysupdate` adds the EA source root (agent-skills is inside this repo).
   Codex and Gemini already see the whole workspace (the `michael_workspace` permission profile
   + Gemini `includeDirectories`), so for those use `sysupdate --codex` / `sysupdate --gemini`.
 - The workspace launchers (`ea`, `wiki`, `sysupdate`) open Codex/Gemini with
@@ -111,5 +114,4 @@ sysupdate     # = cd ~/.dotfiles && claude --add-dir ~/Documents/EA --add-dir ~/
   `gemini --yolo`), so an agent never stops to ask before editing files or running commands.
   Claude keeps its own permission model. Use them only in trusted local roots.
 
-For everyday **ops** (email, calendar, nexus, notes) start in `~/Documents/EA` instead, where
-the MCP servers and the Nexus DB live.
+For everyday **ops** (email, calendar, nexus, notes) start in `~/Workspace/EA` instead (`ea`).

@@ -716,4 +716,7 @@ function Register-AllHubMcp {
 }
 
 # ── ADR-0007 workspace migration (functions; settings above) ──────────
-. (Join-Path $PSScriptRoot "scripts\lib\workspace-migration.ps1")
+# Next to this manifest, else the checkout's (tests dot-source copies of the manifest from elsewhere).
+$wsLib = Join-Path $PSScriptRoot "scripts\lib\workspace-migration.ps1"
+if (-not (Test-Path $wsLib) -and $DotfilesDir) { $wsLib = Join-Path $DotfilesDir "scripts\lib\workspace-migration.ps1" }
+if (Test-Path $wsLib) { . $wsLib }

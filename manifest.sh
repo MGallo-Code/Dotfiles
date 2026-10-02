@@ -908,5 +908,8 @@ provision_all_client_tokens() {
 }
 
 # ── ADR-0007 workspace migration (functions; settings above) ──────────
+# Next to this manifest, else the checkout's (tests source patched copies of the manifest from elsewhere).
+_ws_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/lib/workspace-migration.sh"
+[ -f "$_ws_lib" ] || _ws_lib="${DOTFILES_DIR:-$HOME/.dotfiles}/scripts/lib/workspace-migration.sh"
 # shellcheck source=scripts/lib/workspace-migration.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/lib/workspace-migration.sh"
+[ -f "$_ws_lib" ] && source "$_ws_lib"

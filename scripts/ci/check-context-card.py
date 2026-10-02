@@ -637,6 +637,10 @@ def queue_fixtures(s: Suite) -> None:  # called at the end of fixtures()
     s.check("queue: offsets are kept per transcript (a new one after a clear, then the old one again)",
             got[5:] == ["after the clear: CODEWORD-HAWK", "back on the first transcript: CODEWORD-KITE"], str(got))
 
+    append(tpath, said("typed this turn, not yet swept: CODEWORD-HERON", "h1"))
+    queue("reviewed")
+    s.check("queue reviewed sweeps first, so the turn's own messages count as reviewed",
+            "CODEWORD-HERON" in " ".join(inbox()) and "Unreviewed" not in queue("list").stdout, queue("list").stdout)
     r1, r2 = queue("add", "Sort iCloud Documents"), queue("add", "Loop CI checks")
     queue("title", "R2", "Watch CI until green")
     r = queue("reviewed")
@@ -726,12 +730,14 @@ def main() -> int:
                    ("    return source in CODEX_INTERACTIVE", "    return True"),  # codex exec captured
                    ("    return headless() or print_mode()", "    return headless()"),  # nested claude -p captured
                    ('len(inbox) >= QUEUE_NAG_UNREVIEWED and not data.get("stop_hook_active")', 'False'),  # the nag never fires
-                   (' and not data.get("stop_hook_active"):', ':')]  # the nag repeats forever
+                   (' and not data.get("stop_hook_active"):', ':'),  # the nag repeats forever
+                   ("            for transcript in known_transcripts(sid):", "            for transcript in []:")]  # reviewed does not sweep
         labels = ["clear guard always allows", "role guard always allows", "challenger guard always allows",
                   "activation on any source", "end skips Builder cleanup", "autowrap off unbinds a file card",
                   "limit has no upper bound", "queue drops typed prompts", "queue drops mid-turn messages",
                   "queue captures peers", "queue not restored after compaction", "queue captures codex exec",
-                  "queue captures a nested claude -p", "the checklist nag never fires", "the checklist nag repeats forever"]
+                  "queue captures a nested claude -p", "the checklist nag never fires", "the checklist nag repeats forever",
+                  "queue reviewed does not sweep first"]
         for (marker, replacement), label in zip(plants, labels):
             if marker not in text:
                 print(f"revert-test: plant anchor not found: {marker.strip()[:60]}", file=sys.stderr)

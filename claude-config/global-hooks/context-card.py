@@ -705,6 +705,17 @@ def queue_sweep(sid: str, transcript: str | None) -> list[str]:
     return added
 
 
+def known_transcripts(sid: str) -> list[str]:
+    """The transcripts this conversation's sweeps have read, most recent first (a helper run from
+    the agent's shell has no hook input naming its transcript)."""
+    try:
+        state = json.loads(sweep_path(sid).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    paths = [p for p in (state.get("paths") or {}) if os.path.isfile(p)]
+    return sorted(paths, key=os.path.getmtime, reverse=True)
+
+
 def when(item: dict) -> str:
     epoch = iso_epoch(str(item.get("ts", "")))
     return fmt_time(epoch) if epoch else str(item.get("ts", ""))[:16]
@@ -799,6 +810,15 @@ def cmd_queue(args: list[str]) -> int:
             print("No unreviewed messages.")
         return 0
     if sub == "reviewed":
+        if not rest:
+            # Sweep first: the hooks capture at the END of a turn, so without this the turn's own
+            # messages (and any typed mid-turn) would still read unreviewed once it stops.
+            for transcript in known_transcripts(sid):
+                try:
+                    queue_sweep(sid, transcript)
+                except Exception as exc:
+                    log("queue", f"reviewed sweep error: {type(exc).__name__}: {exc}")
+            msgs = load_state(sid)[1]
         target = rest[0] if rest else (msgs[-1]["id"] if msgs else "")
         if target and not MSG_RE.match(target):
             print(f"queue reviewed: {target} is not a message id (m<n>)", file=sys.stderr)

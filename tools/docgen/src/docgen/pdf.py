@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
@@ -29,8 +29,17 @@ def _looks_like_path(value: str) -> bool:
         return False
 
 
-def _build_html(html_or_path: str, css: str, options: PdfOptions) -> tuple[str, str | None, bool]:
-    """Return (html_string, base_url, from_path) ready for Playwright.
+def _page_uri(path: PurePath) -> str:
+    """The file:// URL Chromium loads for a local file, on any platform.
+
+    Built from the path itself, never by string-gluing "file://" to it: a Windows path then comes
+    out as file:///C:/Users/... instead of an invalid file://C:\\Users\\... .
+    """
+    return path.as_uri()
+
+
+def _build_html(html_or_path: str, css: str, options: PdfOptions) -> tuple[str, Path | None, bool]:
+    """Return (html_string, base_dir, from_path) ready for Playwright.
 
     `from_path` is True when html_or_path was an existing file (vs inline content);
     callers use it to decide whether to nudge the file-based iteration workflow.
@@ -55,13 +64,13 @@ def _build_html(html_or_path: str, css: str, options: PdfOptions) -> tuple[str, 
         raw = raw.replace("</head>", f"<style>{css}</style></head>", 1) if "</head>" in raw \
             else f"<style>{css}</style>" + raw
 
-    base_url = None
+    base_dir = None
     if base:
         # Validate before use: _render_pdf writes a temp .html into this dir and serves
-        # it via file://, so an out-of-root base_dir would escape the sandbox.
-        base_path = resolve_base_dir(base)
-        base_url = base_path.as_uri() + "/"
-    return raw, base_url, from_path
+        # it via file://, so an out-of-root base_dir would escape the sandbox. Kept as a Path end
+        # to end: slicing it back out of a file:// URL broke every render on Windows.
+        base_dir = resolve_base_dir(base)
+    return raw, base_dir, from_path
 
 
 def _playwright_pdf_kwargs(options: PdfOptions) -> dict[str, Any]:
@@ -113,7 +122,7 @@ async def _capture_preview(page, target: Path) -> str | None:
 
 
 async def _render_pdf(
-    html: str, base_url: str | None, options: PdfOptions, target: Path
+    html: str, base_dir: Path | None, options: PdfOptions, target: Path
 ) -> tuple[int, list[str], str | None]:
     from docgen.server import get_browser
     import os
@@ -146,18 +155,17 @@ async def _render_pdf(
         page.on("response", _on_response)
         page.on("requestfailed", _on_requestfailed)
 
-        if base_url:
+        if base_dir is not None:
             # set_content() leaves the page URL at about:blank, which Chromium
             # treats as a privileged origin that cannot load file:// subresources
             # (images, CSS url(...)). Write the HTML to a temp file inside the
             # base directory and load via file:// so sibling assets resolve.
-            base_dir = base_url[len("file://"):].rstrip("/") if base_url.startswith("file://") else base_url
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".html", dir=base_dir, delete=False, encoding="utf-8"
             ) as fh:
                 fh.write(html)
                 tmp_path = fh.name
-            await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+            await page.goto(_page_uri(Path(tmp_path)), wait_until="networkidle")
         else:
             await page.set_content(html, wait_until="networkidle")
 
@@ -207,8 +215,8 @@ def register_pdf_tools(server: FastMCP) -> None:
             return err(f"Invalid options: {e}")
         try:
             target = resolve_output_path(output_path, overwrite=opts.overwrite)
-            html, base_url, from_path = _build_html(html_or_path, css, opts)
-            bytes_written, asset_warnings, preview_path = await _render_pdf(html, base_url, opts, target)
+            html, base_dir, from_path = _build_html(html_or_path, css, opts)
+            bytes_written, asset_warnings, preview_path = await _render_pdf(html, base_dir, opts, target)
             if asset_warnings and opts.strict_assets:
                 target.unlink(missing_ok=True)
                 return err(

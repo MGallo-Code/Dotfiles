@@ -317,16 +317,22 @@ jobs:
         run: uv run --no-sync python -m pytest -q --slow
 
   docgen-windows:
-    # The PC runs docgen locally too: the fast suite (paths, DOCX) on Windows.
+    # docgen on Windows, the slow Chromium PDF tests included: rendering by path broke on Windows
+    # paths (a file:// URL sliced back into "/C:/..."), which only a real render shows.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           cache-dependency-glob: "tools/docgen/uv.lock"
-      - name: docgen (pytest, fast)
+      - name: docgen deps and Chromium
         working-directory: tools/docgen
-        run: uv run --frozen python -m pytest -q
+        run: |
+          uv sync --frozen
+          uv run --no-sync playwright install chromium
+      - name: docgen (pytest, slow included)
+        working-directory: tools/docgen
+        run: uv run --no-sync python -m pytest -q --slow
 
   workspace-migration-macos:
     # INV-21 on macOS: the cwd probe there is lsof (no /proc) and iCloud-only files block a move.

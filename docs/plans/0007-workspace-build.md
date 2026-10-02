@@ -94,7 +94,7 @@ Decision: `docs/decisions/0007-workspace-layout.md`. Each phase is gated: its te
    - **After:**
      - the `hub` function in `~/.zshrc`;
      - the Desktop preview server;
-     - the hub chats reopen in `~/Workspace/GalloGrid/ea-hub`.
+     - the hub chats reopen in `~/Workspace/GalloGrid` (the root: its CLAUDE.md and the hub memory live there).
 3. **Rollback until the promote:** rename back, then sync from the previous dotfiles commit and re-run the installers.
 
 ## Phase 5 - cleanup

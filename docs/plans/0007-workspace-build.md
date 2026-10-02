@@ -102,3 +102,38 @@ Decision: `docs/decisions/0007-workspace-layout.md`. Each phase is gated: its te
 - Archive `MGallo-Code/agent-skills` on GitHub (Michael's go).
 - Retire the code-root switch-file tombstone after every machine has synced once.
 - Card and workspace-map updated; the leftovers folders listed for Michael.
+
+## Review findings folded in (fresh-context review, 2026-10-01)
+
+1. **Host opt-in (blocker).**
+   - The mini is the dev box, so a test run or habitual `sync` must never move it early. On the MCP host the move runs only when `~/.config/dotfiles/workspace-move` says `now`, written at the start of its window.
+   - Until then everything there falls back to the real old path:
+     - REPOS entries and project-skill sources are re-pointed for the run;
+     - `resolve_code_root` returns `~/Documents/GalloGrid`;
+     - `MOVED_LINK_SOURCES` retargets only to a target that exists;
+     - the launchers use the old folder while the new one does not exist.
+   - No placeholder links, so the launchers' redirect rule stays intact.
+   - The move is all or nothing: every repo is preflighted, and if one is blocked none moves.
+2. **Laptop gitignored data (blocker).** Before its move, copy each repo's ignored files (`git ls-files -oi --exclude-standard`, minus venvs and `node_modules`) to `/Volumes/Media/Archive`. Leaving iCloud deletes iCloud's copy.
+3. **No second copies.**
+   - The migration runs before setup clones. Setup refuses to clone into `~/Workspace/X` while the old home still holds that repo.
+   - Remotes compare as owner/repo.
+   - A missing cwd probe fails closed (`lsof` or `/proc`).
+   - Any skip makes sync and setup exit non-zero.
+4. **Git config.** Values under the old prefix (EA's absolute `core.hooksPath`) are rewritten in `.git/config` and each `config.worktree`. INV-21 asserts a hook still fires.
+5. **Hub sandbox profile.** Added to Learning's pre-window list, with its re-rooted denies, its test, and a hub-write smoke test before the promote. It must not grant write to GalloGrid.
+6. **EA's GalloGrid-path edits land in phase 4**, not phase 2.
+7. **Stale-path check.**
+   - It matches both slashes (it already does).
+   - Exemptions are per line (`stale-path-ok`) plus history files.
+   - The launchers' `"$HOME/Documents/"*` redirect test is rewritten for `~/Workspace`.
+   - A fixture launches `ea` in `~/Workspace/EA`.
+8. **Rollback.** The migration journals every step: repo moves, git-config rewrites, memory-key renames, Codex rewrites, parked clones. `scripts/workspace-rollback.{sh,ps1}` replays the journal in reverse, with `git worktree repair`. INV-21 tests the round trip.
+9. **Parked clones.** The same clean check (tree, unpushed on every branch, stash) covers agent-skills and a client's GalloGrid. The agent-skills unsync and the park step ship in one push.
+10. **Venvs.**
+    - After a move, a `.venv` that embeds the old path is removed; they rebuild: `practice` when missing, `uv sync` in sync, Learning's installers.
+    - Learning is told its installers must rebuild theirs.
+11. **Minor.**
+    - **Memory keys:** renamed only for the exact repo key and for keys of subfolders that exist (no prefix sweep, so a sibling like iCloud's `EA 2` is safe).
+    - **Process:** sync and setup `cd ~` first, and the cwd probe ignores the sync process and its parents.
+    - **Windows:** moves use `[IO.Directory]::Move`.

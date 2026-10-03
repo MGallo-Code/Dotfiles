@@ -99,6 +99,12 @@ jobs:
         run: python scripts/ci/check-context-card.py --revert-test
       - name: check-agent-rules-hooks (INV-15 trigger)
         run: sh scripts/ci/check-agent-rules-hooks.sh
+      - name: zsh for check-vendor-isolation (the shell the cross-check snippet runs in)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: check-vendor-isolation (INV-25)
+        run: python3 scripts/ci/check-vendor-isolation.py
+      - name: check-vendor-isolation revert-test (INV-25)
+        run: python3 scripts/ci/check-vendor-isolation.py --revert-test
       - name: check-private-sync (INV-24)
         run: python3 scripts/ci/check-private-sync.py
       - name: check-private-sync revert-test (INV-24)

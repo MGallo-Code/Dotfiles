@@ -68,6 +68,11 @@ takes effect on the NEXT launch, so finish first); when a tool is deliberately p
      0.140.0). The cross-check skill passes `-s read-only` regardless, so the fix on a flip
      is the MANIFEST/skill NOTE, not the command.
    - `gemini --approval-mode plan` still means read-only (`gemini --help` documents it).
+   - The cross-check's vendor isolation (INV-25): after upgrading Codex or Gemini, run
+     `python3 ~/.dotfiles/scripts/ci/check-vendor-isolation.py --machine --live` (offline
+     against decoys, plus one real Codex call) and `--machine --revert-test`. A FAIL is a
+     changed capability fact: fix the cross-check snippet before re-stamping. `sync` also runs
+     it on its own after a version change.
    - PreToolUse exit-2 reliable for Bash only; Stop/SubagentStop `additionalContext` + the
      8-block cap; `.claude/skills` auto-load; no removed primitive the kit uses.
    Read the changelogs between baseline and now, not just the version strings. Output a

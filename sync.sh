@@ -512,6 +512,9 @@ if command -v python3 >/dev/null 2>&1; then
     python3 "$DOTFILES_DIR/scripts/ci/check-skill-targets.py" --machine || { err "check-skill-targets --machine: skill links incomplete/dangling/colliding (above) - run a full sync; if it persists, investigate"; SKILL_TARGET_FAIL=1; }
     python3 "$DOTFILES_DIR/scripts/ci/check-agent-integrations.py" --machine || warn "agent integration machine check reported an issue"
     python3 "$DOTFILES_DIR/scripts/ci/check-worktrees.py" || true
+    # INV-25: after a Codex/Gemini, model-catalog or snippet change, prove the cross-check's vendor
+    # isolation on this machine (offline against decoys, plus one real Codex call). Flag now, fail at the end.
+    python3 "$DOTFILES_DIR/scripts/ci/check-vendor-isolation.py" --machine --live --if-changed || { err "check-vendor-isolation --machine: a vendor CLI is not isolated (above) - fix the cross-check snippet before the next cross-check"; VENDOR_ISOLATION_FAIL=1; }
 else
     warn "python3 not found - skipping cross-agent command + allowlist generation"
 fi
@@ -777,6 +780,13 @@ echo ""
 # the link tree is not in the expected state. Sync still completed its other work first.
 if [ "${SKILL_TARGET_FAIL:-0}" = 1 ]; then
     err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+fi
+
+# INV-25: a vendor CLI that is not isolated (flagged above) fails the run. Sync still completed its
+# other work first.
+if [ "${VENDOR_ISOLATION_FAIL:-0}" = 1 ]; then
+    err "sync: vendor-isolation machine check FAILED (see above) - fix it before the next cross-check"
     exit 1
 fi
 

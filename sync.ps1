@@ -7,6 +7,9 @@ $DotfilesDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # the end (parity with sync.sh's SKILL_TARGET_FAIL). Initialized here so the end-of-run read
 # is always defined.
 $SkillTargetFail = $false
+# INV-25: set true when the vendor-isolation machine check fails (parity with sync.sh's
+# VENDOR_ISOLATION_FAIL). The check skips itself on Windows, where the cross-check snippet does not run.
+$VendorIsolationFail = $false
 
 function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     $codexDir = Join-Path $HOME ".codex"
@@ -526,6 +529,9 @@ if ($pyCmd) {
     & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-agent-integrations.py") --machine
     if ($LASTEXITCODE -ne 0) { Write-Warn "agent integration machine check reported an issue" }
     & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-worktrees.py")
+    # INV-25 (parity with sync.sh): prove the cross-check's vendor isolation after a CLI or snippet change.
+    & $pyCmd (Join-Path $DotfilesDir "scripts\ci\check-vendor-isolation.py") --machine --live --if-changed
+    if ($LASTEXITCODE -ne 0) { Write-Err "check-vendor-isolation --machine: a vendor CLI is not isolated (above) - fix the cross-check snippet before the next cross-check"; $VendorIsolationFail = $true }
 }
 else {
     Write-Warn "python not found - skipping cross-agent command + allowlist generation"
@@ -835,6 +841,11 @@ Write-Host ""
 # (parity with sync.sh). Sync still completed its other work first.
 if ($SkillTargetFail) {
     Write-Err "sync: skill-target machine check FAILED (see above) - run a full sync or investigate"
+    exit 1
+}
+# INV-25: a vendor CLI that is not isolated (flagged above) fails the run (parity with sync.sh).
+if ($VendorIsolationFail) {
+    Write-Err "sync: vendor-isolation machine check FAILED (see above) - fix it before the next cross-check"
     exit 1
 }
 if ($WorkspaceMoveFail) {

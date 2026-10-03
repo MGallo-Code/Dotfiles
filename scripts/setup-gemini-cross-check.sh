@@ -220,9 +220,19 @@ verify() {
   fi
 
   echo "Verifying Gemini CLI with model $MODEL..."
-  GEMINI_API_KEY="$key" GEMINI_MODEL="$MODEL" \
-    gemini --skip-trust --approval-mode plan -m "$MODEL" \
-      -p "Reply with exactly GEMINI_FLASH_LITE_OK."
+  # Isolated like the cross-check (coding-mastermind-cross-check step 3, INV-25): an empty cwd
+  # and an empty GEMINI_CLI_HOME, so the test prompt carries none of your workspace roots, MCP
+  # servers or tools. Only the key and the model are under test.
+  local iso rc=0
+  iso="$(mktemp -d /tmp/gemini-verify.XXXXXX)"   # not $TMPDIR, which a harness may point into a repo
+  mkdir -p "$iso/home/.gemini" "$iso/cwd"
+  printf '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"privacy":{"usageStatisticsEnabled":false}}\n' \
+    > "$iso/home/.gemini/settings.json"
+  ( cd "$iso/cwd" && GEMINI_API_KEY="$key" GEMINI_MODEL="$MODEL" GEMINI_CLI_HOME="$iso/home" GEMINI_CLI_NO_RELAUNCH=true \
+      gemini --skip-trust --approval-mode plan -m "$MODEL" --allowed-mcp-server-names none \
+        -p "Reply with exactly GEMINI_FLASH_LITE_OK." < /dev/null ) || rc=$?
+  rm -rf "$iso"
+  return "$rc"
 }
 
 if [[ "$VERIFY_ONLY" -eq 0 ]]; then

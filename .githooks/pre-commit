@@ -98,6 +98,13 @@ bash "$ROOT/scripts/ci/check-sync-commit.sh" >/dev/null || {
 "$PY" "$ROOT/scripts/ci/check-private-sync.py" >/dev/null || {
   echo "pre-commit: check-private-sync failed - run: python3 scripts/ci/check-private-sync.py" >&2; exit 1; }
 
+# INV-25: a vendor CLI run for a cross-check reads nothing beyond its prompt. About 20s, so only
+# when its surface is staged.
+if git -C "$ROOT" diff --cached --name-only | grep -qE '^(agent-skills/skills/(coding-mastermind-cross-check|doubt-driven-development)/SKILL\.md|docs/gemini-cross-check-setup\.md|scripts/setup-gemini-cross-check\.(sh|ps1)|scripts/ci/check-vendor-isolation\.py)$'; then
+  "$PY" "$ROOT/scripts/ci/check-vendor-isolation.py" >/dev/null || {
+    echo "pre-commit: check-vendor-isolation failed - run: python3 scripts/ci/check-vendor-isolation.py" >&2; exit 1; }
+fi
+
 # INV-17: resume-card hooks and the clear guard. About 10s, so only when their surface is staged.
 if git -C "$ROOT" diff --cached --name-only | grep -qE '^(claude-config/global-hooks/context-card\.py|claude-config/model-profiles/compact/|scripts/ci/check-context-card\.py)'; then
   "$PY" "$ROOT/scripts/ci/check-context-card.py" >/dev/null || {

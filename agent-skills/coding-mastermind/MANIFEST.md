@@ -64,23 +64,31 @@ versions against. This is the system-level analog of a `package-lock.json`.
   OpenAI), so every isolation flag below is load-bearing. Re-check each on update.
   - Codex: `--ignore-user-config` skips `config.toml` (MCP servers, hooks, default model)
     but still sends `~/.codex/AGENTS.md` and the skill list. `--disable shell_tool
-    --disable unified_exec --disable view_image` leaves no command tool (a "run pwd"
-    prompt yields no `command_execution`). `codex debug models` is the model source: the
-    account's catalog with `visibility` and `priority` (top `list` entry `gpt-5.6-terra`;
-    the config's `gpt-5.6-sol` absent; `gpt-5.5` listed yet 404). With `--json`, tool
-    calls are `item.*` events whose `item.type` is not `agent_message`/`reasoning`.
+    --disable unified_exec --disable view_image --disable multi_agent` leaves no command or
+    sub-agent tool: a model's `exec_command` call is answered "unsupported call" and nothing
+    runs. `codex debug models` is the model source: the account's catalog with `visibility`
+    and `priority` (top `list` entry `gpt-5.6-terra`; the config's `gpt-5.6-sol` absent;
+    `gpt-5.5` listed yet 404). With `--json`, tool calls are `item.*` events whose
+    `item.type` is not `agent_message`/`reasoning`/`todo_list`/`error`. Code-mode models
+    (`tool_mode: code_mode_only`, the gpt-5.6-* family) send no tool list to a custom
+    endpoint, so their tool surface is proven only by a live call. Codex sends its bearer
+    token to whatever `model_provider` endpoint it is pointed at, and reaches `chatgpt.com`,
+    `github.com` and `api.github.com` on its own.
   - Gemini: `GEMINI_CLI_HOME` replaces the home for settings
     (`$GEMINI_CLI_HOME/.gemini/settings.json`). `context.includeDirectories` has
     `mergeStrategy: concat`, so a workspace-local `[]` does NOT clear the user's list;
     `context.includeDirectoryTree` defaults to true. `tools.core: []` registers no tools.
     `--allowed-mcp-server-names <unknown name>` blocks every MCP server. Without
     `GEMINI_CLI_NO_RELAUNCH` the CLI relaunches as a child that a kill of the parent
-    misses. `--model pro` resolves to `gemini-3.1-pro-preview`. `--output-format
-    stream-json` reports tool calls as `tool_use` events. Stdin is merged into `-p`.
-  - Re-check without sending anything to a vendor: Gemini honors `GOOGLE_GEMINI_BASE_URL`,
-    so run the snippet with a dummy `GEMINI_API_KEY` against a localhost server that logs
-    the request; the first request must name no home path and declare no tools. Never
-    test against the real `~/.gemini` (it loads user hooks and MCP servers).
+    misses. `privacy.usageStatisticsEnabled` defaults to true (posts to
+    `play.googleapis.com`). `--model pro` resolves to `gemini-3.1-pro-preview` and beats an
+    exported `GEMINI_MODEL`. `--output-format stream-json` reports tool calls as `tool_use`
+    events, even for an unregistered tool. Stdin is merged into `-p`. A parent repo's
+    `GEMINI.md` (like Codex's `AGENTS.md`) is loaded from a subdirectory, hence dirs under
+    `/tmp`, not `$TMPDIR`.
+  - Re-check: `python3 ~/.dotfiles/scripts/ci/check-vendor-isolation.py --machine --live`
+    and `--machine --revert-test` (INV-25). They run the snippet against decoys and a
+    localhost endpoint that keeps bodies, never headers, plus one real Codex call.
 
 ## Gate-tool baselines (recommended pins; install per-repo as needed)
 

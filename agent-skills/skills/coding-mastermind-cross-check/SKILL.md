@@ -65,32 +65,40 @@ it (headless auth is unreliable).
    --sandbox read-only` started inside the repo read `ea-hub` static files, templates, a test
    grep and `git log`/`git status`, so excerpts reached OpenAI though only a concise summary
    was approved. So, for BOTH CLIs:
-   - Start each in its own fresh empty temp dir, never in a repo or any populated dir, and never
-     pass `-C <repo>`, `--add-dir` or `--include-directories`.
+   - Start each in its own fresh empty dir under `/tmp` (not `$TMPDIR`, which a harness may
+     point into a repo), never in a repo or any populated dir, and never pass `-C <repo>`,
+     `--add-dir` or `--include-directories`.
    - The prompt never says where code lives: no absolute or `~` path, no repo or workspace-root
      name. Paste the code. Repo-relative names inside a pasted diff are fine; with no workspace
      roots loaded and no read tools they point at nothing.
    - Load none of the user config that hands the vendor tools or workspace roots. Codex:
      `--ignore-user-config` (drops the MCP servers such as nexus and courier, the hooks and the
-     config's model; auth still works) plus its shell, exec and image tools disabled. Codex still
-     sends its global `~/.codex/AGENTS.md` (the generated rules, which name the workspace roots)
-     and its skill list; no flag drops them, one more reason its tools stay off. Gemini: an empty
-     `GEMINI_CLI_HOME` whose only settings are API-key auth, no directory tree and no tools
-     (`tools.core: []`), plus `--allowed-mcp-server-names none` and `GEMINI_CLI_NO_RELAUNCH`
-     (otherwise Gemini runs in a relaunched child that a `kill` of the parent misses). A
-     workspace-local `includeDirectories: []` does NOT clear the user's list on 0.55.1: lists
-     concatenate. Local capture 2026-10-03, nothing sent to Google: the old setup's first request
-     named all four private roots and offered `read_file`/`glob`/`grep_search` over them; the
-     empty home's named none and offered no tools.
+     config's model; auth still works) plus its shell, exec, image and sub-agent tools
+     disabled; asked to run a command anyway, it answers "unsupported call". Codex still sends
+     its global `~/.codex/AGENTS.md` (the generated rules, which name the workspace roots) and
+     its skill list; no flag drops them, one more reason its tools stay off. Gemini: an empty
+     `GEMINI_CLI_HOME` whose only settings are API-key auth, no directory tree, no tools
+     (`tools.core: []`) and no usage statistics, plus `--allowed-mcp-server-names none` and
+     `GEMINI_CLI_NO_RELAUNCH` (otherwise Gemini runs in a relaunched child that a `kill` of the
+     parent misses). A workspace-local `includeDirectories: []` does NOT clear the user's list
+     on 0.55.1: lists concatenate. Local capture 2026-10-03, nothing sent to Google: the old
+     setup's first request named all four private roots and offered `read_file`/`glob`/
+     `grep_search` over them; the empty home's named none and offered no tools.
    - WATCH the event stream and stop the run at the first tool call: any Codex item other than a
-     message, reasoning, todo list or error, any Gemini `tool_use`. A refutation of a pasted prompt needs no tools,
-     and neither CLI is offered one, so a tool call means the isolation failed. The watcher sees
-     a call only after it starts (the positive control's command had already run), which is why
-     the tools are off rather than merely watched, and why a stop is an incident (below).
+     message, reasoning, todo list or error, any Gemini `tool_use`. A refutation of a pasted
+     prompt needs no tools, and neither CLI is offered one, so a tool call means the isolation
+     failed. The watcher sees a call only after it starts (the positive control's command had
+     already run), which is why the tools are off rather than merely watched, and why a stop is
+     an incident (below). It fails closed: a `jq` error counts as a tool call, and a stop kills
+     the CLI's whole process tree.
+   - `scripts/ci/check-vendor-isolation.py` in `~/.dotfiles` (INV-25) tests this exact snippet:
+     in CI with stand-in CLIs, and after each Codex or Gemini upgrade against the real ones.
    ```bash
-   codex_read()  { jq -eRn '[inputs | fromjson? | .item.type? // empty] | any(IN("agent_message", "reasoning", "todo_list", "error") | not)' "$1" > /dev/null; }
-   gemini_read() { jq -eRn '[inputs | fromjson? | select(.type? == "tool_use")] | length > 0' "$1" > /dev/null; }
-   stop_vendor() { pkill -KILL -P "$1" 2>/dev/null; kill -KILL "$1" 2>/dev/null; }
+   # Detectors fail closed: a jq error (or no jq) counts as a tool call.
+   codex_read()  { jq -eRn '[inputs | fromjson? | .item.type? // empty] | any(IN("agent_message", "reasoning", "todo_list", "error") | not)' "$1" > /dev/null; [ $? -ne 1 ]; }
+   gemini_read() { jq -eRn '[inputs | fromjson? | select(.type? == "tool_use")] | length > 0' "$1" > /dev/null; [ $? -ne 1 ]; }
+   vendor_tree() { echo "$1"; local k; for k in $(pgrep -P "$1"); do vendor_tree "$k"; done; }
+   stop_vendor() { local t k; t=($(vendor_tree "$1")); for k in "${t[@]}"; do kill -STOP "$k" 2>/dev/null; done; for k in "${t[@]}"; do kill -KILL "$k" 2>/dev/null; done; }
    vendor_watch() {  # $1 pid, $2 detector, $3 event log, $4 deadline (s). rc 90 = export-incident, 91 = timeout, else the CLI's
      local s=0 rc
      while kill -0 "$1" 2>/dev/null; do
@@ -108,25 +116,28 @@ it (headless auth is unreliable).
    p=$(mktemp)   # write the prompt here
 
    # Codex: own empty dir, no user config, no tools; model read from the account's catalog (below).
-   c=$(mktemp -d); mkdir "$c/cwd"
+   c=$(mktemp -d /tmp/xcheck.XXXXXX); mkdir "$c/cwd"
    m=$(codex debug models | jq -r '[.models[] | select(.visibility == "list")] | sort_by(.priority) | .[0].slug // empty')
    [ -n "$m" ] || echo "codex: catalog lists no model -> report model-unavailable"
    ( cd "$c/cwd" && exec codex exec --json --ephemeral --skip-git-repo-check --ignore-user-config \
-       --sandbox read-only --disable shell_tool --disable unified_exec --disable view_image \
+       --sandbox read-only --disable shell_tool --disable unified_exec --disable view_image --disable multi_agent \
        -m "$m" -o "$c/reply.md" - ) < "$p" > "$c/events.jsonl" 2> "$c/stderr" &
-   vendor_watch $! codex_read "$c/events.jsonl"; echo "codex rc=$?"
+   vendor_watch $! codex_read "$c/events.jsonl"; codex_rc=$?; echo "codex rc=$codex_rc"
    # reply: $c/reply.md. errors (404, auth): "error"/"turn.failed" events in $c/events.jsonl, then $c/stderr.
-   # GATE: rc 90, or a reply citing files not in the prompt -> STOP here; do not start Gemini.
 
    # Gemini: Pro alias + an EMPTY home and workspace, else it confabulates or sees the roots (gotcha (c)).
-   g=$(mktemp -d); mkdir -p "$g/home/.gemini" "$g/cwd"
-   printf '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]}}' \
+   # GATE: never starts after a Codex incident. A Codex reply citing files not in the prompt is an
+   # incident too, so read $c/reply.md before running this part.
+   if [ "${codex_rc:-0}" = 90 ]; then echo "STOP: Codex export incident - Gemini not started"; else
+   g=$(mktemp -d /tmp/xcheck.XXXXXX); mkdir -p "$g/home/.gemini" "$g/cwd"
+   printf '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"privacy":{"usageStatisticsEnabled":false}}' \
      > "$g/home/.gemini/settings.json"
    ( cd "$g/cwd" && export GEMINI_CLI_HOME="$g/home" GEMINI_CLI_NO_RELAUNCH=true && exec gemini --skip-trust \
        --approval-mode plan --model pro --allowed-mcp-server-names none --output-format stream-json \
        -p "" ) < "$p" > "$g/events.jsonl" 2> "$g/stderr" &
    vendor_watch $! gemini_read "$g/events.jsonl"; echo "gemini rc=$?"   # 41 = no GEMINI_API_KEY
    jq -Rrj 'fromjson? | select(.type == "message" and .role == "assistant") | .content' "$g/events.jsonl"   # the reply
+   fi
    ```
    The CLIs reach their own model API; that egress is the point - but DEFAULT to sending a
    concise summary (the framed claim + the minimal diff/code under test), NEVER the raw

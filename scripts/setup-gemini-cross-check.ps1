@@ -223,7 +223,28 @@ function Test-Gemini {
   Remove-Variable key
 
   Write-Host "Verifying Gemini CLI with model $Model..."
-  & $WrapperPath --skip-trust --approval-mode plan -m $Model -p "Reply with exactly GEMINI_FLASH_LITE_OK."
+  # Isolated like the cross-check (coding-mastermind-cross-check step 3, INV-25): an empty cwd
+  # and an empty GEMINI_CLI_HOME, so the test prompt carries none of your workspace roots, MCP
+  # servers or tools. Only the key and the model are under test.
+  $iso = Join-Path ([IO.Path]::GetTempPath()) ("gemini-verify-" + [guid]::NewGuid().ToString("N"))
+  $isoHome = Join-Path $iso "home"
+  $isoCwd = Join-Path $iso "cwd"
+  New-Item -ItemType Directory -Path (Join-Path $isoHome ".gemini"), $isoCwd -Force | Out-Null
+  Set-Content -Path (Join-Path $isoHome ".gemini\settings.json") -Value '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"privacy":{"usageStatisticsEnabled":false}}'
+  $savedHome = $env:GEMINI_CLI_HOME
+  $savedRelaunch = $env:GEMINI_CLI_NO_RELAUNCH
+  $env:GEMINI_CLI_HOME = $isoHome
+  $env:GEMINI_CLI_NO_RELAUNCH = "true"
+  Push-Location $isoCwd
+  try {
+    & $WrapperPath --skip-trust --approval-mode plan -m $Model --allowed-mcp-server-names none -p "Reply with exactly GEMINI_FLASH_LITE_OK."
+  }
+  finally {
+    Pop-Location
+    $env:GEMINI_CLI_HOME = $savedHome
+    $env:GEMINI_CLI_NO_RELAUNCH = $savedRelaunch
+    Remove-Item -Recurse -Force $iso -ErrorAction SilentlyContinue
+  }
 }
 
 Assert-Command gemini

@@ -542,6 +542,19 @@ FEATURES = [
         "sh": ("shell/core.zsh", r"pcpwsh\(\).*pc-pwsh[\s\S]*pcwsl\(\).*pc-wsl"),
         "ps1": ("shell/windows/core.ps1", r"function pcpwsh.*pc-pwsh[\s\S]*function pcwsl.*pc-wsl"),
     },
+    {
+        # INV-25: both syncs run the vendor-isolation machine check after a CLI or snippet change and
+        # fail the run on a FAIL (the check skips itself on Windows, where the snippet does not run).
+        "name": "vendor-isolation machine check in sync (INV-25)",
+        "sh": ("sync.sh", r"check-vendor-isolation\.py\" --machine[\s\S]*VENDOR_ISOLATION_FAIL:-0"),
+        "ps1": ("sync.ps1", r"check-vendor-isolation\.py\"\) --machine[\s\S]*if \(\$VendorIsolationFail\)"),
+    },
+    {
+        # INV-25: the Gemini setup script's test call runs isolated like the cross-check.
+        "name": "Gemini setup test call isolated (INV-25)",
+        "sh": ("scripts/setup-gemini-cross-check.sh", r"GEMINI_CLI_NO_RELAUNCH=true"),
+        "ps1": ("scripts/setup-gemini-cross-check.ps1", r'GEMINI_CLI_NO_RELAUNCH = "true"'),
+    },
 ]
 
 PARITY_EXEMPT = [

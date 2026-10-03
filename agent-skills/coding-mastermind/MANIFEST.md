@@ -26,7 +26,7 @@ versions against. This is the system-level analog of a `package-lock.json`.
 |------|------------------|-------|
 | Claude Code | 2.1.233 | latest on 2026-08-17; npm global on WSL, native install on Windows; macOS remains npm-under-nvm by design |
 | Codex CLI | 0.147.0 | npm global, PINNED - canonical pin lives in dotfiles `manifest.sh CODEX_PIN` (+ `manifest.ps1 $CodexPin`), both syncs warn on drift; bump ONLY via `~/.dotfiles/scripts/codex-pin-preflight.sh <version>` (pin bumped 2026-08-17 from 0.144.1 after preflight PASS). `codex exec` sandbox default is version-volatile and remains `danger-full-access` on WSL 0.147.0; always pass `-s read-only` |
-| Gemini CLI | 0.55.1 | latest on 2026-08-17; npm global on WSL and Windows; `gemini --approval-mode plan` remains read-only (`plan (read-only mode)`) |
+| Gemini CLI | 0.55.1 | latest on 2026-08-17; npm global on WSL and Windows; `gemini --approval-mode plan` remains read-only (`plan (read-only mode)`), which blocks writes, not reads |
 | node | 22.23.1 (WSL) | gate checks are plain ESM `.mjs`; original macOS build baseline was 22.17.1 |
 | npm | 10.9.8 (WSL) | original macOS build baseline was 11.11.0 |
 | git | 2.34.1 (WSL) | original Apple build baseline was 2.50.1 |
@@ -58,6 +58,29 @@ versions against. This is the system-level analog of a `package-lock.json`.
   dispatch must run in the main loop (sandbox disabled for that call) or behind an explicit
   `codex`/`gemini` Bash allowlist; the worker context-hygiene benefit is then traded off.
   Re-check both on update.
+- **Vendor-CLI isolation (the cross-check step 3 snippet), verified 2026-10-03 on macOS with
+  Codex 0.147.0 and Gemini 0.55.1:** read-only sandboxes block WRITES, NOT READS (a
+  `codex exec -s read-only` started inside a repo read its files and sent excerpts to
+  OpenAI), so every isolation flag below is load-bearing. Re-check each on update.
+  - Codex: `--ignore-user-config` skips `config.toml` (MCP servers, hooks, default model)
+    but still sends `~/.codex/AGENTS.md` and the skill list. `--disable shell_tool
+    --disable unified_exec --disable view_image` leaves no command tool (a "run pwd"
+    prompt yields no `command_execution`). `codex debug models` is the model source: the
+    account's catalog with `visibility` and `priority` (top `list` entry `gpt-5.6-terra`;
+    the config's `gpt-5.6-sol` absent; `gpt-5.5` listed yet 404). With `--json`, tool
+    calls are `item.*` events whose `item.type` is not `agent_message`/`reasoning`.
+  - Gemini: `GEMINI_CLI_HOME` replaces the home for settings
+    (`$GEMINI_CLI_HOME/.gemini/settings.json`). `context.includeDirectories` has
+    `mergeStrategy: concat`, so a workspace-local `[]` does NOT clear the user's list;
+    `context.includeDirectoryTree` defaults to true. `tools.core: []` registers no tools.
+    `--allowed-mcp-server-names <unknown name>` blocks every MCP server. Without
+    `GEMINI_CLI_NO_RELAUNCH` the CLI relaunches as a child that a kill of the parent
+    misses. `--model pro` resolves to `gemini-3.1-pro-preview`. `--output-format
+    stream-json` reports tool calls as `tool_use` events. Stdin is merged into `-p`.
+  - Re-check without sending anything to a vendor: Gemini honors `GOOGLE_GEMINI_BASE_URL`,
+    so run the snippet with a dummy `GEMINI_API_KEY` against a localhost server that logs
+    the request; the first request must name no home path and declare no tools. Never
+    test against the real `~/.gemini` (it loads user hooks and MCP servers).
 
 ## Gate-tool baselines (recommended pins; install per-repo as needed)
 

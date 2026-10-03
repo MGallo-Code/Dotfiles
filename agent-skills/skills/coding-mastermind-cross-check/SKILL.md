@@ -103,13 +103,17 @@ it (headless auth is unreliable).
      return "$rc"
    }
 
+   # The framed prompt goes in a file, fed on stdin: never inline it into the command, where a
+   # diff's backticks, $(...) or leading "---" would be run or parsed as flags.
+   p=$(mktemp)   # write the prompt here
+
    # Codex: own empty dir, no user config, no tools; model read from the account's catalog (below).
    c=$(mktemp -d); mkdir "$c/cwd"
    m=$(codex debug models | jq -r '[.models[] | select(.visibility == "list")] | sort_by(.priority) | .[0].slug // empty')
    [ -n "$m" ] || echo "codex: catalog lists no model -> report model-unavailable"
    ( cd "$c/cwd" && exec codex exec --json --ephemeral --skip-git-repo-check --ignore-user-config \
        --sandbox read-only --disable shell_tool --disable unified_exec --disable view_image \
-       -m "$m" -o "$c/reply.md" "<refute prompt>" ) < /dev/null > "$c/events.jsonl" 2> "$c/stderr" &
+       -m "$m" -o "$c/reply.md" - ) < "$p" > "$c/events.jsonl" 2> "$c/stderr" &
    vendor_watch $! codex_read "$c/events.jsonl"; echo "codex rc=$?"
    # reply: $c/reply.md. errors (404, auth): "error"/"turn.failed" events in $c/events.jsonl, then $c/stderr.
    # GATE: rc 90, or a reply citing files not in the prompt -> STOP here; do not start Gemini.
@@ -120,7 +124,7 @@ it (headless auth is unreliable).
      > "$g/home/.gemini/settings.json"
    ( cd "$g/cwd" && export GEMINI_CLI_HOME="$g/home" GEMINI_CLI_NO_RELAUNCH=true && exec gemini --skip-trust \
        --approval-mode plan --model pro --allowed-mcp-server-names none --output-format stream-json \
-       -p "<refute prompt>" ) < /dev/null > "$g/events.jsonl" 2> "$g/stderr" &
+       -p "" ) < "$p" > "$g/events.jsonl" 2> "$g/stderr" &
    vendor_watch $! gemini_read "$g/events.jsonl"; echo "gemini rc=$?"   # 41 = no GEMINI_API_KEY
    jq -Rrj 'fromjson? | select(.type == "message" and .role == "assistant") | .content' "$g/events.jsonl"   # the reply
    ```

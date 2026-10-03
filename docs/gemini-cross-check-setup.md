@@ -10,18 +10,16 @@ and pins the model consistently.
 
 ## Model
 
-Use:
-
-```text
-gemini-3.1-flash-lite
-```
-
-This model ID is present in the installed Gemini CLI bundle on this Mac
-(`@google/gemini-cli` 0.47.0).
+The setup pins `gemini-3.1-flash-lite` as Gemini's everyday default (in
+`~/.gemini/settings.json`, `GEMINI_MODEL` and, despite its name,
+`GEMINI_CROSS_CHECK_MODEL`). Cross-checks never use it: it is the tiny model that
+ignores pasted code and invents file paths. The `coding-mastermind-cross-check`
+skill passes `--model pro` and runs Gemini with an empty `GEMINI_CLI_HOME`, so none
+of these settings reach a cross-check.
 
 ## macOS
 
-Run from EA:
+Run from `~/.dotfiles`:
 
 ```bash
 bash scripts/setup-gemini-cross-check.sh
@@ -60,7 +58,7 @@ bash scripts/setup-gemini-cross-check.sh --verify-only
 
 ## Windows
 
-Run from EA in PowerShell:
+Run from `~/.dotfiles` in PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/setup-gemini-cross-check.ps1
@@ -101,18 +99,16 @@ machine-local:
 
 ## Cross-Check Command
 
-For manual Gemini refutation. Send a CONCISE SUMMARY by default (the framed claim + the
-minimal diff/code under test) - never the raw workspace or whole files; a raw export needs
-explicit human approval. See the `coding-mastermind-cross-check` skill for the full export
-policy and the structured vendor statuses.
+Run Gemini for a cross-check only through the snippet in the
+`coding-mastermind-cross-check` skill (step 3), never as a bare `gemini` call. Plan mode
+blocks writes, not reads: started from a repo, or with your user settings (which list
+your workspace roots and MCP servers), Gemini can read and send private files. On 0.55.1
+a workspace-local `includeDirectories: []` does not clear that list (lists concatenate);
+the snippet's empty `GEMINI_CLI_HOME` does. The skill also holds the export policy and
+the structured statuses to report.
 
-```bash
-gemini --skip-trust --approval-mode plan -m gemini-3.1-flash-lite -p "Try to REFUTE this: <concise claim + minimal diff>"
-```
-
-Report Gemini's outcome with a STRUCTURED status (CLI-missing / unauthenticated /
-export-approval-needed / policy-blocked / timeout / succeeded), never a vague "unavailable".
-If it looks `unauthenticated`, first check that a new shell sees the key without printing it:
+If Gemini exits 41 (`unauthenticated`), check that a new shell sees the key without
+printing it, and never search for a key:
 
 ```bash
 zsh -lc 'test -n "$GEMINI_API_KEY" && echo GEMINI_API_KEY=present || echo GEMINI_API_KEY=missing'

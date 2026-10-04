@@ -6,7 +6,22 @@ versions against. This is the system-level analog of a `package-lock.json`.
 
 - **Kit version:** v1.0
 - **Implementation date:** 2026-06-16
-- **Last re-stamped:** 2026-08-17 (WSL + Windows agent refresh: Codex pin DELIBERATELY
+- **Last re-stamped:** 2026-10-04 (all four machines: Codex pin DELIBERATELY BUMPED
+  0.147.0 -> 0.160.0 after `scripts/codex-pin-preflight.sh 0.160.0` passed 6/6 (the five
+  config/flag checks plus the question-card flag, ADR-0011); Gemini CLI 0.55.1 -> 0.62.0;
+  Claude Code not re-verified this pass. Reverified: `codex exec` with no `-s` now defaults to
+  `read-only` on 0.160.0 (WSL and macOS, `--ignore-user-config`; it was `danger-full-access`
+  on WSL 0.147.0), and the cross-check keeps passing `-s read-only`; Gemini `plan` remains
+  read-only. New facts, folded into the cross-check snippet and INV-25's check: Codex 0.160
+  adds a `goals` feature offering create/get/update_goal tools (the snippet passes
+  `--disable goals`); Codex 0.160 sends `agent_name: "/root"` in request metadata (its agent
+  path, not a file path); Gemini 0.62 lists its built-in skills with their install paths
+  unless `skills.enabled` is false (the snippet sets it; with Gemini under nvm the paths held
+  the home path); Gemini 0.62 promotes `gemini-3.1-flash-lite` to `gemini-3.5-flash-lite`
+  under API-key auth, so the default model is now 3.5. The account's Codex catalog now leads
+  with `gpt-6-luna`; the live Codex call was inconclusive (account usage limit until
+  2026-10-22). Toolchain on WSL unchanged: node v22.23.1, npm 10.9.8, git 2.34.1.)
+- **Previous re-stamp:** 2026-08-17 (WSL + Windows agent refresh: Codex pin DELIBERATELY
   BUMPED 0.144.1 -> 0.147.0 after `scripts/codex-pin-preflight.sh 0.147.0` passed
   5/5, including forward/backward config parsing; the installed WSL and Windows CLIs
   both report the exact pin. Claude Code 2.1.206 -> 2.1.233 and Gemini CLI 0.50.0 ->
@@ -25,8 +40,8 @@ versions against. This is the system-level analog of a `package-lock.json`.
 | Tool | Baseline version | Notes |
 |------|------------------|-------|
 | Claude Code | 2.1.233 | latest on 2026-08-17; npm global on WSL, native install on Windows; macOS remains npm-under-nvm by design |
-| Codex CLI | 0.147.0 | npm global, PINNED - canonical pin lives in dotfiles `manifest.sh CODEX_PIN` (+ `manifest.ps1 $CodexPin`), both syncs warn on drift; bump ONLY via `~/.dotfiles/scripts/codex-pin-preflight.sh <version>` (pin bumped 2026-08-17 from 0.144.1 after preflight PASS). `codex exec` sandbox default is version-volatile and remains `danger-full-access` on WSL 0.147.0; always pass `-s read-only` |
-| Gemini CLI | 0.55.1 | latest on 2026-08-17; npm global on WSL and Windows; `gemini --approval-mode plan` remains read-only (`plan (read-only mode)`), which blocks writes, not reads |
+| Codex CLI | 0.160.0 | npm global, PINNED - canonical pin lives in dotfiles `manifest.sh CODEX_PIN` (+ `manifest.ps1 $CodexPin`), both syncs warn on drift; bump ONLY via `~/.dotfiles/scripts/codex-pin-preflight.sh <version>` (pin bumped 2026-10-04 from 0.147.0 after preflight PASS 6/6). `codex exec` sandbox default is version-volatile: `read-only` on 0.160.0 (was `danger-full-access` on WSL 0.147.0); always pass `-s read-only`. 0.160 adds the `goals` tools; the cross-check passes `--disable goals` |
+| Gemini CLI | 0.62.0 | latest on 2026-10-04; npm global on every machine (under nvm on the laptop); `gemini --approval-mode plan` remains read-only (`plan (read-only mode)`), which blocks writes, not reads. 0.62 lists built-in skills with install paths unless `skills.enabled` is false, and promotes `gemini-3.1-flash-lite` to `gemini-3.5-flash-lite` under API-key auth |
 | node | 22.23.1 (WSL) | gate checks are plain ESM `.mjs`; original macOS build baseline was 22.17.1 |
 | npm | 10.9.8 (WSL) | original macOS build baseline was 11.11.0 |
 | git | 2.34.1 (WSL) | original Apple build baseline was 2.50.1 |

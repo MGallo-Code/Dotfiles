@@ -378,7 +378,7 @@ def alive(pid: int) -> bool:
 
 
 def hermetic(texts: dict[str, str], shells: list[str]) -> list[str]:
-    fails = static(texts)
+    fails = static(texts) + home_fixtures()
     if fails:
         return fails
     helpers, codex, gemini = parts(texts["skill"])
@@ -571,11 +571,41 @@ def events_of(dirs: list[Path]) -> list[dict]:
     return out
 
 
+def home_in(body: str, real_home: str) -> bool:
+    """The home path as a path, not as text that merely contains it: on WSL the home is /root, and
+    Codex's environment context closes `<workspace_roots><root>...</root>` (2026-10-04). A path
+    is not preceded by a word character, `<`, `.`, `/` or `-` (`/x/root`, `</root>`) and not
+    followed by a word character, `-` or a dot that starts a name (`/rootfs`, `/Users/mikey`)."""
+    if not real_home:
+        return False
+    pattern = r"(?<![\w<./-])" + re.escape(real_home.rstrip("/\\")) + r"(?![\w-]|\.\w)"
+    return re.search(pattern, body) is not None
+
+
 def leaks(body: str, real_home: str) -> list[str]:
     found = [d for d in DECOYS if d in body]
-    if real_home and real_home in body:
+    if home_in(body, real_home):
         found.append(f"your home path {real_home}")
     return found
+
+
+# (body, home, leaked?) - the home-path test must see real paths and ignore look-alikes.
+HOME_CASES = [
+    ('<workspace_roots><root>/tmp/vi/x1/xcheck.Ab/cwd</root></workspace_roots>', "/root", False),
+    ('{"cwd":"/root/project"}', "/root", True),
+    ('cwd is /root.', "/root", True),
+    ('"path": "/root"', "/root", True),
+    ("mounted at /rootfs/x and /chroot/y", "/root", False),
+    ('{"cwd":"/Users/mike/Workspace/EA"}', "/Users/mike", True),
+    ("/Users/mikey/notes and /Users/mike-old", "/Users/mike", False),
+    ("C:\\Users\\moses\\x and C:/Users/moses/y", "C:/Users/moses", True),
+]
+
+
+def home_fixtures(matcher=None) -> list[str]:
+    test = matcher or home_in
+    return [f"home-path test: {'missed' if leaked else 'flagged'} {home!r} in {body!r}"
+            for body, home, leaked in HOME_CASES if test(body, home) != leaked]
 
 
 def external(reqs: list[dict[str, str]]) -> list[str]:
@@ -873,11 +903,17 @@ def revert_hermetic(texts: dict[str, str], shells: list[str]) -> int:
             missed.append(f"{name} (could not plant: the text it edits moved)")
         elif not hermetic({**texts, key: mutated}, shells[:1]):
             missed.append(name)
+    # The home-path test itself: a plain substring test (flags `</root>`) and one that never
+    # matches must each fail its fixtures.
+    for name, matcher in (("home path matched as plain text", lambda body, home: home in body),
+                          ("home path never matched", lambda body, home: False)):
+        if not home_fixtures(matcher):
+            missed.append(name)
     for name in missed:
         print(f"check-vendor-isolation --revert-test: NOT caught: {name}")
     if missed:
         return 1
-    print(f"check-vendor-isolation --revert-test OK - all {len(HERMETIC_PLANTS)} planted weakenings fail the check.")
+    print(f"check-vendor-isolation --revert-test OK - all {len(HERMETIC_PLANTS) + 2} planted weakenings fail the check.")
     return 0
 
 

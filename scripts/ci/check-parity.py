@@ -269,6 +269,12 @@ FEATURES = [
         "ps1": ("sync.ps1", r"Enable-CodexQuestionCard\s*\n\s*Register-AskGuard\s*\n\s*Set-AgentIntegrations"),
     },
     {
+        # The Gemini key installer prompts; a sync without a terminal must not launch it.
+        "name": "Gemini installer only launched from a terminal",
+        "sh": ("sync.sh", r"if \[ ! -t 0 \] \|\| \[ ! -t 1 \]; then\s*\n\s*warn \"Gemini cross-check setup incomplete - run"),
+        "ps1": ("sync.ps1", r"if \(\[Console\]::IsInputRedirected\) \{\s*\n\s*Write-Warn \"Gemini cross-check setup incomplete - run"),
+    },
+    {
         "name": "WezTerm config linked",
         "sh": ("manifest.sh", r"wezterm\.lua"),
         "ps1": ("manifest.ps1", r"wezterm\.lua"),

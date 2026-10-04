@@ -277,6 +277,11 @@ function Ensure-GeminiCrossCheckSetup { # GEMINI_CROSS_CHECK_SETUP
         return
     }
 
+    # The installer asks for the key: with no console (a sync over SSH) nobody can answer it.
+    if ([Console]::IsInputRedirected) {
+        Write-Warn "Gemini cross-check setup incomplete - run $script in a terminal"
+        return
+    }
     Write-Warn "Gemini cross-check setup incomplete - launching installer"
     try {
         & powershell -ExecutionPolicy Bypass -File $script

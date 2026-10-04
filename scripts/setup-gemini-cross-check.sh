@@ -4,6 +4,14 @@ set -euo pipefail
 MODEL="gemini-3.1-flash-lite"
 SERVICE="ea-gemini-api-key"
 ACCOUNT="${USER:-michael}"
+# macOS keeps the key in Keychain. Linux (WSL) has no Keychain, so the key lives in a file only
+# this user can read, beside where Windows keeps its DPAPI copy (~/.config/ea/gemini-api-key.dpapi).
+KEY_FILE="$HOME/.config/ea/gemini-api-key"
+if command -v security >/dev/null 2>&1; then
+  STORE="macOS Keychain service '$SERVICE'"
+else
+  STORE="$KEY_FILE"
+fi
 VERIFY_ONLY=0
 WRITE_ZSHENV=1
 WRITE_WRAPPER=1
@@ -12,11 +20,11 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/setup-gemini-cross-check.sh [options]
 
-Stores a Gemini API key in macOS Keychain and wires non-interactive shells so
-agent cross-checks can run Gemini Flash Lite without committing secrets.
+Stores a Gemini API key in macOS Keychain (Linux: ~/.config/ea/gemini-api-key, mode 600) and
+wires non-interactive shells so agent cross-checks can run Gemini without committing secrets.
 
 Idempotent by design:
-  - Keychain item is upserted, not duplicated.
+  - Keychain item (or key file) is upserted, not duplicated.
   - The ~/.zshenv managed block is replaced, not appended repeatedly.
   - The wrapper is overwritten deterministically.
   - ~/.gemini/settings.json is merged to the desired auth/model state.
@@ -68,10 +76,25 @@ require_command() {
 }
 
 require_command gemini
-require_command security
 
 existing_key() {
-  security find-generic-password -a "$ACCOUNT" -s "$SERVICE" -w 2>/dev/null || true
+  if command -v security >/dev/null 2>&1; then
+    security find-generic-password -a "$ACCOUNT" -s "$SERVICE" -w 2>/dev/null || true
+  elif [[ -r "$KEY_FILE" ]]; then
+    cat "$KEY_FILE"
+  fi
+}
+
+save_key() {
+  if command -v security >/dev/null 2>&1; then
+    security add-generic-password -U -a "$ACCOUNT" -s "$SERVICE" -w "$1" >/dev/null
+    return
+  fi
+  ( umask 077
+    mkdir -p "$(dirname "$KEY_FILE")"
+    printf '%s' "$1" > "$KEY_FILE.tmp"
+    mv -f "$KEY_FILE.tmp" "$KEY_FILE" )
+  chmod 600 "$KEY_FILE"
 }
 
 store_key() {
@@ -79,7 +102,7 @@ store_key() {
   current="$(existing_key)"
 
   if [[ -n "$current" ]]; then
-    echo "A Gemini key is already stored in Keychain service '$SERVICE'."
+    echo "A Gemini key is already stored in $STORE."
     printf "Press Enter to keep it, or paste a replacement key (input hidden): "
   else
     printf "Paste GEMINI_API_KEY for Gemini CLI (input hidden): "
@@ -91,16 +114,16 @@ store_key() {
 
   if [[ -z "$key" ]]; then
     if [[ -z "$current" ]]; then
-      echo "No key provided and no existing Keychain key found." >&2
+      echo "No key provided and none stored in $STORE." >&2
       exit 1
     fi
-    echo "Keeping existing Keychain key."
+    echo "Keeping the stored key."
     return
   fi
 
-  security add-generic-password -U -a "$ACCOUNT" -s "$SERVICE" -w "$key" >/dev/null
+  save_key "$key"
   unset key
-  echo "Stored Gemini API key in macOS Keychain service '$SERVICE'."
+  echo "Stored Gemini API key in $STORE."
 }
 
 update_zshenv() {
@@ -120,15 +143,17 @@ update_zshenv() {
 
   cat >> "$tmp" <<EOF
 $begin
-if command -v security >/dev/null 2>&1; then
-  if [ -z "\${GEMINI_API_KEY:-}" ]; then
+if [ -z "\${GEMINI_API_KEY:-}" ]; then
+  if command -v security >/dev/null 2>&1; then
     __ea_gemini_value="\$(security find-generic-password -a "$ACCOUNT" -s "$SERVICE" -w 2>/dev/null || true)"
-    if [ -n "\$__ea_gemini_value" ]; then
-      export GEMINI_API_KEY
-      GEMINI_API_KEY=\$__ea_gemini_value
-    fi
-    unset __ea_gemini_value
+  elif [ -r "$KEY_FILE" ]; then
+    __ea_gemini_value="\$(cat "$KEY_FILE")"
   fi
+  if [ -n "\${__ea_gemini_value:-}" ]; then
+    export GEMINI_API_KEY
+    GEMINI_API_KEY=\$__ea_gemini_value
+  fi
+  unset __ea_gemini_value
 fi
 export GEMINI_MODEL="\${GEMINI_MODEL:-$MODEL}"
 export GEMINI_CROSS_CHECK_MODEL="\${GEMINI_CROSS_CHECK_MODEL:-$MODEL}"
@@ -154,13 +179,16 @@ account="\${GEMINI_KEYCHAIN_ACCOUNT:-\${USER:-michael}}"
 model="\${GEMINI_MODEL:-\${GEMINI_CROSS_CHECK_MODEL:-$MODEL}}"
 
 if [[ -z "\${GEMINI_API_KEY:-}" ]]; then
+  key=""
   if command -v security >/dev/null 2>&1; then
     key="\$(security find-generic-password -a "\$account" -s "\$service" -w 2>/dev/null || true)"
-    if [[ -n "\$key" ]]; then
-      export GEMINI_API_KEY="\$key"
-    fi
-    unset key
+  elif [[ -r "$KEY_FILE" ]]; then
+    key="\$(cat "$KEY_FILE")"
   fi
+  if [[ -n "\$key" ]]; then
+    export GEMINI_API_KEY="\$key"
+  fi
+  unset key
 fi
 
 if [[ -z "\${GEMINI_API_KEY:-}" ]]; then
@@ -215,7 +243,7 @@ verify() {
     key="$GEMINI_API_KEY"
   fi
   if [[ -z "$key" ]]; then
-    echo "No Gemini key found in Keychain or GEMINI_API_KEY." >&2
+    echo "No Gemini key found in $STORE or GEMINI_API_KEY." >&2
     exit 1
   fi
 

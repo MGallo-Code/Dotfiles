@@ -210,10 +210,15 @@ ensure_gemini_cross_check_setup() { # GEMINI_CROSS_CHECK_SETUP
         ok "Gemini cross-check setup present"
         return
     fi
-    if command -v security >/dev/null 2>&1 \
-        && security find-generic-password -a "${USER:-michael}" -s ea-gemini-api-key -w >/dev/null 2>&1 \
-        && [ -x "$HOME/.local/bin/gemini-flash-lite" ]; then
+    if [ -x "$HOME/.local/bin/gemini-flash-lite" ] && { [ -s "$HOME/.config/ea/gemini-api-key" ] || {
+        command -v security >/dev/null 2>&1 \
+            && security find-generic-password -a "${USER:-michael}" -s ea-gemini-api-key -w >/dev/null 2>&1; }; }; then
         ok "Gemini cross-check setup present"
+        return
+    fi
+    # The installer asks for the key: with no terminal (a sync over SSH) nobody can answer it.
+    if [ ! -t 0 ] || [ ! -t 1 ]; then
+        warn "Gemini cross-check setup incomplete - run $script in a terminal"
         return
     fi
 

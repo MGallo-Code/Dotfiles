@@ -19,6 +19,7 @@
 #      direction that broke in June 2026)
 #   5. `codex exec --help` / `codex mcp add --help` diff       (flag parity; any diff
 #      is printed for human review - additive changes are fine, removals are not)
+#   6. `codex features list` still has default_mode_request_user_input (ADR-0011)
 #
 # NOT covered (verify live right after upgrading):
 #   - hook trust hashes: [hooks.state] keys embed the real config path, so a clone
@@ -97,6 +98,11 @@ for sub in "exec --help" "mcp add --help"; do
     fi
 done
 [ "$flag_drift" -eq 0 ] && ok "5/5 flags: exec/mcp-add help identical"
+
+# 6. the question card outside Plan mode (ADR-0011): setup/sync enable this flag on every machine
+CODEX_HOME="$CLONE" "${candidate[@]}" features list 2>/dev/null | grep -q '^default_mode_request_user_input ' \
+    || fail "question card: $CANDIDATE no longer has default_mode_request_user_input (ADR-0011) - rework the routing before bumping"
+ok "6/6 question card: $CANDIDATE still has default_mode_request_user_input"
 
 echo
 ok "PREFLIGHT PASSED for $CANDIDATE (help-diff above needs eyes if shown)"

@@ -395,6 +395,10 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
                        if "context-card.py" in h.get("command", "")]
             require(len(capture) == 1 and "request-capture --agent codex" in capture[0]["hooks"][0]["command"],
                     "Codex: expected one request-queue Stop hook (ADR-0008)", findings)
+            guard = [g for g in parsed.get("hooks", {}).get("Stop", []) for h in g.get("hooks", [])
+                     if "ask-guard.py" in h.get("command", "")]
+            require(len(guard) == 1 and len(guard[0]["hooks"]) == 1 and guard[0] is not capture[0],
+                    "Codex: expected one ask-guard Stop hook in its own group (ADR-0011)", findings)
             require(parsed["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "/x/warn.sh"
                     and parsed["hooks"]["state"]["/x:pre_tool_use:0:0"]["trusted_hash"] == "sha256:abc",
                     "Codex: the existing PreToolUse hook or its trust state was disturbed", findings)
@@ -412,6 +416,8 @@ def context_fixtures(findings: list[str], configurator: Path | None = None) -> N
             again = toml_module().loads(codex_cfg.read_text(encoding="utf-8"))
             require(sum("context-card.py" in h.get("command", "") for g in again["hooks"].get("SessionStart", []) for h in g.get("hooks", [])) == 1,
                     "Codex: with its markers dropped (Codex rewrites config.toml) the block was duplicated", findings)
+            require(sum("ask-guard.py" in h.get("command", "") for g in again["hooks"].get("Stop", []) for h in g.get("hooks", [])) == 1,
+                    "Codex: with its markers dropped the ask-guard Stop hook was duplicated", findings)
             require(again.get("note") == "a\n\n\n\nb",
                     "Codex: a multi-line string outside our block was altered", findings)
             inline_home = fresh_home("codex-inline", {})

@@ -34,6 +34,7 @@ ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
     fi
 
     ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
+    enable_codex_question_card
 
     # CODEX_PIN drift check (pin is canonical in manifest.sh; parity: sync.ps1 $CodexPin).
     # Warn-only: sync can't fix a version mismatch itself, and a blocked sync is worse.
@@ -490,6 +491,7 @@ done
 
 # Regenerate the Codex single-file rule bundle from global-rules/* (and remove retired ones)
 regen_combined_agent_rules
+register_ask_guard
 configure_agent_integrations || warn "agent integrations were not updated"
 configure_private_sync
 

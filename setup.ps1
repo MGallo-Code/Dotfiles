@@ -117,6 +117,7 @@ function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-codex-defaults.py") --home $HOME | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Codex settings are unsupported or inaccessible; defaults were not changed" }
     Write-Ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
+    Enable-CodexQuestionCard
 
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
     # Claude global-hooks symlink and run via bash on Windows. Trust once via Codex /hooks.
@@ -711,6 +712,7 @@ if ($Mode -eq "full") {
     # Shared manifest functions keep setup and routine sync on the same generated rules
     # and completion-hook registration path.
     Regen-CombinedAgentRules
+    Register-AskGuard
     Set-AgentIntegrations
     Set-PrivateSync
 

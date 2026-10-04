@@ -364,6 +364,20 @@ function Ensure-ClaudeHook {
 # The UI-workflow nudge's registered command (INV-19). The script itself always exits 0.
 $UiNudgeHookCmd = "python `"$($HOME -replace '\\','/')/.claude/hooks/ui-nudge.py`""
 
+# Questions for Michael (ADR-0011, INV-26). Parity: manifest.sh register_ask_guard. Called BEFORE
+# Set-AgentIntegrations, which keeps the completion-email Stop hook last (byte-identical re-runs).
+$AskGuardHookCmd = "python `"$($HOME -replace '\\','/')/.claude/hooks/ask-guard.py`""
+# Codex's question card outside Plan mode (ADR-0011). Parity: manifest.sh enable_codex_question_card.
+function Enable-CodexQuestionCard {
+    if (-not (Get-Command codex -ErrorAction SilentlyContinue)) { return }
+    & codex features enable default_mode_request_user_input *> $null
+    if ($LASTEXITCODE -ne 0) { Write-Warn "Codex: could not turn on its question card (default_mode_request_user_input)" }
+}
+function Register-AskGuard {
+    Ensure-ClaudeHook -HookEvent PreToolUse -Matcher "AskUserQuestion" -Command $AskGuardHookCmd -Label "question-card check"
+    Ensure-ClaudeHook -HookEvent Stop -Matcher "" -Command $AskGuardHookCmd -Label "end-of-reply question check"
+}
+
 # Private-file sync (ADR-0009, INV-24). Parity: manifest.sh configure_private_sync. Only the mini
 # and the laptop carry EA's private folders, so a Windows machine that opts in is told so and left
 # alone until its Syncthing service is wired (ADR-0009, Limits).

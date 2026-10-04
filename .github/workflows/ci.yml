@@ -121,6 +121,10 @@ jobs:
         run: bash scripts/ci/check-ui-nudge.sh
       - name: check-ui-nudge revert-test
         run: bash scripts/ci/check-ui-nudge.sh --revert-test
+      - name: check-ask (INV-26, ADR-0011)
+        run: python scripts/ci/check-ask.py
+      - name: check-ask revert-test
+        run: python scripts/ci/check-ask.py --revert-test
       - name: check-sync-commit (INV-20)
         run: bash scripts/ci/check-sync-commit.sh
       - name: check-sync-commit revert-test
@@ -188,6 +192,23 @@ jobs:
       - name: check-ui-nudge Windows PowerShell
         shell: powershell
         run: ./scripts/ci/check-ui-nudge.ps1
+      # INV-26: the questions page's server, detached spawn and hook on Windows, then the
+      # PowerShell registration half.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check-ask (INV-26) on Windows
+        shell: pwsh
+        run: python scripts/ci/check-ask.py
+      - name: check-ask PowerShell
+        shell: pwsh
+        run: ./scripts/ci/check-ask.ps1
+      - name: check-ask PowerShell revert-test
+        shell: pwsh
+        run: ./scripts/ci/check-ask.ps1 -RevertTest
+      - name: check-ask Windows PowerShell
+        shell: powershell
+        run: ./scripts/ci/check-ask.ps1
 
   bash-local-selfref:
     # INV-9: no `local`/`declare` references a variable assigned earlier in the SAME statement

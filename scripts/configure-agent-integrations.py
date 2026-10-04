@@ -41,6 +41,8 @@ MAX_CODEX_PASSTHROUGH_TOTAL_CHARS = 8_192
 MAX_CODEX_PASSTHROUGH_TOKEN_CHARS = 12_000
 SKILLS_BEGIN = "# dotfiles: begin Codex duplicate skill suppression"
 CONTEXT_SCRIPT = "context-card.py"
+# ADR-0011: Codex's end-of-turn check that what's waiting on Michael isn't left as a list.
+ASK_GUARD_SCRIPT = "ask-guard.py"
 CONTEXT_TIMEOUT = 15
 # (event, matcher, subcommand). The clear guard keys on the Desktop tool's name (INV-17
 # limit). The role guard fires on every edit and shell call and is silent for sessions without
@@ -434,8 +436,8 @@ CODEX_CONTEXT_EVENTS = ("SessionStart", "Stop")
 
 def _strip_codex_context_hooks(text: str) -> str:
     """Drop every [[hooks.SessionStart]] / [[hooks.Stop]] group whose handler runs
-    context-card.py, by content: Codex rewrites config.toml itself and can drop the marker
-    comments around the block."""
+    context-card.py or ask-guard.py, by content: Codex rewrites config.toml itself and can drop
+    the marker comments around the block."""
     lines = text.split("\n")
     out: list[str] = []
     i = 0
@@ -450,7 +452,8 @@ def _strip_codex_context_hooks(text: str) -> str:
                 j += 1
             group = lines[i:j]
             # TOML escapes the command's quotes (\\"), so match the script name on the raw line.
-            if any(line.strip().startswith("command") and CONTEXT_SCRIPT in line for line in group):
+            if any(line.strip().startswith("command") and (CONTEXT_SCRIPT in line or ASK_GUARD_SCRIPT in line)
+                   for line in group):
                 i = j
                 while out and out[-1].strip() == "" and i < len(lines) and lines[i].strip() == "":
                     i += 1  # close the seam: drop one blank line, touch nothing else
@@ -517,6 +520,8 @@ def _configure_codex(
         # PreCompact output and has no Desktop clear tool, so only this hook applies. Codex
         # asks Michael once to trust a new hook (hooks.state); dotfiles never writes trust.
         base = " ".join(_hook_quote(part) for part in context_argv)
+        guard_argv = [*context_argv[:-1], str(Path(context_argv[-1]).with_name(ASK_GUARD_SCRIPT))]
+        guard = " ".join(_hook_quote(part) for part in guard_argv)
         # The request queue (ADR-0008): Stop sweeps the rollout for what Michael typed, silently;
         # SessionStart restores the open requests after a compaction or resume.
         chunks.append("\n".join([
@@ -535,6 +540,14 @@ def _configure_codex(
             "[[hooks.Stop.hooks]]",
             'type = "command"',
             f"command = {_toml_string(base + ' request-capture --agent codex || true')}",
+            f"timeout = {CONTEXT_TIMEOUT}",
+            "",
+            # Its own group, so adding it never changes the trusted request-sweep group above.
+            "[[hooks.Stop]]",
+            "",
+            "[[hooks.Stop.hooks]]",
+            'type = "command"',
+            f"command = {_toml_string(guard + ' || true')}",
             f"timeout = {CONTEXT_TIMEOUT}",
             CODEX_CONTEXT_END,
         ]))

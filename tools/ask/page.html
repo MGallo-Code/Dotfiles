@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Questions</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f6f7f9; --line: #e3e5e9; --text: #16181d; --muted: #5d6470;
+    --accent: #2f5bea; --accent-soft: #e8eefe; --ok: #1f7a4a; --warn: #b4541a;
+    --s1: 6px; --s2: 12px; --s3: 18px;
+    --r: 8px; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15171b; --panel: #1d2026; --line: #2c3038; --text: #eceef2; --muted: #9aa2ae;
+            --accent: #6f8fff; --accent-soft: #232c45; --ok: #4cc488; --warn: #f0a46a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 var(--font); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: var(--s3) 16px 96px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
+           padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+  header .from { color: var(--muted); font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+  .dots { display: flex; gap: var(--s1); flex-wrap: wrap; justify-content: flex-end; }
+  .dot { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg);
+         color: var(--muted); font: 600 12px var(--font); cursor: pointer; padding: 0; }
+  .dot.done { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .dot.here { border-color: var(--accent); color: var(--accent); }
+  h1 { font-size: 19px; line-height: 1.3; margin: var(--s3) 0 var(--s1); overflow-wrap: anywhere; }
+  .context { color: var(--muted); margin: 0 0 var(--s1); overflow-wrap: anywhere; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 var(--s2); }
+  .opts { display: grid; gap: var(--s2); margin-top: var(--s2); }
+  .opts.pics { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .opt { text-align: left; width: 100%; border: 1px solid var(--line); border-radius: var(--r);
+         background: var(--bg); color: var(--text); padding: var(--s2); cursor: pointer; font: inherit;
+         display: grid; grid-template-columns: auto 1fr; gap: var(--s1) var(--s2); align-items: start; }
+  .opt:hover { border-color: var(--muted); }
+  .opt.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
+  .opt img { grid-column: 1 / -1; width: 100%; height: auto; display: block; border: 1px solid var(--line);
+             border-radius: 6px; background: #fff; }
+  .key { font: 600 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+         padding: 1px 7px; background: var(--panel); color: var(--muted); }
+  .opt.on .key { color: var(--accent); border-color: var(--accent); }
+  .opt .t { font-weight: 600; overflow-wrap: anywhere; }
+  .opt .rec { font-size: 12px; font-weight: 600; color: var(--ok); margin-left: var(--s1); }
+  .opt .d { grid-column: 2; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+  .other { margin-top: var(--s2); display: grid; grid-template-columns: auto 1fr; gap: var(--s2); align-items: center; }
+  .other input { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+                 border-radius: var(--r); padding: 8px 10px; }
+  .other input:focus { outline: none; border-color: var(--accent); }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); }
+  footer .in { max-width: 760px; margin: 0 auto; padding: var(--s2) 16px; display: flex; gap: var(--s2);
+               align-items: center; justify-content: flex-end; }
+  footer .status { margin-right: auto; color: var(--muted); font-size: 14px; }
+  footer .status.sent { color: var(--ok); font-weight: 600; }
+  footer .status.fail { color: var(--warn); }
+  button.btn { font: 600 14px var(--font); border-radius: var(--r); padding: 8px 14px; cursor: pointer;
+               border: 1px solid var(--line); background: var(--bg); color: var(--text);
+               display: inline-flex; gap: 8px; align-items: center; }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.btn.primary .key { background: transparent; color: #fff; border-color: rgba(255,255,255,.55); }
+  button.btn:disabled { opacity: .45; cursor: default; }
+  .review { border-top: 1px solid var(--line); }
+  .review .row { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); padding: var(--s2) 0;
+                 border-bottom: 1px solid var(--line); }
+  .review .q { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+  .review .a { font-weight: 600; overflow-wrap: anywhere; }
+  .review .a.none { color: var(--warn); }
+  .review .row button { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; }
+  .paste { margin-top: var(--s3); }
+  .paste textarea { width: 100%; min-height: 120px; font: 13px/1.4 var(--mono); color: var(--text);
+                    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="from" id="from"></span>
+    <nav class="dots" id="dots"></nav>
+  </header>
+  <main id="main"></main>
+</div>
+<footer><div class="in">
+  <span class="status" id="status"></span>
+  <button class="btn" id="back">Back <span class="key">←</span></button>
+  <button class="btn primary" id="next"></button>
+</div></footer>
+
+<script id="ask-data" type="application/json">/*__ASK__*/</script>
+<script>
+"use strict";
+const ASK = JSON.parse(document.getElementById("ask-data").textContent);
+const QS = ASK.questions;
+const answers = QS.map(() => ({ picks: [], other: "" }));
+let at = 0, state = "open";  // open | sending | sent | failed
+
+const $ = id => document.getElementById(id);
+const L = i => String.fromCharCode(65 + i);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n[k] = v; else n.setAttribute(k, v);
+  }
+  for (const k of kids) if (k !== null && k !== undefined) n.append(k);
+  return n;
+};
+const key = t => el("span", { class: "key" }, t);
+
+function answered(i) { return answers[i].picks.length > 0 || answers[i].other.trim() !== ""; }
+function answerText(i) {
+  const a = answers[i], parts = a.picks.map(p => L(p) + ". " + QS[i].options[p].label);
+  if (a.other.trim()) parts.push("Other: " + a.other.trim());
+  return parts.join("; ");
+}
+function pick(i) {
+  const a = answers[at], q = QS[at];
+  if (q.multi) a.picks = a.picks.includes(i) ? a.picks.filter(p => p !== i) : [...a.picks, i].sort();
+  else { a.picks = [i]; a.other = ""; }
+  render();
+}
+
+function renderDots() {
+  const dots = QS.map((_, i) => el("button", {
+    class: "dot" + (answered(i) ? " done" : "") + (i === at ? " here" : ""), title: "Question " + (i + 1),
+    onclick: () => { at = i; render(); } }, String(i + 1)));
+  dots.push(el("button", { class: "dot" + (at === QS.length ? " here" : ""), title: "Review",
+    onclick: () => { at = QS.length; render(); } }, "✓"));
+  $("dots").replaceChildren(...dots);
+}
+
+function renderQuestion() {
+  const q = QS[at], a = answers[at];
+  const pics = q.options.some(o => (o.images || []).length);
+  const opts = q.options.map((o, i) => el("button", { class: "opt" + (a.picks.includes(i) ? " on" : ""),
+      onclick: () => pick(i) },
+    ...(o.images || []).map((_, n) => el("img", { src: "img/" + at + "/" + i + "/" + n, alt: o.label })),
+    key(L(i)),
+    el("span", {}, el("span", { class: "t" }, o.label), o.recommended ? el("span", { class: "rec" }, "Recommended") : null),
+    el("span", { class: "d" }, o.detail)));
+  const other = el("input", { id: "other", placeholder: "Other", value: a.other, maxlength: "2000" });
+  other.addEventListener("input", e => {
+    a.other = e.target.value;
+    if (a.other && !q.multi) { a.picks = []; document.querySelectorAll(".opt").forEach(b => b.classList.remove("on")); }
+    renderDots();
+  });
+  $("main").replaceChildren(
+    el("h1", {}, q.question),
+    el("p", { class: "context" }, q.context),
+    q.multi ? el("p", { class: "hint" }, "Pick any that apply.") : null,
+    el("div", { class: "opts" + (pics ? " pics" : "") }, ...opts),
+    el("label", { class: "other" }, key(L(q.options.length)), other));
+  $("next").replaceChildren("Next ", key("⏎"));
+  $("next").disabled = false;
+  setStatus("", "");
+}
+
+function pasteText() {
+  return "Answers for " + ASK.from + ":\n" + QS.map((q, i) => (i + 1) + ". " + q.question + "\n   " + (answerText(i) || "(skipped)")).join("\n");
+}
+
+function renderReview() {
+  const rows = QS.map((q, i) => el("div", { class: "row" },
+    el("div", {}, el("div", { class: "q" }, q.question),
+      el("div", { class: "a" + (answered(i) ? "" : " none") }, answerText(i) || "Skipped")),
+    state === "sent" ? el("span") : el("button", { onclick: () => { at = i; render(); } }, "Change")));
+  const kids = [el("h1", {}, "Your answers"), el("div", { class: "review" }, ...rows)];
+  if (state === "failed") {
+    const ta = el("textarea", { readonly: "" }); ta.value = pasteText();
+    kids.push(el("div", { class: "paste" }, el("p", { class: "context" }, "Paste this into the chat instead:"), ta));
+  }
+  $("main").replaceChildren(...kids);
+  const any = QS.some((_, i) => answered(i)), all = QS.every((_, i) => answered(i));
+  $("next").replaceChildren(...(state === "sent" ? ["Sent"] : state === "sending" ? ["Sending…"] : ["Send ", key("⏎")]));
+  $("next").disabled = state === "sent" || state === "sending" || !any;
+  if (state === "sent") setStatus("The agent has your answers.", "sent");
+  else if (state === "failed") setStatus("Couldn't reach the agent.", "fail");
+  else setStatus(all ? "" : any ? "Unanswered questions go as skipped." : "Answer at least one question to send.", "");
+}
+
+function setStatus(text, cls) { $("status").textContent = text; $("status").className = "status" + (cls ? " " + cls : ""); }
+
+function render() {
+  $("from").textContent = ASK.from;
+  renderDots();
+  if (at === QS.length) renderReview(); else renderQuestion();
+  $("back").disabled = at === 0 || state === "sent";
+}
+
+async function send() {
+  state = "sending"; render();
+  try {
+    const r = await fetch("answers", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answers: answers.map(a => ({ picks: a.picks, other: a.other.trim() })) }) });
+    state = r.ok ? "sent" : "failed";
+  } catch (e) { state = "failed"; }
+  render();
+}
+
+$("back").onclick = () => { if (at > 0 && state !== "sent") { at--; render(); } };
+$("next").onclick = () => {
+  if (at < QS.length) { at++; render(); return; }
+  if (state !== "sent" && state !== "sending") send();
+};
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.tagName === "INPUT") {
+    if (e.key === "Enter") { e.preventDefault(); $("next").click(); }
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  if (e.target.tagName === "TEXTAREA") return;
+  if (e.key === "Enter") { e.preventDefault(); if (!$("next").disabled) $("next").click(); return; }
+  if (e.key === "ArrowLeft") { $("back").click(); return; }
+  if (at < QS.length && e.key.length === 1) {
+    const i = e.key.toUpperCase().charCodeAt(0) - 65, n = QS[at].options.length;
+    if (i >= 0 && i < n) pick(i);
+    else if (i === n) { e.preventDefault(); $("other").focus(); }
+  }
+});
+render();
+</script>
+</body>
+</html>

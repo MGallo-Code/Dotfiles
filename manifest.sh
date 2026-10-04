@@ -283,6 +283,24 @@ ensure_claude_hook() {
 # The UI-workflow nudge's registered command (INV-19): fail-open, so a missing python never errors.
 UI_NUDGE_HOOK_CMD='python3 "$HOME/.claude/hooks/ui-nudge.py" || true'
 
+# Questions for Michael (ADR-0011, INV-26): ask-guard checks Claude's question card before it
+# opens and blocks once when a reply ends in a list of questions. Fail-open like the nudge.
+# Called BEFORE configure_agent_integrations, which then keeps the completion-email Stop hook
+# last, so a second setup or sync leaves settings.json byte-identical.
+ASK_GUARD_HOOK_CMD='python3 "$HOME/.claude/hooks/ask-guard.py" || true'
+# Codex's question card outside Plan mode (ADR-0011): an under-development flag, so Codex's own
+# command edits its TOML; the pin preflight fails a bump that drops the flag. Parity:
+# manifest.ps1 Enable-CodexQuestionCard.
+enable_codex_question_card() {
+    command -v codex >/dev/null 2>&1 || return 0
+    codex features enable default_mode_request_user_input >/dev/null 2>&1 \
+        || warn "Codex: could not turn on its question card (default_mode_request_user_input)"
+}
+register_ask_guard() {
+    ensure_claude_hook PreToolUse "AskUserQuestion" "$ASK_GUARD_HOOK_CMD" "question-card check"
+    ensure_claude_hook Stop "" "$ASK_GUARD_HOOK_CMD" "end-of-reply question check"
+}
+
 # Syncthing over Tailscale for EA's private folders, on machines that opted in (ADR-0009, INV-24).
 # macOS only for now: Homebrew installs it and runs it as a LaunchAgent; the converger sets the
 # lockdown, the peers and the include-only folder. Parity: manifest.ps1 Set-PrivateSync.

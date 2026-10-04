@@ -248,6 +248,37 @@ FEATURES = [
         "ps1": ("sync.ps1", r"Ensure-ClaudeHook -HookEvent PostToolUse"),
     },
     {
+        # INV-26 (ADR-0011): ask-guard on Claude's question card and at the end of a reply.
+        "name": "ask-guard registered (INV-26)",
+        "sh": ("manifest.sh", r'register_ask_guard\(\) \{\s*ensure_claude_hook PreToolUse "AskUserQuestion" "\$ASK_GUARD_HOOK_CMD"[^\n]*\n\s*ensure_claude_hook Stop "" "\$ASK_GUARD_HOOK_CMD"'),
+        "ps1": ("manifest.ps1", r'function Register-AskGuard \{\s*Ensure-ClaudeHook -HookEvent PreToolUse -Matcher "AskUserQuestion" -Command \$AskGuardHookCmd[^\n]*\n\s*Ensure-ClaudeHook -HookEvent Stop -Matcher "" -Command \$AskGuardHookCmd'),
+    },
+    {
+        "name": "Codex question card enabled (ADR-0011)",
+        "sh": ("manifest.sh", r"enable_codex_question_card\(\) \{[\s\S]*?codex features enable default_mode_request_user_input"),
+        "ps1": ("manifest.ps1", r"function Enable-CodexQuestionCard \{[\s\S]*?codex features enable default_mode_request_user_input"),
+    },
+    {
+        "name": "setup turns on the Codex question card",
+        "sh": ("setup.sh", r"Codex: defaults set[^\n]*\n\s*enable_codex_question_card"),
+        "ps1": ("setup.ps1", r"Codex: defaults set[^\n]*\n\s*Enable-CodexQuestionCard"),
+    },
+    {
+        "name": "sync turns on the Codex question card",
+        "sh": ("sync.sh", r"Codex: defaults set[^\n]*\n\s*enable_codex_question_card"),
+        "ps1": ("sync.ps1", r"Codex: defaults set[^\n]*\n\s*Enable-CodexQuestionCard"),
+    },
+    {
+        "name": "setup registers ask-guard before the agent integrations",
+        "sh": ("setup.sh", r"register_ask_guard\s*\n\s*configure_agent_integrations"),
+        "ps1": ("setup.ps1", r"Register-AskGuard\s*\n\s*Set-AgentIntegrations"),
+    },
+    {
+        "name": "sync registers ask-guard before the agent integrations",
+        "sh": ("sync.sh", r"register_ask_guard\s*\n\s*configure_agent_integrations"),
+        "ps1": ("sync.ps1", r"Register-AskGuard\s*\n\s*Set-AgentIntegrations"),
+    },
+    {
         "name": "WezTerm config linked",
         "sh": ("manifest.sh", r"wezterm\.lua"),
         "ps1": ("manifest.ps1", r"wezterm\.lua"),

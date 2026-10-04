@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL="gemini-3.1-flash-lite"
+MODEL="gemini-3.5-flash-lite"
 SERVICE="ea-gemini-api-key"
 ACCOUNT="${USER:-michael}"
 # macOS keeps the key in Keychain. Linux (WSL) has no Keychain, so the key lives in a file only
@@ -30,7 +30,7 @@ Idempotent by design:
   - ~/.gemini/settings.json is merged to the desired auth/model state.
 
 Options:
-  --model MODEL       Gemini model to export. Default: gemini-3.1-flash-lite
+  --model MODEL       Gemini model to export. Default: gemini-3.5-flash-lite
   --verify-only       Do not prompt or write files; just verify Gemini works
   --no-zshenv         Do not update ~/.zshenv
   --no-wrapper        Do not create ~/.local/bin/gemini-flash-lite

@@ -66,7 +66,7 @@ CATALOG = {"models": [{"slug": "hidden-first", "visibility": "hide", "priority":
 # The exact launch: any added flag (-c, --enable, --full-auto, -y ...) fails until proven safe here.
 CODEX_ARGV = ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config",
               "--sandbox", "read-only", "--disable", "shell_tool", "--disable", "unified_exec",
-              "--disable", "view_image", "--disable", "multi_agent", "-m", "canned-top",
+              "--disable", "view_image", "--disable", "multi_agent", "--disable", "goals", "-m", "canned-top",
               "-o", "<xcheck>/reply.md", "-"]
 GEMINI_ARGV = ["--skip-trust", "--approval-mode", "plan", "--model", "pro", "--allowed-mcp-server-names",
                "none", "--output-format", "stream-json", "-p", ""]
@@ -684,7 +684,7 @@ foreach ($f in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Lan
 }
 $assign = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
   $n.Left.Extent.Text -eq '$wrapper' -and $n.Right.Extent.Text.StartsWith("@'") }, $true)
-$Model = "gemini-3.1-flash-lite"
+$Model = "gemini-3.5-flash-lite"
 $SecretPath = Join-Path $Bin "no-secret"
 $WrapperPath = Join-Path $Bin "gemini-flash-lite.ps1"
 Set-Content -Path $WrapperPath -Value $assign.Right.Expression.Value.Replace("__MODEL__", $Model)
@@ -762,7 +762,7 @@ def machine(texts: dict[str, str], real: dict[str, str | None], controls: bool =
                                       {**env, "TMPDIR": str(xroot / "tmp")}, xroot)
                 m = re.search(r"setup-ps1 rc=(\d+)", tail)
                 fails += judge_gemini(cap.take(), int(m.group(1)) if m else rc, tail, real_home,
-                                      "GEMINI_FLASH_LITE_OK", "gemini-3.1-flash-lite", "setup script test call (ps1)")
+                                      "GEMINI_FLASH_LITE_OK", "gemini-3.5-flash-lite", "setup script test call (ps1)")
         for planted in ("PWNED_BACKTICK", "PWNED_SUBST"):
             if list(t.rglob(planted)):
                 fails.append(f"the shell ran prompt content ({planted} exists)")
@@ -834,6 +834,7 @@ HERMETIC_PLANTS = [
     ("skill", "Codex without --ignore-user-config", " --ignore-user-config", ""),
     ("skill", "Codex with its shell tool", " --disable shell_tool", ""),
     ("skill", "Codex with sub-agents", " --disable multi_agent", ""),
+    ("skill", "Codex with goal tools (0.160+)", " --disable goals", ""),
     ("skill", "Codex with an extra flag", "exec codex exec --json", "exec codex exec --full-auto --json"),
     ("skill", "Codex pointed at the repo", "exec codex exec --json", "exec codex exec -C /repo --json"),
     ("skill", "Codex prompt inlined", '- ) < "$p"', '"$(cat "$p")" ) < /dev/null'),
@@ -857,7 +858,7 @@ HERMETIC_PLANTS = [
     ("doubt", "doubt-driven running Codex in the repo", "\n## Common Rationalizations",
      "\n```bash\ncodex exec --sandbox read-only -C <repo-path> - < /tmp/p.md\n```\n\n## Common Rationalizations"),
     ("doc", "the Gemini doc with a bare call", "\n## Rules",
-     '\n```bash\ngemini --approval-mode plan -m gemini-3.1-flash-lite -p "x"\n```\n\n## Rules'),
+     '\n```bash\ngemini --approval-mode plan -m gemini-3.5-flash-lite -p "x"\n```\n\n## Rules'),
     ("setup_sh", "setup test call with the user's home", 'GEMINI_CLI_HOME="$iso/home" ', ""),
     ("setup_sh", "setup test call under $TMPDIR", "mktemp -d /tmp/gemini-verify.XXXXXX", "mktemp -d"),
     ("setup_ps1", "setup test call (ps1) with the user's home", "$env:GEMINI_CLI_HOME = $isoHome", ""),

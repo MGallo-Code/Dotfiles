@@ -73,7 +73,7 @@ it (headless auth is unreliable).
      roots loaded and no read tools they point at nothing.
    - Load none of the user config that hands the vendor tools or workspace roots. Codex:
      `--ignore-user-config` (drops the MCP servers such as nexus and courier, the hooks and the
-     config's model; auth still works) plus its shell, exec, image and sub-agent tools
+     config's model; auth still works) plus its shell, exec, image, sub-agent and goal tools
      disabled; asked to run a command anyway, it answers "unsupported call". Codex still sends
      its global `~/.codex/AGENTS.md` (the generated rules, which name the workspace roots) and
      its skill list; no flag drops them, one more reason its tools stay off. Gemini: an empty
@@ -120,7 +120,7 @@ it (headless auth is unreliable).
    m=$(codex debug models | jq -r '[.models[] | select(.visibility == "list")] | sort_by(.priority) | .[0].slug // empty')
    [ -n "$m" ] || echo "codex: catalog lists no model -> report model-unavailable"
    ( cd "$c/cwd" && exec codex exec --json --ephemeral --skip-git-repo-check --ignore-user-config \
-       --sandbox read-only --disable shell_tool --disable unified_exec --disable view_image --disable multi_agent \
+       --sandbox read-only --disable shell_tool --disable unified_exec --disable view_image --disable multi_agent --disable goals \
        -m "$m" -o "$c/reply.md" - ) < "$p" > "$c/events.jsonl" 2> "$c/stderr" &
    vendor_watch $! codex_read "$c/events.jsonl"; codex_rc=$?; echo "codex rc=$codex_rc"
    # reply: $c/reply.md. errors (404, auth): "error"/"turn.failed" events in $c/events.jsonl, then $c/stderr.

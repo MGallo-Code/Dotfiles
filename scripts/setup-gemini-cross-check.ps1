@@ -1,5 +1,5 @@
 param(
-  [string]$Model = "gemini-3.1-flash-lite",
+  [string]$Model = "gemini-3.5-flash-lite",
   [switch]$VerifyOnly
 )
 

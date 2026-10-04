@@ -100,7 +100,10 @@ done
 [ "$flag_drift" -eq 0 ] && ok "5/5 flags: exec/mcp-add help identical"
 
 # 6. the question card outside Plan mode (ADR-0011): setup/sync enable this flag on every machine
-CODEX_HOME="$CLONE" "${candidate[@]}" features list 2>/dev/null | grep -q '^default_mode_request_user_input ' \
+# Capture first: `grep -q` quits at the first match, and under pipefail the writer's SIGPIPE
+# would read as a failure once the list outgrows the pipe buffer (0.160.0's does).
+CODEX_HOME="$CLONE" "${candidate[@]}" features list >"$WORK/features.txt" 2>/dev/null || true
+grep -q '^default_mode_request_user_input ' "$WORK/features.txt" \
     || fail "question card: $CANDIDATE no longer has default_mode_request_user_input (ADR-0011) - rework the routing before bumping"
 ok "6/6 question card: $CANDIDATE still has default_mode_request_user_input"
 

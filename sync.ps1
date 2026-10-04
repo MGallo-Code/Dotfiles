@@ -166,9 +166,9 @@ matcher = "^Bash`$"
         $model = $newModel
         $settings["model"] = $model
     }
-    $model["name"] = "gemini-3.1-flash-lite"
+    $model["name"] = "gemini-3.5-flash-lite"
     $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $geminiSettings
-    Write-Ok "Gemini: defaults set (auto_edit + workspace roots + gemini-3.1-flash-lite API-key auth)"
+    Write-Ok "Gemini: defaults set (auto_edit + workspace roots + gemini-3.5-flash-lite API-key auth)"
 }
 
 function Ensure-GeminiCrossCheckSetup { # GEMINI_CROSS_CHECK_SETUP

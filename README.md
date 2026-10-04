@@ -58,7 +58,7 @@ bash scripts/setup-gemini-cross-check.sh
 powershell -ExecutionPolicy Bypass -File scripts/setup-gemini-cross-check.ps1
 ```
 
-The scripts pin `gemini-3.1-flash-lite` and store the API key in machine-local secret storage. See `docs/gemini-cross-check-setup.md`.
+The scripts pin `gemini-3.5-flash-lite` and store the API key in machine-local secret storage. See `docs/gemini-cross-check-setup.md`.
 
 ## What It Manages
 

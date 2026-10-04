@@ -10,7 +10,7 @@ and pins the model consistently.
 
 ## Model
 
-The setup pins `gemini-3.1-flash-lite` as Gemini's everyday default (in
+The setup pins `gemini-3.5-flash-lite` as Gemini's everyday default (in
 `~/.gemini/settings.json`, `GEMINI_MODEL` and, despite its name,
 `GEMINI_CROSS_CHECK_MODEL`). Cross-checks never use it: it is the tiny model that
 ignores pasted code and invents file paths. The `coding-mastermind-cross-check`
@@ -33,7 +33,7 @@ What it does:
   `GEMINI_API_KEY`, `GEMINI_MODEL`, and `GEMINI_CROSS_CHECK_MODEL`.
 - Creates `~/.local/bin/gemini-flash-lite` as a Keychain-backed wrapper.
 - Updates `~/.gemini/settings.json` to use API-key auth and
-  `gemini-3.1-flash-lite`.
+  `gemini-3.5-flash-lite`.
 - Runs a one-line Gemini verification prompt.
 
 ## Idempotency
@@ -76,7 +76,7 @@ What it does:
 - Prepends `%USERPROFILE%\.local\bin` to the user PATH so `gemini ...` works in
   new agent shells without storing the API key as a plain environment variable.
 - Updates `%USERPROFILE%\.gemini\settings.json` to use API-key auth and
-  `gemini-3.1-flash-lite`.
+  `gemini-3.5-flash-lite`.
 
 Restart terminals and agent sessions afterward.
 

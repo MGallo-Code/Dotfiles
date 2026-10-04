@@ -186,10 +186,10 @@ model = data.setdefault("model", {})
 if not isinstance(model, dict):
     model = {}
     data["model"] = model
-model["name"] = "gemini-3.1-flash-lite"
+model["name"] = "gemini-3.5-flash-lite"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYJSON
-        ok "Gemini: defaults set (auto_edit + workspace roots + gemini-3.1-flash-lite API-key auth)"
+        ok "Gemini: defaults set (auto_edit + workspace roots + gemini-3.5-flash-lite API-key auth)"
     else
         warn "Gemini defaults: python3 not found - skipping settings.json update"
     fi

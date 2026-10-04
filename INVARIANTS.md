@@ -443,6 +443,10 @@ every push, and in pre-commit when the hook, the compaction profiles or the chec
   Windows runs the static half only; the PowerShell setup call is exercised under `pwsh` 7 on
   macOS, not under Windows PowerShell 5.1. The capture server never records headers: Codex sends its
   bearer token to whatever endpoint it is pointed at.
+- **Why the home path is matched as a path**: on WSL the home is `/root`, and a plain substring
+  test flagged Codex's own `<workspace_roots><root>...</root>` tag (2026-10-04). The test now needs
+  a path boundary on both sides; `HOME_CASES` pins `</root>`, `/rootfs` and `/Users/mikey` as
+  look-alikes and `/root/project` as a leak, and the revert test swaps in the plain substring test.
 - **Escape hatch**: `--machine` without `--live` for an offline check; delete
   `~/.cache/dotfiles/vendor-isolation.json` to force a re-run.
 

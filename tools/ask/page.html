@@ -235,6 +235,8 @@ document.addEventListener("keydown", e => {
     return;
   }
   if (e.target.tagName === "TEXTAREA") return;
+  // Enter on a button reached by Tab presses that button (Change, a dot); otherwise Enter is Next.
+  if (e.key === "Enter" && e.target.tagName === "BUTTON") return;
   if (e.key === "Enter") { e.preventDefault(); if (!$("next").disabled) $("next").click(); return; }
   if (e.key === "ArrowLeft") { $("back").click(); return; }
   if (at < QS.length && /^[1-9]$/.test(e.key)) {
@@ -247,6 +249,8 @@ document.addEventListener("keydown", e => {
     else if (i === n) { e.preventDefault(); $("other").focus(); }
   }
 });
+// A mouse click leaves no focus behind, so the next Enter means Next, not "press that button again".
+document.addEventListener("click", e => { const b = e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
 render();
 </script>
 </body>

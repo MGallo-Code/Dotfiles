@@ -76,7 +76,9 @@ Design: EA `docs/decisions/0004-self-refreshing-sessions.md`; invariant: dotfile
   next card through and logs why.
 - `Stop` (Claude and Codex): blocks once when the reply ends in a list of questions or a "waiting
   on you" heading over a list, so the agent moves them to the questions page or the card.
-- Silent in headless lanes and on bad input; never blocks twice (`stop_hook_active`).
+- Silent in headless lanes (SDK, nested `claude -p`, `codex exec`, Codex subagents), on bad input
+  and with `~/.config/dotfiles/ask-guard-off`; never blocks twice (`stop_hook_active`); the third
+  card denial in a row is let through and logged.
 - Registration: `register_ask_guard` / `Register-AskGuard` (manifest) before the agent
   integrations; Codex's Stop entry by `configure-agent-integrations.py`. Test:
   `python3 scripts/ci/check-ask.py` (+ `--revert-test`, `--machine`).

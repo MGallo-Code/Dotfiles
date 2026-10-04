@@ -289,8 +289,9 @@ UI_NUDGE_HOOK_CMD='python3 "$HOME/.claude/hooks/ui-nudge.py" || true'
 # last, so a second setup or sync leaves settings.json byte-identical.
 ASK_GUARD_HOOK_CMD='python3 "$HOME/.claude/hooks/ask-guard.py" || true'
 # Codex's question card outside Plan mode (ADR-0011): an under-development flag, so Codex's own
-# command edits its TOML; the pin preflight fails a bump that drops the flag. Parity:
-# manifest.ps1 Enable-CodexQuestionCard.
+# command edits its TOML; the pin preflight fails a bump that drops the flag. Runs BEFORE
+# configure_agent_integrations, so a [features] table Codex appends lands above the managed hook
+# block and the first sync already settles the file. Parity: manifest.ps1 Enable-CodexQuestionCard.
 enable_codex_question_card() {
     command -v codex >/dev/null 2>&1 || return 0
     codex features enable default_mode_request_user_input >/dev/null 2>&1 \

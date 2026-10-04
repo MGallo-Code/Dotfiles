@@ -370,8 +370,16 @@ $AskGuardHookCmd = "python `"$($HOME -replace '\\','/')/.claude/hooks/ask-guard.
 # Codex's question card outside Plan mode (ADR-0011). Parity: manifest.sh enable_codex_question_card.
 function Enable-CodexQuestionCard {
     if (-not (Get-Command codex -ErrorAction SilentlyContinue)) { return }
-    & codex features enable default_mode_request_user_input *> $null
-    if ($LASTEXITCODE -ne 0) { Write-Warn "Codex: could not turn on its question card (default_mode_request_user_input)" }
+    # Codex warns about the under-development flag on stderr every run. Under Windows PowerShell,
+    # redirected native stderr becomes a NativeCommandError when $ErrorActionPreference is Stop,
+    # which would abort setup, so this call runs under Continue (as Remove-HubMcpIfPresent does).
+    $oldEap = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & codex features enable default_mode_request_user_input *> $null
+        if ($LASTEXITCODE -ne 0) { Write-Warn "Codex: could not turn on its question card (default_mode_request_user_input)" }
+    }
+    finally { $ErrorActionPreference = $oldEap }
 }
 function Register-AskGuard {
     Ensure-ClaudeHook -HookEvent PreToolUse -Matcher "AskUserQuestion" -Command $AskGuardHookCmd -Label "question-card check"

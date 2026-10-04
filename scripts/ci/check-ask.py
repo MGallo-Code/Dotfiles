@@ -32,6 +32,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import uuid
 import urllib.request
 from pathlib import Path
 
@@ -124,11 +125,18 @@ def lint_fixtures(t: Tree) -> None:
     spec.loader.exec_module(lint)
     flagged = ["Adopt INV-14 region-ring semantics?", "Keep scripts/configure-codex-defaults.py as is?",
                "Should default_mode_request_user_input stay on?", "Revert f199c5f?", "Call render() twice?",
-               "Edit ~/.codex/config.toml?", "Delete C:\\Users\\moses\\notes.txt?", "Edit setup.ps1?"]
-    pictures = ["Which mock do you prefer?", "See the screenshot in the right pane", "Pick one of the two mocks"]
+               "Edit ~/.codex/config.toml?", "Delete C:\\Users\\moses\\notes.txt?", "Edit setup.ps1?",
+               "Should I edit scripts/sync.sh?", "Run setup.sh again?", "Bump CODEX_PIN?", "Rename Register-AskGuard?",
+               "Close R12?"]
+    pictures = ["Which mock do you prefer?", "See the screenshot in the right pane", "Pick one of the two mocks",
+                "Compare the layouts above", "The screenshots below show both"]
     plain = ["Am I on the right track?", "Should the tests mock the network?", "Which Docker base image?",
              "Next.js or Astro?", "Publish to example.com/blog.html?", "Open https://github.com/a/b/pull/3?",
-             "Use Cloudflare R2 for backups?", "Is the 1/2 split okay, or 2/3?", "Switch Codex to gpt-5.6-terra?"]
+             "Use Cloudflare R2 for backups?", "Is the 1/2 split okay, or 2/3?", "Switch Codex to gpt-5.6-terra?",
+             "Should settings go in a side panel or a modal?", "Should the filters live in the right panel?",
+             "Should the preview pane show raw markdown?", "Want mockups of both layouts before I build?",
+             "Should the README include screenshots?", "Does this fit the big picture?",
+             "Which mock data should the demo use?"]
     for text in flagged:
         expect(lint.label_problems(text), f"asklint missed a label in {text!r}")
     for text in pictures:
@@ -248,6 +256,17 @@ def http_alive(url: str) -> bool:
 
 
 def lifecycle_fixtures(t: Tree) -> None:
+    proxy = {"http_proxy": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "no_proxy": "", "NO_PROXY": ""}
+    p_url, p_id = t.open({"questions": [q()]}, **proxy)
+    expect(t.ask("poll", p_id, **proxy).returncode == 3, "with an http_proxy set, poll must still reach the page")
+    expect(t.ask("close", p_id, **proxy).returncode == 4, "with an http_proxy set, close must still reach the page")
+    dead = t.ask_home / "0dead000"
+    dead.mkdir()
+    (dead / "questions.json").write_text(json.dumps({"questions": [q()]}))
+    (dead / "server.json").write_text(json.dumps({"token": "x", "created": time.time() - 120}))
+    out = t.ask("poll", "0dead000")
+    expect(out.returncode == 4 and "stopped" in out.stdout, "a server that never started must read as stopped")
+
     a_url, a_id = t.open({"questions": [q()]}, CLAUDE_CODE_SESSION_ID="session-a")
     b_url, b_id = t.open({"questions": [q()]}, CLAUDE_CODE_SESSION_ID="session-b")
     expect(a_url.split("/")[2] != b_url.split("/")[2], "two asks must get different ports")
@@ -294,19 +313,30 @@ def lifecycle_fixtures(t: Tree) -> None:
             t.ask("close", ask_dir.name)
 
 
-def card(text: str, chip: str = "Layout", desc: str = "About 9 per screen") -> dict:
-    return {"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "session_id": "s1",
+def card(text: str, chip: str = "Layout", desc: str = "About 9 per screen", session: str = "") -> dict:
+    # A fresh session per card unless given, so one fixture's denials never count toward another's streak.
+    return {"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "session_id": session or str(uuid.uuid4()),
             "tool_input": {"questions": [{"question": text, "header": chip, "multiSelect": False, "options": [
                 {"label": "Two lines", "description": desc}, {"label": "One line", "description": "About 20"}]}]}}
 
 
-def stop_msg(text: str, active: bool = False) -> dict:
-    return {"hook_event_name": "Stop", "stop_hook_active": active, "last_assistant_message": text}
+ROLLOUTS: dict = {}
+
+
+def stop_msg(text: str, active: bool = False, source: str = "cli") -> dict:
+    """A Codex Stop: the reply plus the rollout, whose first line says who started it."""
+    return {"hook_event_name": "Stop", "stop_hook_active": active, "last_assistant_message": text,
+            "transcript_path": ROLLOUTS[source]}
 
 
 def guard_fixtures(t: Tree) -> None:
     def denied(out: str) -> bool:
         return bool(out) and json.loads(out)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    for source in ("cli", "vscode", "exec"):
+        path = t.root / f"rollout-{source}.jsonl"
+        path.write_text(json.dumps({"type": "session_meta", "payload": {"source": source}}) + "\n", encoding="utf-8")
+        ROLLOUTS[source] = str(path)
 
     expect(denied(t.hook(card("Adopt INV-14 region-ring semantics?"))), "a card with a rule id must be denied")
     expect(denied(t.hook(card("Which layout?", desc="Edit scripts/check.py"))), "a label in an option must be denied")
@@ -314,15 +344,32 @@ def guard_fixtures(t: Tree) -> None:
     expect(t.hook(card("Which layout should the inbox use?")) == "", "a plain card must pass")
     expect(t.hook({**card("Adopt INV-14?"), "tool_name": "Bash"}) == "", "other tools must pass")
     t.ask("allow", "--reason", "he asked about that exact file", CLAUDE_CODE_SESSION_ID="s1")
-    expect(t.hook(card("Delete ~/notes/old.md?")) == "", "the audited override must let one card through")
-    expect(denied(t.hook(card("Delete ~/notes/old.md?"))), "the override must be used up by one card")
+    expect(t.hook(card("Delete ~/notes/old.md?", session="s1")) == "", "the audited override must let one card through")
+    expect(denied(t.hook(card("Delete ~/notes/old.md?", session="s1"))), "the override must be used up by one card")
     expect("he asked about that exact file" in (t.ask_home / "overrides.log").read_text(), "overrides must be logged")
+    t.ask("allow", "--reason", "stale", CLAUDE_CODE_SESSION_ID="s2")
+    marker = next(t.ask_home.glob("allow-*.json"))
+    marker.write_text(json.dumps({"reason": "stale", "at": time.time() - 3600}))
+    expect(denied(t.hook(card("Delete ~/notes/old.md?", session="s2"))), "an override older than 15 minutes must not count")
+    streak = [t.hook(card("Adopt INV-14?", session="s3")) for _ in range(4)]
+    expect(denied(streak[0]) and denied(streak[1]) and streak[2] == "" and denied(streak[3]),
+           "the third denial in a row must be let through, once, so a false positive can't loop")
+    expect("let through after repeated denials" in (t.ask_home / "overrides.log").read_text(),
+           "a card let through after repeated denials must be logged")
+    off_home = t.root / "off-home"
+    (off_home / ".config" / "dotfiles").mkdir(parents=True)
+    (off_home / ".config" / "dotfiles" / "ask-guard-off").write_text("")
+    expect(t.hook(card("Adopt INV-14?"), HOME=str(off_home), USERPROFILE=str(off_home)) == "",
+           "the ask-guard-off switch must silence the hook")
 
     blocked = ["Done: built the page.\n\n**Needs your decision**\n- Should I push this?\n- Do you want Gemini too?",
                "Report.\n\n## Waiting on you\n1. Pick a model for Codex\n2. Approve the hooks",
                "Built it.\n\n1. Should the page open on the right?\n2. Keep the old rule?"]
     passed = ["Fixed the typo in the README. Want me to commit it?",
               "Example:\n```\n- Why?\n- How?\n```\nDone.",
+              "Example:\n~~~\n- Why?\n- How?\n~~~\nDone.",
+              "Answers:\n1. **Does it run on Windows?**\nYes, both shells.\n2. **Is it fast?**\nUnder a second.",
+              "Done.\n\n## Open questions\n- None remain.",
               "Done.\n\n- R9 Build the page: done\n- R11 Codex flag: waiting on Michael\n- R12 Docs: not done",
               "Why did it fail? The disk was asleep. Could we wake it? Yes, now it does."]
     for text in blocked:
@@ -333,6 +380,9 @@ def guard_fixtures(t: Tree) -> None:
         expect(t.hook(stop_msg(text), ASK_GUARD_PRINT_MODE="1") == "", "a nested claude -p must stay silent")
     for text in passed:
         expect(t.hook(stop_msg(text)) == "", f"must not block: {text!r}")
+    expect(t.hook(stop_msg(blocked[0], source="vscode")) != "", "the Codex app's rollouts must be checked")
+    expect(t.hook(stop_msg(blocked[0], source="exec")) == "", "codex exec and Codex subagents must stay silent")
+    expect(t.hook({**stop_msg(blocked[0]), "transcript_path": "/nope"}) == "", "an unreadable Codex rollout must stay silent")
     expect(denied(t.hook(card("Adopt INV-14?"))) and t.hook(card("Adopt INV-14?"), CLAUDE_CODE_ENTRYPOINT="sdk-py") == "",
            "headless lanes must not get card denials")
 
@@ -476,7 +526,13 @@ MUTATIONS = {
     "question lists never caught": override(GUARD, "ends_in_question_list = lambda text: False"),
     "loops on stop_hook_active": edit(GUARD, 'if data.get("stop_hook_active") or', "if"),
     "loud in headless lanes": override(GUARD, "quiet_lane = lambda: False"),
-    "override never used up": edit(GUARD, "        marker.unlink()\n        return True", "        return marker.exists()"),
+    "override never used up": edit(GUARD, "        marker.unlink()\n", ""),
+    "override never expires": edit(GUARD, "return time.time() - at <= OVERRIDE_TTL", "return True"),
+    "denials loop forever": edit(GUARD, "DENY_LIMIT = 2", "DENY_LIMIT = 99"),
+    "off switch ignored": override(GUARD, "switched_off = lambda: False"),
+    "loud in codex exec": override(GUARD, "codex_headless = lambda data: False"),
+    "local requests go through a proxy": edit(ASK, "urllib.request.ProxyHandler({})", "urllib.request.ProxyHandler()"),
+    "a server that never started waits forever": edit(ASK, 'return "stopped" if time.time() - float(info.get("created") or 0) > 60 else "waiting"', 'return "waiting"'),
 }
 
 
@@ -490,10 +546,16 @@ def machine() -> list[str]:
         if len(found) != 1 or (matcher and found[0][0].get("matcher") != matcher):
             failures.append(f"{event}: expected one ask-guard hook{' on ' + matcher if matcher else ''}, found {len(found)}")
             continue
-        payload = card("Adopt INV-14 region-ring semantics?") if event == "PreToolUse" else stop_msg("- Push it?\n- Deploy it?")
-        env = {**os.environ, "ASK_GUARD_PRINT_MODE": "0", "CLAUDE_CODE_ENTRYPOINT": "cli"}
-        out = subprocess.run(found[0][1]["command"], shell=True, input=json.dumps(payload), capture_output=True,
-                             text=True, env=env, timeout=30)
+        with tempfile.TemporaryDirectory(prefix="check-ask-machine-") as raw:
+            transcript = Path(raw) / "t.jsonl"  # Claude's real Stop path: the reply comes from the transcript
+            transcript.write_text(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "Done.\n\n- Push it?\n- Deploy it?"}]}}) + "\n", encoding="utf-8")
+            payload = (card("Adopt INV-14 region-ring semantics?") if event == "PreToolUse"
+                       else {"hook_event_name": "Stop", "session_id": "machine", "transcript_path": str(transcript)})
+            env = {**os.environ, "ASK_GUARD_PRINT_MODE": "0", "CLAUDE_CODE_ENTRYPOINT": "cli",
+                   "ASK_HOME": str(Path(raw) / "ask")}
+            out = subprocess.run(found[0][1]["command"], shell=True, input=json.dumps(payload), capture_output=True,
+                                 text=True, env=env, timeout=30)
         if '"deny"' not in out.stdout and '"block"' not in out.stdout:
             failures.append(f"{event}: the registered ask-guard command did not act (python, path or import broken)")
     stops = data.get("hooks", {}).get("Stop", [])

@@ -6,7 +6,7 @@
     ask.py poll ID                                          check once, never blocks
     ask.py close ID                                         stop a page he answered in chat
     ask.py list [--all]                                     this session's pages
-    ask.py allow --reason TEXT                              let the next card keep a flagged label
+    ask.py allow --reason TEXT                              let the next card (15 min) keep a flagged label
 
 Exit codes for wait/poll/close: 0 answered (answers printed), 3 still waiting, 4 closed, expired
 or stopped without answers, 2 bad input.
@@ -323,14 +323,22 @@ def url_of(info: dict) -> str:
     return f"http://127.0.0.1:{info['port']}/{info['token']}/"
 
 
-def alive(info: dict) -> bool:
+# Our own server is on 127.0.0.1: never send these requests through an http_proxy.
+LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def alive(info: dict, tries: int = 3) -> bool:
+    """One slow answer is not a dead server: try a few times before saying so."""
     if not info.get("port"):
         return False
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url_of(info), method="HEAD"), timeout=2) as r:
-            return r.status == 200
-    except (urllib.error.URLError, OSError):
-        return False
+    for attempt in range(tries):
+        try:
+            with LOCAL.open(urllib.request.Request(url_of(info), method="HEAD"), timeout=2) as r:
+                return r.status == 200
+        except (urllib.error.URLError, OSError):
+            if attempt + 1 < tries:
+                time.sleep(0.5)
+    return False
 
 
 def state(ask_dir: Path) -> str:
@@ -340,9 +348,10 @@ def state(ask_dir: Path) -> str:
     if ended:
         return str(ended.get("state") or "ended")
     info = read_json(ask_dir / "server.json")
-    if info.get("pid") and not alive(info):
-        return "stopped"
-    return "waiting"
+    if info.get("pid"):
+        return "waiting" if alive(info) else "stopped"
+    # No pid: the server never started (open reported it), or is starting right now.
+    return "stopped" if time.time() - float(info.get("created") or 0) > 60 else "waiting"
 
 
 def format_answers(ask_id: str, ask_dir: Path) -> str:
@@ -412,6 +421,7 @@ def cmd_open(args) -> int:
     questions, images = validate(raw, args.label, bool(args.allow_labels))
     if args.allow_labels:
         questions["allow_labels"] = args.allow_labels
+        log_override({"session": session_key(), "page": True, "reason": args.allow_labels})
     if os.environ.get("SSH_CONNECTION"):
         print(f"ask: this session runs over SSH, so the page is on {socket.gethostname()}, which Michael's "
               "browser may not reach. Prefer the question card.", file=sys.stderr)
@@ -441,6 +451,7 @@ def cmd_open(args) -> int:
             break
         time.sleep(0.1)
     else:
+        write_json(ask_dir / "ended.json", {"state": "failed", "at": time.time()})
         raise AskError(f"the page server didn't start; see {ask_dir / 'server.log'}")
     url = url_of(info)
     if args.browser:
@@ -469,7 +480,7 @@ def cmd_close(args) -> int:
     ask_dir = ask_dir_for(args.id)
     info = read_json(ask_dir / "server.json")
     try:
-        urllib.request.urlopen(urllib.request.Request(url_of(info) + "close", data=b"", method="POST"), timeout=3)
+        LOCAL.open(urllib.request.Request(url_of(info) + "close", data=b"", method="POST"), timeout=3)
     except urllib.error.HTTPError as exc:
         if exc.code != 409:
             raise AskError(f"close failed: HTTP {exc.code}") from None
@@ -496,6 +507,13 @@ def cmd_list(args) -> int:
     return 0
 
 
+def log_override(entry: dict) -> None:
+    root = home()
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / "overrides.log", "a", encoding="utf-8") as log:
+        log.write(json.dumps({**entry, "at": time.time()}) + "\n")
+
+
 def cmd_allow(args) -> int:
     me = session_key()
     if not me:
@@ -503,9 +521,8 @@ def cmd_allow(args) -> int:
     root = home()
     root.mkdir(parents=True, exist_ok=True)
     write_json(root / f"allow-{me}.json", {"reason": " ".join(args.reason.split()), "at": time.time()})
-    with open(root / "overrides.log", "a", encoding="utf-8") as log:
-        log.write(json.dumps({"session": me, "reason": args.reason, "at": time.time()}) + "\n")
-    print("The next question card in this session may keep its flagged labels.")
+    log_override({"session": me, "reason": args.reason})
+    print("The next question card in this session, within 15 minutes, may keep its flagged labels.")
     return 0
 
 

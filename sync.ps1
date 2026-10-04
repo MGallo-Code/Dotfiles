@@ -21,7 +21,6 @@ function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-codex-defaults.py") --home $HOME | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Codex settings are unsupported or inaccessible; defaults were not changed" }
     Write-Ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
-    Enable-CodexQuestionCard
 
     # $CodexPin drift check (pin is canonical in the manifests; parity: sync.sh CODEX_PIN).
     # Warn-only: sync can't fix a version mismatch itself, and a blocked sync is worse.
@@ -504,6 +503,7 @@ if ($AgentSkillsDir) {
 # Routine sync repairs the generated instruction bundles and every agent's completion
 # hook registration before the live machine gate evaluates them.
 Regen-CombinedAgentRules
+Enable-CodexQuestionCard
 Register-AskGuard
 Set-AgentIntegrations
 Set-PrivateSync

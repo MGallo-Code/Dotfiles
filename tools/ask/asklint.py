@@ -17,23 +17,31 @@ _LABELS = (
     (re.compile(r"\b[\w-]+/[\w.-]+\.[A-Za-z]{1,5}\b"), "a file path"),
     (re.compile(r"\b[\w-]+\.(?:py|sh|ps1|psm1|toml|json|ya?ml|md|tsx|jsx|css|html|sql|rs|go)\b"), "a file name"),
     (re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b"), "a code identifier"),
+    (re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b"), "a code identifier"),
+    (re.compile(r"\b(?:Get|Set|New|Remove|Ensure|Register|Enable|Disable|Invoke|Test|Update|Add|Write|Start|Stop)-[A-Z]\w+\b"),
+     "a script function name"),
+    (re.compile(r"(?<![Cc]loudflare )\b[Rm]\d{1,3}\b"), "a checklist id"),
     (re.compile(r"\b[A-Za-z_][\w.]*\(\)"), "a function call"),
     (re.compile(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"), "a commit hash"),
 )
 
 _LINKS = re.compile(
-    r"\b(?:https?|ftp)://\S+|\b(?:[\w-]+\.)+(?:com|org|net|io|dev|app|ai|co|us|uk|edu|gov|me|sh)\b(?:/\S*)?",
+    r"\b(?:https?|ftp)://\S+|\b(?:[\w-]+\.)+(?:com|org|net|io|dev|app|ai|co|us|uk|edu|gov)\b(?:/\S*)?",
     re.IGNORECASE,
 )
 
 _TRIM = " (`'\""
 
-# Phrases that promise a picture. The card can't show one, so these questions belong on the page.
-# Bare "mock" or "image" are left alone ("mock the network", "Docker base image").
+# Phrases that point him at a picture to look at. The card can't show one, so these questions
+# belong on the page. Talking about pictures is fine ("include screenshots in the README?",
+# "mock the network", "mock data", "a side panel or a modal?", "the big picture").
+_PIC = r"(?:screenshots?|mocks?|mock-?ups?|pictures?|images?|designs?|layouts?)"
 _VISUAL = re.compile(
-    r"\b(?:screenshots?|mock-?ups?|(?:the|this|these|both|two|three|each|which) mocks?|pictures?"
-    r"|(?:the|this|these) images? (?:above|below|on|in)|right(?:-hand)? (?:pane|panel)|side ?panel"
-    r"|browser pane|preview pane|(?:shown|showing|open|opened) on the right)\b",
+    r"\b(?:see|compare|look at|check|pick|choose|prefer)\b[^.?!]{0,30}?\b(?:the|these|those|both|two|three|each|which|either)\s+"
+    + _PIC + r"\b(?!\s+(?:data|server|api|object)s?\b)"
+    + r"|\b(?:which|both|either|the two|these two)\s+(?:mocks?|mock-?ups?|screenshots?)\b(?!\s+(?:data|server|api)s?\b)"
+    + r"|\b" + _PIC + r"\s+(?:above|below|attached|on the right|in the (?:right|side|browser|preview) (?:pane|panel))"
+    + r"|\b(?:shown|showing|open|opened)\s+(?:on the right|in the (?:right|side|browser|preview) (?:pane|panel))",
     re.IGNORECASE,
 )
 

@@ -88,7 +88,6 @@ ensure_agent_defaults() { # AGENT_DEFAULTS_CONFIG
     fi
 
     ok "Codex: defaults set (xhigh reasoning + full-access permissions)"
-    enable_codex_question_card
 
     # Codex PreToolUse guards. Registration is machine-local in config.toml; scripts ride the
     # Claude global-hooks symlink. Trust once via the Codex `/hooks` TUI. Idempotent by the
@@ -584,6 +583,7 @@ if [[ "$MODE" == "--full" ]]; then
 
     # Generate Codex + Gemini single-file rule bundles from global-rules/*
     regen_combined_agent_rules
+    enable_codex_question_card
     register_ask_guard
     configure_agent_integrations || warn "agent integrations were not updated"
     configure_private_sync

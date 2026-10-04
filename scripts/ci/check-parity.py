@@ -259,24 +259,14 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"function Enable-CodexQuestionCard \{[\s\S]*?codex features enable default_mode_request_user_input"),
     },
     {
-        "name": "setup turns on the Codex question card",
-        "sh": ("setup.sh", r"Codex: defaults set[^\n]*\n\s*enable_codex_question_card"),
-        "ps1": ("setup.ps1", r"Codex: defaults set[^\n]*\n\s*Enable-CodexQuestionCard"),
+        "name": "setup turns on the Codex card and registers ask-guard before the agent integrations",
+        "sh": ("setup.sh", r"enable_codex_question_card\s*\n\s*register_ask_guard\s*\n\s*configure_agent_integrations"),
+        "ps1": ("setup.ps1", r"Enable-CodexQuestionCard\s*\n\s*Register-AskGuard\s*\n\s*Set-AgentIntegrations"),
     },
     {
-        "name": "sync turns on the Codex question card",
-        "sh": ("sync.sh", r"Codex: defaults set[^\n]*\n\s*enable_codex_question_card"),
-        "ps1": ("sync.ps1", r"Codex: defaults set[^\n]*\n\s*Enable-CodexQuestionCard"),
-    },
-    {
-        "name": "setup registers ask-guard before the agent integrations",
-        "sh": ("setup.sh", r"register_ask_guard\s*\n\s*configure_agent_integrations"),
-        "ps1": ("setup.ps1", r"Register-AskGuard\s*\n\s*Set-AgentIntegrations"),
-    },
-    {
-        "name": "sync registers ask-guard before the agent integrations",
-        "sh": ("sync.sh", r"register_ask_guard\s*\n\s*configure_agent_integrations"),
-        "ps1": ("sync.ps1", r"Register-AskGuard\s*\n\s*Set-AgentIntegrations"),
+        "name": "sync turns on the Codex card and registers ask-guard before the agent integrations",
+        "sh": ("sync.sh", r"enable_codex_question_card\s*\n\s*register_ask_guard\s*\n\s*configure_agent_integrations"),
+        "ps1": ("sync.ps1", r"Enable-CodexQuestionCard\s*\n\s*Register-AskGuard\s*\n\s*Set-AgentIntegrations"),
     },
     {
         "name": "WezTerm config linked",

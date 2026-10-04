@@ -2,16 +2,18 @@
 """Questions for Michael reach him as the questions page or a clean card (ADR-0011, INV-26).
 
     PreToolUse AskUserQuestion (Claude): deny a card whose text carries agent-internal labels
-        (rule ids, file paths, code names) or promises a picture the card can't show. The reason
-        tells the model what to rewrite. `ask.py allow --reason ...` lets the next card through.
-    Stop (Claude and Codex): when the turn's final reply ends in a list of questions for him,
-        block once so the agent moves them to the page or the card. Skipped when
-        stop_hook_active, so it can never loop.
+        (rule ids, file paths, code names) or points at a picture the card can't show. The reason
+        tells the model what to rewrite. `ask.py allow --reason ...` lets the next card through
+        (within 15 minutes); a third denial in a row within 10 minutes is let through and logged,
+        so a false positive can't loop.
+    Stop (Claude and Codex): when the turn's final reply ends in a list of open questions for
+        him, block once so the agent moves them to the page or the card. Skipped when
+        stop_hook_active, so it never blocks twice.
 
-Silent in headless lanes (the hub's `claude -p`, SDK runs), where nobody sees a page or card.
-Fails open: bad input, a missing checker or any error prints nothing and exits 0. Python 3.9
-standard library only. `card_problems` is also used by agent-notify.py, so a card this hook
-denies never sends the "waiting on you" email.
+Silent in headless lanes (the hub's `claude -p`, SDK runs, `codex exec`, Codex subagents), where
+nobody sees a page or card, and on a machine with ~/.config/dotfiles/ask-guard-off (sync keeps
+the registration; this keeps it quiet). Fails open: bad input, a missing checker or any error
+prints nothing and exits 0. Python 3.9 standard library only.
 """
 from __future__ import annotations
 
@@ -21,7 +23,12 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+OVERRIDE_TTL = 15 * 60
+DENY_WINDOW = 10 * 60
+DENY_LIMIT = 2  # the third denial in a row is let through
 
 
 def _load_lint():
@@ -68,8 +75,39 @@ def quiet_lane() -> bool:
     return False
 
 
+def switched_off() -> bool:
+    return (Path.home() / ".config" / "dotfiles" / "ask-guard-off").exists()
+
+
+def codex_headless(data: dict) -> bool:
+    """A Codex Stop (it carries last_assistant_message) from `codex exec` or a Codex subagent:
+    only rollouts Michael types into (session_meta source cli or vscode) count, as context-card.py."""
+    if "last_assistant_message" not in data:
+        return False
+    try:
+        with open(str(data.get("transcript_path") or ""), "rb") as handle:
+            first = json.loads(handle.readline().decode("utf-8", "replace"))
+    except (OSError, ValueError):
+        return True
+    source = (first.get("payload") or {}).get("source") if isinstance(first, dict) else None
+    return source not in ("cli", "vscode")
+
+
 def _ask_home() -> Path:
     return Path(os.environ.get("ASK_HOME") or Path.home() / ".cache" / "ask")
+
+
+def _session_key(session: str) -> str:
+    return hashlib.sha256(session.encode("utf-8")).hexdigest()[:16]
+
+
+def _log(entry: dict) -> None:
+    try:
+        _ask_home().mkdir(parents=True, exist_ok=True)
+        with open(_ask_home() / "overrides.log", "a", encoding="utf-8") as log:
+            log.write(json.dumps({**entry, "at": time.time()}) + "\n")
+    except OSError:
+        pass
 
 
 def card_problems(tool_input: dict) -> list[tuple[str, str]]:
@@ -92,21 +130,47 @@ def card_problems(tool_input: dict) -> list[tuple[str, str]]:
 
 
 def _consume_override(session: str) -> bool:
+    """One audited `ask.py allow` lets the next flagged card through, if it is fresh."""
     if not session:
         return False
-    marker = _ask_home() / f"allow-{hashlib.sha256(session.encode('utf-8')).hexdigest()[:16]}.json"
+    marker = _ask_home() / f"allow-{_session_key(session)}.json"
     try:
+        at = float(json.loads(marker.read_text(encoding="utf-8")).get("at") or 0)
         marker.unlink()
-        return True
-    except OSError:
+    except (OSError, ValueError, AttributeError):
         return False
+    return time.time() - at <= OVERRIDE_TTL
+
+
+def _deny_streak(session: str, denied: bool) -> int:
+    """Denials in a row for this session within DENY_WINDOW; reset by any card that passes."""
+    path = _ask_home() / f"denies-{_session_key(session or 'none')}.json"
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        count = int(state.get("count", 0)) if time.time() - float(state.get("at", 0)) <= DENY_WINDOW else 0
+    except (OSError, ValueError, AttributeError):
+        count = 0
+    count = count + 1 if denied else 0
+    try:
+        _ask_home().mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"count": count, "at": time.time()}), encoding="utf-8")
+    except OSError:
+        pass
+    return count
 
 
 def pre_tool_use(data: dict) -> dict | None:
     if data.get("tool_name") != "AskUserQuestion":
         return None
+    session = str(data.get("session_id") or "")
     problems = card_problems(data.get("tool_input") or {})
-    if not problems or _consume_override(str(data.get("session_id") or "")):
+    if not problems or _consume_override(session):
+        _deny_streak(session, denied=False)
+        return None
+    if _deny_streak(session, denied=True) > DENY_LIMIT:
+        _deny_streak(session, denied=False)
+        _log({"session": _session_key(session), "reason": "let through after repeated denials",
+              "problems": [p for _w, p in problems]})
         return None
     lint = _load_lint()
     reason = ("Michael reads this card cold, without this session's context. Fix: " + lint.describe(problems)
@@ -118,7 +182,8 @@ def pre_tool_use(data: dict) -> dict | None:
 
 # ---- Stop ---------------------------------------------------------------------------------
 
-_FENCE = re.compile(r"```.*?(?:```|\Z)", re.DOTALL)
+_FENCE = re.compile(r"(```|~~~).*?(?:\1|\Z)", re.DOTALL)
+_NONE = re.compile(r"^(?:none|nothing|n/a|no open questions?)\b", re.IGNORECASE)
 _ITEM = re.compile(r"^\s*(?:[-*+•]|\d+[.)]|[A-Za-z][.)])\s+")
 _HEADING = re.compile(
     r"needs? (?:your|his|michael'?s) (?:decision|input|answer|call)s?|questions? for (?:you|michael)|open questions"
@@ -160,16 +225,25 @@ def final_reply(data: dict) -> str:
     return "\n".join(reversed(texts))
 
 
+def _is_question(line: str) -> bool:
+    return line.rstrip("*_ ").endswith("?")
+
+
 def ends_in_question_list(text: str) -> bool:
     lines = [ln.strip() for ln in _FENCE.sub("", text).splitlines() if ln.strip()]
     tail = lines[-15:]
-    questions = [ln for ln in tail if ln.rstrip("*_ ").endswith("?")]
-    if len(questions) >= 2 and any(_ITEM.match(ln) for ln in questions):
+    # An open question is a question line not followed by its answer (a plain line that is
+    # neither a list item nor another question): "1. **Does it run on Windows?**" then "Yes, ..."
+    # is a Q&A, not something waiting on him.
+    open_items = [ln for i, ln in enumerate(tail) if _is_question(ln) and _ITEM.match(ln)
+                  and not (i + 1 < len(tail) and not _ITEM.match(tail[i + 1]) and not _is_question(tail[i + 1]))]
+    if len(open_items) >= 2:
         return True
     for index, line in enumerate(tail):
         heading = line.startswith("#") or line.startswith("**") or line.endswith(":")
+        items = [ln for ln in tail[index + 1:] if _ITEM.match(ln)]
         if heading and not _ITEM.match(line) and len(line) < 80 and _HEADING.search(line) \
-                and any(_ITEM.match(ln) for ln in tail[index + 1:]):
+                and any(not _NONE.match(_ITEM.sub("", ln).strip("*_ ")) for ln in items):
             return True
     return False
 
@@ -179,9 +253,10 @@ def stop(data: dict) -> dict | None:
         return None
     return {"decision": "block", "reason": (
         "Your reply ends with questions for Michael as a list. Keep the report, but move what's waiting on him "
-        "to the questions page (global rule questions.md), or to the question card if nothing more can be done "
-        "without the answers and no picture is needed. Commands he must run stay as bash blocks. If these "
-        "aren't open questions for him, end the turn as is.")}
+        "(global rule questions.md): approvals to publish or do anything irreversible go in the question card, "
+        "never the page; other questions go on the questions page while you have work left, or in the card if "
+        "nothing more can be done without them and no picture is needed. Commands he must run stay as bash "
+        "blocks. If these aren't open questions for him, end the turn as is.")}
 
 
 def main() -> int:
@@ -189,7 +264,7 @@ def main() -> int:
     if not isinstance(data, dict):
         return 0
     event = data.get("hook_event_name")
-    if quiet_lane():
+    if switched_off() or codex_headless(data) or quiet_lane():
         return 0
     result = pre_tool_use(data) if event == "PreToolUse" else stop(data) if event == "Stop" else None
     if result:

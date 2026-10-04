@@ -585,9 +585,19 @@ def home_in(body: str, real_home: str) -> bool:
     return re.search(pattern, body) is not None
 
 
+# Codex 0.160 names its top-level agent "/root" (sub-agents "/root/<name>") in each request's
+# metadata, quotes escaped inside a JSON string. That is an agent path, not a file path, but on
+# WSL (home /root) it reads as the home path, so the value is set aside before the home test.
+CODEX_AGENT_PATH = re.compile(r'(\\*"agent_name\\*"\s*:\s*\\*")/root(?:/[\w.-]+)*')
+
+
+def home_leaked(body: str, real_home: str) -> bool:
+    return home_in(CODEX_AGENT_PATH.sub(r"\1<agent-path>", body), real_home)
+
+
 def leaks(body: str, real_home: str) -> list[str]:
     found = [d for d in DECOYS if d in body]
-    if home_in(body, real_home):
+    if home_leaked(body, real_home):
         found.append(f"your home path {real_home}")
     return found
 
@@ -602,11 +612,13 @@ HOME_CASES = [
     ('{"cwd":"/Users/mike/Workspace/EA"}', "/Users/mike", True),
     ("/Users/mikey/notes and /Users/mike-old", "/Users/mike", False),
     ("C:\\Users\\moses\\x and C:/Users/moses/y", "C:/Users/moses", True),
+    ('"client_metadata":"{\\"agent_name\\":\\"/root\\",\\"turn_id\\":\\"01a1\\"}"', "/root", False),
+    ('{"agent_name":"/root","cwd":"/root/project"}', "/root", True),
 ]
 
 
 def home_fixtures(matcher=None) -> list[str]:
-    test = matcher or home_in
+    test = matcher or home_leaked
     return [f"home-path test: {'missed' if leaked else 'flagged'} {home!r} in {body!r}"
             for body, home, leaked in HOME_CASES if test(body, home) != leaked]
 
@@ -912,14 +924,15 @@ def revert_hermetic(texts: dict[str, str], shells: list[str]) -> int:
     # The home-path test itself: a plain substring test (flags `</root>`) and one that never
     # matches must each fail its fixtures.
     for name, matcher in (("home path matched as plain text", lambda body, home: home in body),
-                          ("home path never matched", lambda body, home: False)):
+                          ("home path never matched", lambda body, home: False),
+                          ("Codex's agent name read as the home path", home_in)):
         if not home_fixtures(matcher):
             missed.append(name)
     for name in missed:
         print(f"check-vendor-isolation --revert-test: NOT caught: {name}")
     if missed:
         return 1
-    print(f"check-vendor-isolation --revert-test OK - all {len(HERMETIC_PLANTS) + 2} planted weakenings fail the check.")
+    print(f"check-vendor-isolation --revert-test OK - all {len(HERMETIC_PLANTS) + 3} planted weakenings fail the check.")
     return 0
 
 

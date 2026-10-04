@@ -18,6 +18,9 @@ DEFAULTS = (
     ("approvals_reviewer", "user"),
     ("sandbox_mode", "danger-full-access"),
 )
+# Booleans, written bare. Michael chose to hide Codex's start-up warning about under-development
+# settings (2026-10-04): the question card's flag is one, so it showed on every start (ADR-0011).
+BOOL_DEFAULTS = (("suppress_unstable_features_warning", True),)
 REMOVED_KEYS = ("default_permissions",)
 PERMISSION_PROFILE = """# dotfiles: Codex Michael workspace permission profile
 [permissions.michael_workspace]
@@ -267,7 +270,8 @@ def render(content: str, config_path: str | None = None) -> str:
     first_table = headers[0][0] if headers else len(lines)
     remove: set[int] = set()
 
-    managed_keys = (*REMOVED_KEYS, *(key for key, _value in DEFAULTS))
+    bool_keys = {key for key, _value in BOOL_DEFAULTS}
+    managed_keys = (*REMOVED_KEYS, *(key for key, _value in DEFAULTS), *bool_keys)
     patterns = {key: assignment_pattern(key) for key in managed_keys}
     for index in range(first_table):
         if not safe_at_start[index]:
@@ -277,6 +281,11 @@ def render(content: str, config_path: str | None = None) -> str:
             if match is None:
                 continue
             value = match.group(1).lstrip()
+            if key in bool_keys:
+                if re.match(r"^(?:true|false)[ \t]*(?:#.*)?$", value.rstrip("\r\n")) is None:
+                    raise RuntimeError(f"unsupported non-boolean value for managed Codex key: {key}")
+                remove.add(index)
+                break
             if not value.startswith(('"', "'")):
                 raise RuntimeError(f"unsupported non-scalar value for managed Codex key: {key}")
             remove.update(range(index, scalar_assignment_end(lines, index) + 1))
@@ -297,7 +306,8 @@ def render(content: str, config_path: str | None = None) -> str:
     boundary = preserved_headers[0][0] if preserved_headers else len(preserved_lines)
     prefix = "".join(preserved_lines[:boundary]).rstrip()
     tables = "".join(preserved_lines[boundary:]).lstrip("\r\n")
-    managed = "\n".join(f'{key} = "{value}"' for key, value in DEFAULTS)
+    managed = "\n".join([*(f'{key} = "{value}"' for key, value in DEFAULTS),
+                          *(f"{key} = {'true' if value else 'false'}" for key, value in BOOL_DEFAULTS)])
     result = f"{prefix}\n{managed}\n" if prefix else f"{managed}\n"
     if tables:
         result += "\n" + tables.lstrip("\r\n")

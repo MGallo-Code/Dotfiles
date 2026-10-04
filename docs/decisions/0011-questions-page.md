@@ -31,7 +31,8 @@ with "needs his decision" in prose.
   list). `ask.py open` applies the same wording check to the page.
 - **Codex** gets its card outside Plan mode through `codex features enable
   default_mode_request_user_input` (an under-development flag; Codex is pinned, and the pin
-  preflight checks the flag still exists).
+  preflight checks the flag still exists). Michael chose to hide Codex's start-up warning about
+  under-development settings (`suppress_unstable_features_warning`, converged as a boolean).
 
 ## Threat model of the page
 
@@ -48,5 +49,6 @@ why approvals never go through the page.
   only the browser pane (or a default-browser tab) is used.
 - Codex can't be woken by the page after its turn ends; it polls between steps, and at the end
   asks one card question to wait on the page.
-- Not built: a "waiting on you" email when a card opens. INV-13 forbids action-needed email;
-  a card currently holds the done email until he answers. Michael decides.
+- Not built: a "waiting on you" email when a card opens. INV-13 forbids action-needed email, so
+  for now a card holds an armed done email until he answers (the question to change that was
+  worded badly and left open, 2026-10-04).

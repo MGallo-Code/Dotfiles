@@ -23,6 +23,8 @@ reply. Design: dotfiles ADR-0011.
 
 - Write for someone who never saw this session: one plain sentence of what's going on, then the
   question.
+- A hypothetical is an "if", never something he did: "If you've asked for an email when a task is
+  done, ...", not "You asked for an email, ...".
 - No internal labels: rule or decision ids, file paths, setting or function names, commit hashes.
   Say what they mean. A hook rejects them; `ask.py allow --reason ...` lets one card keep a label
   he needs.

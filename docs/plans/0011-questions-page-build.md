@@ -125,7 +125,8 @@ Changed (valid, actionable):
   sync, so the agent-notify Stop entry stays last and a second run is byte-identical.
 - Codex flag through `codex features enable` (the CLI owns its TOML), not the string-only
   defaults converger; no `suppress_unstable_features_warning` (it would hide every unstable
-  feature's warning).
+  feature's warning). Reversed by Michael after the build: the warning is hidden, written as a
+  boolean by the defaults converger.
 - Codex gets the ask-guard Stop check too (`last_assistant_message`); needs Michael's one-time
   hook review in Codex, like the existing Codex hooks.
 - Server: 127.0.0.1 bind and Host-header check under test; `close` over HTTP (no pid kill);

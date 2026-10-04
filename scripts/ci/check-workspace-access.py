@@ -174,7 +174,8 @@ def check_codex_defaults(root: Path, findings: list[str]) -> None:
             "approval_policy = '''on-request'''\n"
             "'approvals_reviewer' = 'model'\n"
             '"sandbox_mode" = """read-only"""\n'
-            "default_permissions = ':read-only'\n\n"
+            "default_permissions = ':read-only'\n"
+            "suppress_unstable_features_warning = false # was off\n\n"
             "  [permissions.michael_workspace]\n"
             "description = 'replace me'\n\n"
             + original_tail,
@@ -201,6 +202,7 @@ def check_codex_defaults(root: Path, findings: list[str]) -> None:
             'approval_policy = "never"',
             'approvals_reviewer = "user"',
             'sandbox_mode = "danger-full-access"',
+            "suppress_unstable_features_warning = true",
         }
         if not expected.issubset(set(text.splitlines())) or any(
             text.count(line) != 1 for line in expected
@@ -228,6 +230,8 @@ def check_codex_defaults(root: Path, findings: list[str]) -> None:
             else:
                 if parsed.get("sandbox_mode") != "danger-full-access":
                     findings.append("Codex defaults TOML did not parse to danger-full-access")
+                if parsed.get("suppress_unstable_features_warning") is not True:
+                    findings.append("Codex defaults TOML did not parse the warning setting as the boolean true")
 
         malformed = "sandbox_mode = '''read-only\nstill-open\n"
         config.write_text(malformed, encoding="utf-8")

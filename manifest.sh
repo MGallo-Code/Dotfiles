@@ -79,7 +79,7 @@ EA_REPOS=(
 #      ~/.dotfiles/agent-skills/coding-mastermind/MANIFEST.md
 #   3. npm install -g @openai/codex@<pin> on EVERY machine (lockstep, next sync/sysupdate)
 # sync.sh/sync.ps1 warn when the installed version drifts from this pin.
-CODEX_PIN="0.147.0"
+CODEX_PIN="0.160.0"
 
 # Symlinks to create: "source|target"
 # Claude loads a whole DIRECTORY of rules, so a dir symlink covers every rule file.

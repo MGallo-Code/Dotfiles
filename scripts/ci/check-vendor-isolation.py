@@ -72,7 +72,9 @@ GEMINI_ARGV = ["--skip-trust", "--approval-mode", "plan", "--model", "pro", "--a
                "none", "--output-format", "stream-json", "-p", ""]
 GEMINI_SETTINGS = {"security": {"auth": {"selectedType": "gemini-api-key"}},
                    "context": {"includeDirectoryTree": False}, "tools": {"core": []},
-                   "privacy": {"usageStatisticsEnabled": False}}
+                   # Gemini 0.62 lists its built-in skills with their install paths, which hold the
+                   # home path when Gemini is installed under it (nvm on the laptop, 2026-10-04).
+                   "skills": {"enabled": False}, "privacy": {"usageStatisticsEnabled": False}}
 # Codex tools a fallback-metadata model is offered that can neither read this machine nor run
 # anything (codex-cli 0.147.0). Using web_search still stops a run: the watcher is stricter.
 CODEX_TOOL_ALLOW = {"update_plan", "request_user_input", "web_search"}
@@ -80,10 +82,11 @@ DECOYS = ("DECOY-CODEX-CONFIG", "DECOY-GEMINI-ROOT", "DECOY-GEMINI-MEMORY", "DEC
           "DECOY-REPO-AGENTS", "DECOY-REPO-MEMORY")
 SETUP_SH_NEED = [r'mktemp -d /tmp/', r'cd "\$iso/cwd"', r'GEMINI_CLI_HOME="\$iso/home"',
                  r"GEMINI_CLI_NO_RELAUNCH=true", r"--allowed-mcp-server-names none",
-                 r'"tools":\{"core":\[\]\}', r'"includeDirectoryTree":false', r'"usageStatisticsEnabled":false']
+                 r'"tools":\{"core":\[\]\}', r'"skills":\{"enabled":false\}', r'"includeDirectoryTree":false',
+                 r'"usageStatisticsEnabled":false']
 SETUP_PS1_NEED = [r"Push-Location \$isoCwd", r"\$env:GEMINI_CLI_HOME = \$isoHome",
                   r'\$env:GEMINI_CLI_NO_RELAUNCH = "true"', r"--allowed-mcp-server-names none",
-                  r'"tools":\{"core":\[\]\}', r'"includeDirectoryTree":false',
+                  r'"tools":\{"core":\[\]\}', r'"skills":\{"enabled":false\}', r'"includeDirectoryTree":false',
                   r'"usageStatisticsEnabled":false']
 # A runnable vendor call inside a fenced block of the files that must point at the snippet.
 BARE_CALL = re.compile(r"\bcodex\s+(?:exec|e)\b|(?:^|[\s;(|&])gemini\s+-", re.M)
@@ -843,6 +846,8 @@ HERMETIC_PLANTS = [
     ("skill", "Gemini with the user's home", 'export GEMINI_CLI_HOME="$g/home" ', "export "),
     ("skill", "Gemini relaunching", " GEMINI_CLI_NO_RELAUNCH=true", ""),
     ("skill", "Gemini with tools", '"tools":{"core":[]},', ""),
+    ("skill", "Gemini listing its built-in skills (install paths)", '"skills":{"enabled":false},', ""),
+    ("setup_sh", "setup test call listing Gemini's skills", '"skills":{"enabled":false},', ""),
     ("skill", "Gemini with usage statistics", ',"privacy":{"usageStatisticsEnabled":false}', ""),
     ("skill", "Gemini with MCP servers", " --allowed-mcp-server-names none", ""),
     ("skill", "Gemini in yolo mode", "--approval-mode plan", "--approval-mode yolo"),

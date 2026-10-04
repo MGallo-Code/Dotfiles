@@ -130,7 +130,7 @@ it (headless auth is unreliable).
    # incident too, so read $c/reply.md before running this part.
    if [ "${codex_rc:-0}" = 90 ]; then echo "STOP: Codex export incident - Gemini not started"; else
    g=$(mktemp -d /tmp/xcheck.XXXXXX); mkdir -p "$g/home/.gemini" "$g/cwd"
-   printf '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"privacy":{"usageStatisticsEnabled":false}}' \
+   printf '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"skills":{"enabled":false},"privacy":{"usageStatisticsEnabled":false}}' \
      > "$g/home/.gemini/settings.json"
    ( cd "$g/cwd" && export GEMINI_CLI_HOME="$g/home" GEMINI_CLI_NO_RELAUNCH=true && exec gemini --skip-trust \
        --approval-mode plan --model pro --allowed-mcp-server-names none --output-format stream-json \

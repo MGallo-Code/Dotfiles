@@ -230,7 +230,7 @@ function Test-Gemini {
   $isoHome = Join-Path $iso "home"
   $isoCwd = Join-Path $iso "cwd"
   New-Item -ItemType Directory -Path (Join-Path $isoHome ".gemini"), $isoCwd -Force | Out-Null
-  Set-Content -Path (Join-Path $isoHome ".gemini\settings.json") -Value '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"privacy":{"usageStatisticsEnabled":false}}'
+  Set-Content -Path (Join-Path $isoHome ".gemini\settings.json") -Value '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"skills":{"enabled":false},"privacy":{"usageStatisticsEnabled":false}}'
   $savedHome = $env:GEMINI_CLI_HOME
   $savedRelaunch = $env:GEMINI_CLI_NO_RELAUNCH
   $env:GEMINI_CLI_HOME = $isoHome

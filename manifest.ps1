@@ -57,7 +57,7 @@ $EARepos = @(
 # Pinned, never floated - codex config.toml MCP schema has drifted across versions.
 # Bump deliberately: scripts/codex-pin-preflight.sh <version>, update BOTH manifests +
 # the kit MANIFEST, then npm install -g @openai/codex@<pin> on every machine (lockstep).
-$CodexPin = "0.147.0"
+$CodexPin = "0.160.0"
 
 $Symlinks = @(
     @{ Source = "$HOME\.dotfiles\claude-config\global-rules"; Target = "$HOME\.claude\rules" }

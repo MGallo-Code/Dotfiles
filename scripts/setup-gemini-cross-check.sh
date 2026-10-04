@@ -254,7 +254,7 @@ verify() {
   local iso rc=0
   iso="$(mktemp -d /tmp/gemini-verify.XXXXXX)"   # not $TMPDIR, which a harness may point into a repo
   mkdir -p "$iso/home/.gemini" "$iso/cwd"
-  printf '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"privacy":{"usageStatisticsEnabled":false}}\n' \
+  printf '{"security":{"auth":{"selectedType":"gemini-api-key"}},"context":{"includeDirectoryTree":false},"tools":{"core":[]},"skills":{"enabled":false},"privacy":{"usageStatisticsEnabled":false}}\n' \
     > "$iso/home/.gemini/settings.json"
   ( cd "$iso/cwd" && GEMINI_API_KEY="$key" GEMINI_MODEL="$MODEL" GEMINI_CLI_HOME="$iso/home" GEMINI_CLI_NO_RELAUNCH=true \
       gemini --skip-trust --approval-mode plan -m "$MODEL" --allowed-mcp-server-names none \

@@ -13,5 +13,6 @@ Every conversation keeps a checklist of what Michael asked for (dotfiles ADR-000
   in this folder); `queue inbox` shows unreviewed messages. After a compaction or resume both come
   back on their own.
 - Before a final report, run `queue list` and report each open task as done, not done, or
-  waiting on Michael.
+  waiting on Michael; what a waiting task needs from him goes through the questions page or card
+  (`questions.md`).
 - Never tell Michael "I'll add this to the queue": just add it.

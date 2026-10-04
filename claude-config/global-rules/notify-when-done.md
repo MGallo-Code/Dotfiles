@@ -29,6 +29,7 @@ hook will email him.
 - One acknowledged email consumes the arm. A delivery failure retains that same explicit
   request for retry; it does not authorize email for unrelated turns.
 - Prompt, response, working directory, and session identifiers are never included.
+- A question card holds the turn open, so an armed email waits until he answers it (ADR-0011).
 
 To cancel the current arm:
 

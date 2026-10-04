@@ -7,7 +7,7 @@ Rule format and principles: `FORMAT.md` in this folder. A rule's Touches line na
 Applies: Any visible change, including small fixes; not backend-only changes
 Do: When a visible change has several reasonable designs, show the options at 390 and 1280px before building; build clear fixes, then show before and after.
 Why: A mock round on a one-way fix costs a day; building a contested design wastes the build.
-Yes: Two header layouts as screenshots in chat, built after his pick · Off-center icon: fixed, then before and after shown
+Yes: Two header layouts as options on the questions page, built after his pick · Off-center icon: fixed, then before and after shown
 Touches: PROC-02. Compatible: Approved mock before visible changes gets the approval; Build matches the approved mock builds it. A wanted deviation beyond fixing the mock's own inconsistencies goes back through a revised mock.
 Touches: PROC-07. Compatible: Approved mock before visible changes sets which areas and widths a mock covers; Mock screens show what ships sets how each screen is built.
 Touches: PROC-04. Compatible: a mock shows him phone portrait and desktop; before sending, every mock screen is checked at all five widths and every theme.

@@ -15,7 +15,7 @@ guessing or searching for where something lives, consult the authoritative point
 
 - `~/.dotfiles` — transport/control plane, and the agent setup itself: `claude-config/` holds the
   global rules (this file is one of them), commands, hooks, agents and skills; `agent-skills/` is
-  the forked coding-skills kit; `tools/docgen/` is the DOCX/PDF tool every machine runs. Change
+  the forked coding-skills kit; `tools/docgen/` is the DOCX/PDF tool every machine runs and `tools/ask/` the questions page. Change
   the SYSTEM here (`sysupdate` launches an agent scoped to it).
 - `~/Workspace/EA` — active personal ops (profile, business, meetings, context, personal docs).
 - `~/Workspace/Wiki` — LLM-curated research (`Wiki/index.md`).

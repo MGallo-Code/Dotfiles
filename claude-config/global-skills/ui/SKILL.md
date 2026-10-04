@@ -29,7 +29,7 @@ Run these steps in order for any visible change. Skip it only for backend, CLI o
 
 ## 2. Mock when there is a real choice
 
-When a visible change has several reasonable designs, show the options at 390 and 1280 px before building (PROC-01). Use real-looking sample data, never stubs (UI-10). Clear fixes skip the mock: build them, then show before and after.
+When a visible change has several reasonable designs, show the options at 390 and 1280 px before building (PROC-01), on the questions page with both screenshots per option (`questions.md`). Use real-looking sample data, never stubs (UI-10). Clear fixes skip the mock: build them, then show before and after.
 
 ## 3. Build
 
@@ -48,4 +48,4 @@ Walk the change, on screen, against `rules.md` and the topic files you read: eve
 
 - Open the result on his screen where possible: start the dev server and `open <localhost url>`. Screenshots or a visible Playwright session will do when that isn't possible.
 - Do this before any PR or "done".
-- Close with the three-part report: done (and where to try it), not done, needs his decision. Anything from step 5 left unfixed goes under "not done".
+- Close with the report: done (and where to try it) and not done; anything from step 5 left unfixed goes under "not done". What needs his decision goes through the questions page or card (`questions.md`).

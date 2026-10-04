@@ -10,7 +10,7 @@ service, anything you'd expect to take 5+ steps or to involve a real design
 choice):
 
 1. CLARIFY first. If scope, inputs, or success criteria are ambiguous, ask 1-3
-   sharp questions before writing code. Also clarify holes in an existing plan so
+   sharp questions (the question card, per `questions.md`) before writing code. Also clarify holes in an existing plan so
    the agent's understanding is explicit and does not replace user intent with
    assumptions. Do not guess at requirements. (Skills: `interview-me`,
    `idea-refine`.)

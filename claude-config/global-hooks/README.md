@@ -67,3 +67,16 @@ Design: EA `docs/decisions/0004-self-refreshing-sessions.md`; invariant: dotfile
 - State: `~/.claude/resume-state/` (bindings keyed by the Desktop session id or `pid-$CLAUDE_PID`, clear markers, local cards for other people's repos, `log.txt`).
 - `request-capture` (Stop; also run inside `pre-compact` and `session-start`): sweeps what Michael typed, prompts and mid-turn messages, from the transcript into the conversation's inbox in `~/.claude/resume-state/queue/` (dotfiles ADR-0008, INV-23); three or more unreviewed messages make it block once to ask for a checklist update. The checklist itself is tasks the agent keeps with `context-card.py queue add|done|drop|title|reviewed|list|inbox`; `session-start` prints the open tasks one line each plus unreviewed messages. Codex: `request-capture --agent codex` on Stop, interactive rollouts only, no nag.
 - Registration: dotfiles `configure-agent-integrations.py` (SessionStart `startup|resume|clear|compact`, PreCompact, PreToolUse `mcp__ccd_session_mgmt__clear_session`, Stop `request-capture`). Test: `python3 scripts/ci/check-context-card.py` (+ `--revert-test`).
+
+## ask-guard.py - questions for Michael (ADR-0011, INV-26)
+
+- Claude `PreToolUse` on `AskUserQuestion`: denies a card whose text carries an agent-internal
+  label (rule or decision id, file path, code name, commit hash) or promises a picture the card
+  can't show, with a reason Claude rewrites from. `tools/ask/ask.py allow --reason ...` lets the
+  next card through and logs why.
+- `Stop` (Claude and Codex): blocks once when the reply ends in a list of questions or a "waiting
+  on you" heading over a list, so the agent moves them to the questions page or the card.
+- Silent in headless lanes and on bad input; never blocks twice (`stop_hook_active`).
+- Registration: `register_ask_guard` / `Register-AskGuard` (manifest) before the agent
+  integrations; Codex's Stop entry by `configure-agent-integrations.py`. Test:
+  `python3 scripts/ci/check-ask.py` (+ `--revert-test`, `--machine`).

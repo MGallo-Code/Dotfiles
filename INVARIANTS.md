@@ -447,6 +447,11 @@ every push, and in pre-commit when the hook, the compaction profiles or the chec
   test flagged Codex's own `<workspace_roots><root>...</root>` tag (2026-10-04). The test now needs
   a path boundary on both sides; `HOME_CASES` pins `</root>`, `/rootfs` and `/Users/mikey` as
   look-alikes and `/root/project` as a leak, and the revert test swaps in the plain substring test.
+  Codex 0.160 also sends `agent_name: "/root"` (its agent path) in request metadata; that value is
+  set aside first, pinned by its own case and revert break.
+- **Why Gemini's skills are off**: Gemini 0.62 lists its built-in skills with their install
+  paths; installed under the home folder (nvm on the laptop) those paths carried the home path.
+  The isolated settings set `skills.enabled: false`, checked statically and by a revert plant.
 - **Escape hatch**: `--machine` without `--live` for an offline check; delete
   `~/.cache/dotfiles/vendor-isolation.json` to force a re-run.
 

@@ -642,11 +642,40 @@ def judge_gemini(reqs: list[dict[str, str]], rc: int | None, tail: str, real_hom
     return fails
 
 
-def machine(skill_text: str, real: dict[str, str | None], controls: bool = True) -> tuple[list[str], list[str]]:
-    """Run the snippet's sections (and the setup test call) against the installed CLIs, offline."""
+# Loads the Windows setup script's own Test-Gemini and generated wrapper (its parser, not its
+# Windows-only setup steps) and runs the call: the real gemini behind the real wrapper.
+PS1_HARNESS = r'''param([string]$Script, [string]$Bin)
+$ErrorActionPreference = "Stop"
+$tokens = $null; $errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$tokens, [ref]$errors)
+if ($errors.Count) { throw "parse errors: $($errors -join '; ')" }
+foreach ($f in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+  if ($f.Name -in "Read-GeminiApiKey", "Test-Gemini") { . ([scriptblock]::Create($f.Extent.Text)) }
+}
+$assign = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+  $n.Left.Extent.Text -eq '$wrapper' -and $n.Right.Extent.Text.StartsWith("@'") }, $true)
+$Model = "gemini-3.1-flash-lite"
+$SecretPath = Join-Path $Bin "no-secret"
+$WrapperPath = Join-Path $Bin "gemini-flash-lite.ps1"
+Set-Content -Path $WrapperPath -Value $assign.Right.Expression.Value.Replace("__MODEL__", $Model)
+Test-Gemini
+"setup-ps1 rc=$LASTEXITCODE"
+'''
+
+
+def setup_call(cmd: list[str], env: dict[str, str], xroot: Path) -> tuple[int | None, str]:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, env={**env, "VI_XROOT": str(xroot)}, timeout=180)
+        return p.returncode, (p.stdout + p.stderr)[-600:]
+    except subprocess.TimeoutExpired:
+        return None, "timed out"
+
+
+def machine(texts: dict[str, str], real: dict[str, str | None], controls: bool = True) -> tuple[list[str], list[str]]:
+    """Run the snippet's sections and both setup test calls against the installed CLIs, offline."""
     fails: list[str] = []
     notes: list[str] = []
-    helpers, codex, gemini = parts(skill_text)
+    helpers, codex, gemini = parts(texts["skill"])
     helpers = with_prompt(helpers)
     real_home = str(Path.home())
     t = Path(tempfile.mkdtemp(prefix="vendor-isolation-", dir="/tmp"))
@@ -683,20 +712,27 @@ def machine(skill_text: str, real: dict[str, str | None], controls: bool = True)
                 if rc != 90:
                     fails.append(f"watcher control: a real Gemini tool_use was not stopped (rc={rc}): "
                                  f"{tail.strip()[-200:]}")
-            setup = FILES["setup_sh"]
-            m = re.search(r'^MODEL="([^"]+)"', setup.read_text(encoding="utf-8"), re.M)
+            (t / "setup.sh").write_text(texts["setup_sh"], encoding="utf-8")
+            m = re.search(r'^MODEL="([^"]+)"', texts["setup_sh"], re.M)
             xroot = t / "x-setup"
             xroot.mkdir()
-            try:
-                p = subprocess.run(["bash", str(setup), "--verify-only"], capture_output=True, text=True,
-                                   env={**env, "VI_XROOT": str(xroot)}, timeout=120)
-                tail, rc = (p.stdout + p.stderr)[-600:], p.returncode
-            except subprocess.TimeoutExpired:
-                tail, rc = "timed out", None
+            rc, tail = setup_call(["bash", str(t / "setup.sh"), "--verify-only"], env, xroot)
             if [x for x in templates(xroot) if x.startswith("-d")] != ["-d /tmp/gemini-verify.XXXXXX"]:
                 fails.append(f"setup script test call: its dir came from mktemp {templates(xroot)}, not /tmp")
             fails += judge_gemini(cap.take(), rc, tail, real_home, "GEMINI_FLASH_LITE_OK",
                                   m.group(1) if m else None, "setup script test call")
+            if shutil.which("pwsh"):  # the Windows script's call, where PowerShell is installed
+                (t / "setup.ps1").write_text(texts["setup_ps1"], encoding="utf-8")
+                (t / "harness.ps1").write_text(PS1_HARNESS, encoding="utf-8")
+                xroot = t / "x-setup-ps1"
+                (xroot / "tmp").mkdir(parents=True)
+                # GetTempPath() is %TEMP% on Windows: a clean dir here (the bash half covers $TMPDIR).
+                rc, tail = setup_call(["pwsh", "-NoProfile", "-NonInteractive", "-File", str(t / "harness.ps1"),
+                                       "-Script", str(t / "setup.ps1"), "-Bin", str(box["bin"])],
+                                      {**env, "TMPDIR": str(xroot / "tmp")}, xroot)
+                m = re.search(r"setup-ps1 rc=(\d+)", tail)
+                fails += judge_gemini(cap.take(), int(m.group(1)) if m else rc, tail, real_home,
+                                      "GEMINI_FLASH_LITE_OK", "gemini-3.1-flash-lite", "setup script test call (ps1)")
         for planted in ("PWNED_BACKTICK", "PWNED_SUBST"):
             if list(t.rglob(planted)):
                 fails.append(f"the shell ran prompt content ({planted} exists)")
@@ -742,7 +778,7 @@ def cli_versions() -> dict[str, str | None]:
     out: dict[str, str | None] = {}
     with tempfile.TemporaryDirectory() as home:
         env = {**{k: os.environ[k] for k in ("PATH", "USER", "LANG") if k in os.environ}, "HOME": home}
-        for name in ("codex", "gemini"):
+        for name in ("codex", "gemini", "pwsh"):
             exe = shutil.which(name)
             if not exe:
                 out[name] = None
@@ -757,7 +793,7 @@ def cli_versions() -> dict[str, str | None]:
 
 def fingerprint(texts: dict[str, str], versions: dict[str, str | None], with_live: bool) -> dict[str, object]:
     h = hashlib.sha256()
-    for part in (texts["skill"], texts["setup_sh"], Path(__file__).read_text(encoding="utf-8")):
+    for part in (texts["skill"], texts["setup_sh"], texts["setup_ps1"], Path(__file__).read_text(encoding="utf-8")):
         h.update(part.encode("utf-8"))
     return {"versions": versions, "digest": h.hexdigest(), "catalog": catalog_digest(), "live": with_live}
 
@@ -797,12 +833,14 @@ HERMETIC_PLANTS = [
     ("setup_ps1", "setup test call (ps1) with the user's home", "$env:GEMINI_CLI_HOME = $isoHome", ""),
 ]
 MACHINE_PLANTS = [
-    ("codex", "Codex reading config.toml", " --ignore-user-config", ""),
-    ("codex", "Codex with shell and exec tools", " --disable shell_tool --disable unified_exec", ""),
-    ("codex", "Codex dir under $TMPDIR", "c=$(mktemp -d /tmp/xcheck.XXXXXX)", "c=$(mktemp -d)"),
-    ("gemini", "Gemini with the user's home", 'export GEMINI_CLI_HOME="$g/home" ', "export "),
-    ("gemini", "Gemini with tools", '"tools":{"core":[]},', ""),
-    ("gemini", "Gemini dir under $TMPDIR", "g=$(mktemp -d /tmp/xcheck.XXXXXX)", "g=$(mktemp -d)"),
+    ("skill", "codex", "Codex reading config.toml", " --ignore-user-config", ""),
+    ("skill", "codex", "Codex with shell and exec tools", " --disable shell_tool --disable unified_exec", ""),
+    ("skill", "codex", "Codex dir under $TMPDIR", "c=$(mktemp -d /tmp/xcheck.XXXXXX)", "c=$(mktemp -d)"),
+    ("skill", "gemini", "Gemini with the user's home", 'export GEMINI_CLI_HOME="$g/home" ', "export "),
+    ("skill", "gemini", "Gemini with tools", '"tools":{"core":[]},', ""),
+    ("skill", "gemini", "Gemini dir under $TMPDIR", "g=$(mktemp -d /tmp/xcheck.XXXXXX)", "g=$(mktemp -d)"),
+    ("setup_sh", "gemini", "setup test call with the user's home", 'GEMINI_CLI_HOME="$iso/home" ', ""),
+    ("setup_ps1", "pwsh", "setup test call (ps1) with the user's home", "  $env:GEMINI_CLI_HOME = $isoHome\n", ""),
 ]
 
 
@@ -844,18 +882,19 @@ def revert_hermetic(texts: dict[str, str], shells: list[str]) -> int:
 
 
 def revert_machine(texts: dict[str, str], real: dict[str, str | None]) -> int:
-    base, _ = machine(texts["skill"], real, controls=False)
+    base, _ = machine(texts, real, controls=False)
     if base:
         print("check-vendor-isolation --machine --revert-test: the unmodified snippet already fails:\n  "
               + "\n  ".join(base))
         return 1
     missed = []
-    for vendor, name, old, new in MACHINE_PLANTS:
-        if not real[vendor]:
+    for key, vendor, name, old, new in MACHINE_PLANTS:
+        cli = "gemini" if vendor == "pwsh" else vendor
+        if not real[cli] or (vendor == "pwsh" and not shutil.which("pwsh")):
             continue
-        mutated = plant(texts["skill"], old, new, "skill")
-        only = {**{k: None for k in real}, vendor: real[vendor]}
-        if mutated is None or not machine(mutated, only, controls=False)[0]:
+        mutated = plant(texts[key], old, new, key)
+        only = {**{k: None for k in real}, cli: real[cli]}
+        if mutated is None or not machine({**texts, key: mutated}, only, controls=False)[0]:
             missed.append(name)
     for name in missed:
         print(f"check-vendor-isolation --machine --revert-test: NOT caught: {name}")
@@ -923,7 +962,7 @@ def main() -> int:
                 return 0
         except ValueError:
             pass
-    fails, notes = machine(texts["skill"], real)
+    fails, notes = machine(texts, real)
     live_result = "not run"
     if args.live and real["codex"] and not fails:
         verdict, detail = live(texts["skill"])

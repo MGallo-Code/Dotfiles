@@ -33,6 +33,11 @@
   .hint { color: var(--muted); font-size: 13px; margin: 0 0 var(--s2); }
   .opts { display: grid; gap: var(--s2); margin-top: var(--s2); }
   .opts.pics { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .opts.pics.wide { grid-template-columns: 1fr; }
+  .views { display: flex; gap: var(--s1); margin-top: var(--s2); }
+  .views button { font: 600 13px var(--font); border: 1px solid var(--line); background: var(--bg); color: var(--muted);
+                  border-radius: var(--r); padding: 5px 10px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  .views button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .opt { text-align: left; width: 100%; border: 1px solid var(--line); border-radius: var(--r);
          background: var(--bg); color: var(--text); padding: var(--s2); cursor: pointer; font: inherit;
          display: grid; grid-template-columns: auto 1fr; gap: var(--s1) var(--s2); align-items: start; }
@@ -95,6 +100,7 @@ const ASK = JSON.parse(document.getElementById("ask-data").textContent);
 const QS = ASK.questions;
 const answers = QS.map(() => ({ picks: [], other: "" }));
 let at = 0, state = "open";  // open | sending | sent | failed
+const views = QS.map(() => 0);  // which picture each question shows: one view at a time, side by side
 
 const $ = id => document.getElementById(id);
 const L = i => String.fromCharCode(65 + i);
@@ -117,8 +123,10 @@ function answerText(i) {
 function pick(i) {
   const a = answers[at], q = QS[at];
   if (q.multi) a.picks = a.picks.includes(i) ? a.picks.filter(p => p !== i) : [...a.picks, i].sort();
-  else { a.picks = [i]; a.other = ""; }
-  render();
+  else { a.picks = [i]; a.other = ""; $("other").value = ""; }
+  // Only the highlight changes: a full redraw would reload the pictures.
+  document.querySelectorAll(".opt").forEach((b, n) => b.classList.toggle("on", a.picks.includes(n)));
+  renderDots();
 }
 
 function renderDots() {
@@ -130,12 +138,25 @@ function renderDots() {
   $("dots").replaceChildren(...dots);
 }
 
+function viewLabels(q) {
+  const n = Math.max(0, ...q.options.map(o => (o.images || []).length));
+  return Array.from({ length: n }, (_, v) => {
+    const named = q.options.map(o => (o.images || [])[v]).find(img => img && img.label);
+    return named ? named.label : "View " + (v + 1);
+  });
+}
+
+function setView(v) { views[at] = v; render(); }
+
 function renderQuestion() {
-  const q = QS[at], a = answers[at];
+  const q = QS[at], a = answers[at], v = views[at];
   const pics = q.options.some(o => (o.images || []).length);
+  const wide = q.options.some(o => ((o.images || [])[v] || {}).width >= 1000);
+  const labels = viewLabels(q);
   const opts = q.options.map((o, i) => el("button", { class: "opt" + (a.picks.includes(i) ? " on" : ""),
       onclick: () => pick(i) },
-    ...(o.images || []).map((_, n) => el("img", { src: "img/" + at + "/" + i + "/" + n, alt: o.label })),
+    (o.images || [])[v] ? el("img", { src: "img/" + at + "/" + i + "/" + v, alt: o.label + ", " + labels[v],
+      onload: e => { if (e.target.naturalWidth >= 1000) e.target.closest(".opts").classList.add("wide"); } }) : null,
     key(L(i)),
     el("span", {}, el("span", { class: "t" }, o.label), o.recommended ? el("span", { class: "rec" }, "Recommended") : null),
     el("span", { class: "d" }, o.detail)));
@@ -145,12 +166,15 @@ function renderQuestion() {
     if (a.other && !q.multi) { a.picks = []; document.querySelectorAll(".opt").forEach(b => b.classList.remove("on")); }
     renderDots();
   });
-  $("main").replaceChildren(
+  const switcher = labels.length > 1 ? el("div", { class: "views" }, ...labels.map((label, n) =>
+    el("button", { class: n === v ? "on" : "", onclick: () => setView(n) }, label, key(String(n + 1))))) : null;
+  $("main").replaceChildren(...[
     el("h1", {}, q.question),
     el("p", { class: "context" }, q.context),
     q.multi ? el("p", { class: "hint" }, "Pick any that apply.") : null,
-    el("div", { class: "opts" + (pics ? " pics" : "") }, ...opts),
-    el("label", { class: "other" }, key(L(q.options.length)), other));
+    switcher,
+    el("div", { class: "opts" + (pics ? " pics" : "") + (wide ? " wide" : "") }, ...opts),
+    el("label", { class: "other" }, key(L(q.options.length)), other)].filter(Boolean));
   $("next").replaceChildren("Next ", key("⏎"));
   $("next").disabled = false;
   setStatus("", "");
@@ -213,6 +237,10 @@ document.addEventListener("keydown", e => {
   if (e.target.tagName === "TEXTAREA") return;
   if (e.key === "Enter") { e.preventDefault(); if (!$("next").disabled) $("next").click(); return; }
   if (e.key === "ArrowLeft") { $("back").click(); return; }
+  if (at < QS.length && /^[1-9]$/.test(e.key)) {
+    if (+e.key <= viewLabels(QS[at]).length) setView(+e.key - 1);
+    return;
+  }
   if (at < QS.length && e.key.length === 1) {
     const i = e.key.toUpperCase().charCodeAt(0) - 65, n = QS[at].options.length;
     if (i >= 0 && i < n) pick(i);

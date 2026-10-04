@@ -83,6 +83,17 @@ def read_json(path: Path) -> dict:
 
 # ---- validation ---------------------------------------------------------------------------
 
+def image_width(path: Path) -> int:
+    """Pixel width from a PNG or GIF header (0 when unknown), so the page lays out wide shots
+    in one column before they load."""
+    with open(path, "rb") as handle:
+        head = handle.read(32)
+    if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+        return int.from_bytes(head[16:20], "big")
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return int.from_bytes(head[6:8], "little")
+    return 0
+
 def _text(obj: dict, key: str, where: str, required: bool = True) -> str:
     value = obj.get(key, "")
     if not isinstance(value, str):
@@ -130,7 +141,10 @@ def validate(raw: object, label: str | None, allow_labels: bool) -> tuple[dict, 
                 raise AskError(f"{owhere}: give at most {MAX_IMAGES} images")
             opt["images"] = []
             for ii, image in enumerate(given):
-                src = Path(str(image)).expanduser()
+                # "path" or {"path": ..., "label": "Phone"}: the label names the view switcher's button.
+                spec = image if isinstance(image, dict) else {"path": image}
+                label = " ".join(str(spec.get("label") or "").split())[:20]
+                src = Path(str(spec.get("path") or "")).expanduser()
                 try:
                     real = src.resolve(strict=True)
                 except OSError:
@@ -142,7 +156,7 @@ def validate(raw: object, label: str | None, allow_labels: bool) -> tuple[dict, 
                     raise AskError(f"{owhere}: image is larger than 10 MB")
                 name = Path("img") / f"{qi}-{oi}-{ii}{suffix}"
                 images.append((real, name))
-                opt["images"].append(name.as_posix())
+                opt["images"].append({"src": name.as_posix(), "label": label, "width": image_width(real)})
             item["options"].append(opt)
             for key in ("label", "detail"):
                 problems += [(f"{owhere} {key}", p) for p in asklint.label_problems(opt[key])]
@@ -192,9 +206,9 @@ def serve(ask_dir: Path) -> int:
     token = info.get("token")
     if not token or not questions:
         return EXIT_INPUT
-    images = {f"img/{qi}/{oi}/{ii}": ask_dir / name
+    images = {f"img/{qi}/{oi}/{ii}": ask_dir / image["src"]
               for qi, q in enumerate(questions["questions"]) for oi, o in enumerate(q["options"])
-              for ii, name in enumerate(o.get("images", []))}
+              for ii, image in enumerate(o.get("images", []))}
     page = page_html(questions)
     lock = threading.Lock()
     done = threading.Event()
@@ -213,11 +227,12 @@ def serve(ask_dir: Path) -> int:
             port = self.server.server_address[1]
             return self.headers.get("Host", "") in (f"127.0.0.1:{port}", f"localhost:{port}")
 
-        def reply(self, code: int, body: bytes = b"", ctype: str = "text/plain; charset=utf-8", extra=None):
+        def reply(self, code: int, body: bytes = b"", ctype: str = "text/plain; charset=utf-8", extra=None,
+                  cache: str = "no-store"):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache)
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("X-Content-Type-Options", "nosniff")
             for key, value in (extra or {}).items():
@@ -240,7 +255,9 @@ def serve(ask_dir: Path) -> int:
                 return self.reply(200, page, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
             if rest in images:
                 path = images[rest]
-                return self.reply(200, path.read_bytes(), IMAGE_TYPES[path.suffix.lower()])
+                # A picture never changes for the life of the page, so switching views doesn't refetch it.
+                return self.reply(200, path.read_bytes(), IMAGE_TYPES[path.suffix.lower()],
+                                  cache="private, max-age=86400, immutable")
             return self.reply(404)
 
         def do_POST(self):

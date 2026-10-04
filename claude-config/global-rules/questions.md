@@ -40,15 +40,18 @@ uv run --no-project "$HOME/.dotfiles/tools/ask/ask.py" open questions.json --fro
 
 ```json
 {"questions": [{"question": "...", "context": "...", "multi": false, "options": [
-  {"label": "...", "detail": "...", "recommended": true, "images": ["/abs/at-390.png", "/abs/at-1280.png"]},
+  {"label": "...", "detail": "...", "recommended": true, "images": [
+    {"path": "/abs/at-390.png", "label": "Phone"}, {"path": "/abs/at-1280.png", "label": "Desktop"}]},
   {"label": "...", "detail": "..."}]}]}
 ```
 
-It prints the link and an ask id. Show it:
+Pictures are one view at a time, side by side, switched by their labels. It prints the link and an
+ask id. Show it:
 
-- Claude app: `preview_start` the link, then `tabs_context` must say the Browser pane is displayed.
-  If it is hidden, send any file with `SendUserFile` and `display: "render"` to open the right
-  panel, select the tab, and check again. Then one line in chat: the questions are open on the right.
+- Claude app: `preview_start` the link, `tabs_select` its tab, then `tabs_context` must say the
+  Browser pane is displayed. If it is still hidden, the right panel is closed: send any file with
+  `SendUserFile` and `display: "render"` to open it, select the tab again, and check again. Then one
+  line in chat: the questions are open on the right.
 - Claude or Codex in a terminal: add `--browser`.
 - Codex app: open the link in its in-app browser.
 

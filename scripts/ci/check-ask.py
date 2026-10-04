@@ -187,6 +187,14 @@ def server_fixtures(t: Tree) -> None:
     copied = sorted((ask_dir / "img").iterdir())
     expect(len(copied) == 1 and not copied[0].is_symlink(), "images must be copied in, not linked")
     expect(http(url + "img/0/0/0")[0] == 200, "a listed image must be served")
+    shot = t.root / "wide.png"
+    shot.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + (1280).to_bytes(4, "big") + (800).to_bytes(4, "big") + b"0" * 32)
+    views = [{"path": str(png), "label": "Phone"}, {"path": str(shot), "label": "Desktop"}]
+    _, views_id = t.open({"questions": [q(images=views)]})
+    stored = json.loads((t.ask_home / views_id / "questions.json").read_text())["questions"][0]["options"][0]["images"]
+    expect([(i["label"], i["width"]) for i in stored] == [("Phone", 0), ("Desktop", 1280)],
+           f"labeled pictures and their widths were not recorded: {stored}")
+    t.ask("close", views_id)
     expect(http(url + "img/0/1/0")[0] == 404 and http(url + "img/../server.json")[0] == 404,
            "only listed images may be served")
     expect(http(url + "answers", b"picks=1", "application/x-www-form-urlencoded")[0] == 415,

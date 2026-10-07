@@ -10,6 +10,21 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REVERT=0; [ "${1:-}" = "--revert-test" ] && REVERT=1
 
+# Git Bash's ln -s copies unless told to make native links, and Windows grants those only with
+# Developer Mode or admin. Without them the fixtures cannot be built here; CI (Linux and the
+# PowerShell twin on windows-latest) still runs them.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    export MSYS=winsymlinks:nativestrict
+    probe="$(mktemp -d)"; mkdir "$probe/t"
+    if ! ln -s "$probe/t" "$probe/l" 2>/dev/null || [ ! -L "$probe/l" ]; then
+        rm -rf "$probe"
+        echo "check-moved-links: skip (this Windows machine cannot create symlinks; turn on Developer Mode to run it)"
+        exit 0
+    fi
+    rm -rf "$probe" ;;
+esac
+
 run_fixtures() {
     local T fail=0
     T="$(mktemp -d)"

@@ -332,7 +332,8 @@ def configure(home: Path) -> Path:
     try:
         if hasattr(os, "fchmod"):
             os.fchmod(descriptor, stat.S_IRUSR | stat.S_IWUSR)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        # newline="": write LF as rendered; text mode would turn it into CRLF on Windows.
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
             handle.write(rendered)
             handle.flush()
             os.fsync(handle.fileno())

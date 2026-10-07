@@ -254,6 +254,7 @@ def check_codex_hook_prune(root: Path, findings: list[str]) -> None:
             )
 
         def state(path: str, entry: int, digest: str) -> str:
+            path = path.replace("\\", "\\\\")  # a TOML basic string, escaped as Codex writes it (Windows paths)
             return f'[hooks.state."{path}:pre_tool_use:{entry}:0"]\ntrusted_hash = "sha256:{digest}"\n\n'
 
         own = str(config)
@@ -387,6 +388,9 @@ def trace_values(trace: Path) -> list[str]:
 
 def check_zsh_behavior(root: Path, findings: list[str]) -> None:
     if shutil.which("zsh") is None:
+        if os.name == "nt":  # ea.zsh is the mac/linux launcher; the Linux CI job installs zsh and runs these
+            print("check-workspace-access: skip zsh launcher fixtures (no zsh on Windows; Linux CI runs them)")
+            return
         findings.append("zsh is required for launcher behavior fixtures")
         return
     with tempfile.TemporaryDirectory(prefix="workspace-access-zsh-") as raw_home:

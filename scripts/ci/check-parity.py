@@ -428,6 +428,14 @@ FEATURES = [
         "ps1": ("manifest.ps1", r"NEXUS_BEARER"),
     },
     {
+        # Agents the desktop app launches never run an interactive shell, so the bearers must reach
+        # them outside the shell rc files: Windows sets them in the User environment; macOS/Linux
+        # write a ~/.zshenv block and (macOS) launchctl setenv them via client-bearer-env.sh.
+        "name": "hub bearers reach non-interactive/GUI agents",
+        "sh": ("manifest.sh", r"scripts/client-bearer-env\.sh"),
+        "ps1": ("manifest.ps1", r"SetEnvironmentVariable\(\$BearerVar, \$tokVal, \"User\"\)"),
+    },
+    {
         "name": "nexus cutover gate present (Phase-D one-flip remoting)",
         "sh": ("manifest.sh", r"NEXUS_REMOTED"),
         "ps1": ("manifest.ps1", r"NexusRemoted"),

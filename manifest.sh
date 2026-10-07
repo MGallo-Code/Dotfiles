@@ -937,6 +937,9 @@ provision_all_client_tokens() {
     # token file exists, so a post-cutover client re-run just needs the token pasted.
     [ "$NEXUS_REMOTED" = "true" ] && provision_hub_client_token nexus "$NEXUS_TOKEN_FILE" NEXUS_BEARER
     ensure_client_bearer_exports
+    # Agents no interactive shell launched (desktop app, its SSH remote server) need the bearers too:
+    # ~/.zshenv block + macOS launchd env. Without it they send an empty bearer and every hub 401s.
+    bash "${DOTFILES_DIR:-$HOME/.dotfiles}/scripts/client-bearer-env.sh" || warn "client-bearer-env failed - desktop-app agents will 401 on the hubs"
 }
 
 # ── ADR-0007 workspace migration (functions; settings above) ──────────

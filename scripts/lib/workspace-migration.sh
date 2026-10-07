@@ -104,9 +104,14 @@ _ws_rewrite() {
 }
 
 _ws_move_one() {
-    local old="$1" new="$2" wt inside=() line f v
+    local old="$1" new="$2" wt gold="" inside=() line f v
+    # The first entry is the repo itself, in git's own spelling of $old (C:/... under Git Bash, not /c/...).
     while IFS= read -r line; do
-        case "$line" in "worktree $old"/*) wt="${line#worktree }"; inside+=("$new${wt#"$old"}") ;; esac
+        case "$line" in "worktree "*)
+            wt="${line#worktree }"
+            if [ -z "$gold" ]; then gold="$wt"
+            elif [ "${wt#"$gold"/}" != "$wt" ]; then inside+=("$new/${wt#"$gold"/}"); fi ;;
+        esac
     done < <(git -C "$old" worktree list --porcelain 2>/dev/null)
     mkdir -p "$(dirname "$new")"
     mv "$old" "$new" || { warn "workspace: could not move $old"; return 1; }
@@ -122,6 +127,7 @@ _ws_move_one() {
         esac
     done < <(python3 "$WS_PATHS_PY" memory "$HOME/.claude/projects" "$old" "$new")
     while IFS= read -r v; do
+        v="${v%$'\r'}"   # Windows Python ends lines with CRLF
         if [ -n "$v" ]; then rm -rf "$v" && ok "workspace: removed $v (it named the old path; it rebuilds on next use)"; fi
     done < <(python3 "$WS_PATHS_PY" venvs "$new" "$old")
     return 0

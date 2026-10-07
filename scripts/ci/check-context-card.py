@@ -337,7 +337,7 @@ def fixtures(s: Suite) -> None:
     r = s.run(["orchestration", "new", "m9", "--builder-worktree", str(bwt)], canon, host="local_o9")
     ob, orole = bind_of("local_o9"), role_of("local_o9")
     s.check("orchestrate new: RESUME.md card, orchestrator role, 350K both sides, state outside the repos",
-            r.returncode == 0 and ob.get("kind") == "file" and ob.get("card", "").endswith("tasks/m9/RESUME.md") and orole.get("role") == "orchestrator"
+            r.returncode == 0 and ob.get("kind") == "file" and Path(ob.get("card", "")).as_posix().endswith("tasks/m9/RESUME.md") and orole.get("role") == "orchestrator"
             and win(canon).get("autoCompactWindow") == 350000 and win(bwt).get("autoCompactWindow") == 350000
             and len(list((s.state / "orchestrations").glob("*.json"))) == 1 and not (bwt / "analysis_outputs").exists(), r.stdout + r.stderr)
     r = s.run(["orchestration", "new", "m9", "--builder-worktree", str(bwt)], canon, host="local_o9")

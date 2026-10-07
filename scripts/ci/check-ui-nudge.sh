@@ -30,6 +30,12 @@ run_fixtures() {
         check "$(fire 'not json')" "" "bad input: silent"
         printf 'not json' | "$PY" "$HOOK" >/dev/null 2>&1; check "$?" "0" "bad input: exit 0"
 
+        # The bash registration needs jq. Windows registers through setup.ps1, covered by check-ui-nudge.ps1.
+        case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+            if ! command -v jq >/dev/null 2>&1; then
+                echo "  skip  registration (no jq on this Windows machine; check-ui-nudge.ps1 covers it)"; exit 0
+            fi ;;
+        esac
         mkdir -p "$HOME/.claude"
         printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"guard.sh"}]}]}}\n' > "$HOME/.claude/settings.json"
         ok() { :; }; warn() { :; }; expand() { echo "${1/#\~/$HOME}"; }

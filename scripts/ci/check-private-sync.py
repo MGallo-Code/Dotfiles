@@ -78,7 +78,7 @@ def fixtures(script: Path) -> list[str]:
     check("exactly one folder (the default ~/Sync folder is dropped)", [f["id"] for f in want["folders"]] == ["ea-private"],
           [f["id"] for f in want["folders"]])
     folder = want["folders"][0]
-    check("the folder is EA", folder["path"] == "/Users/someone/Workspace/EA", folder["path"])
+    check("the folder is EA", folder["path"] == str(home / "Workspace" / "EA"), folder["path"])
     check("the folder is shared with exactly this machine and its peer",
           sorted(d["deviceID"] for d in folder["devices"]) == sorted([ME, PEER]))
     check("staggered versioning keeps 30 days", folder["versioning"]["type"] == "staggered"

@@ -14,6 +14,21 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REVERT=0; [ "${1:-}" = "--revert-test" ] && REVERT=1
 
+# The host-store fixture needs a native symlink and the hubs.json probes need jq. A Windows machine
+# without Developer Mode or jq cannot build them; CI (Linux, and check-code-root.ps1 on
+# windows-latest) still runs them.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    export MSYS=winsymlinks:nativestrict
+    probe="$(mktemp -d)"; mkdir "$probe/t"
+    if ! command -v jq >/dev/null 2>&1 || ! ln -s "$probe/t" "$probe/l" 2>/dev/null || [ ! -L "$probe/l" ]; then
+        rm -rf "$probe"
+        echo "check-code-root: skip (this Windows machine lacks jq or symlinks; install jq and turn on Developer Mode to run it)"
+        exit 0
+    fi
+    rm -rf "$probe" ;;
+esac
+
 run_fixtures() {
     local T rc=0
     T="$(mktemp -d)"

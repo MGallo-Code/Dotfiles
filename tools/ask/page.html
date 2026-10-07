@@ -51,10 +51,11 @@
   .opt .t { font-weight: 600; overflow-wrap: anywhere; }
   .opt .rec { font-size: 12px; font-weight: 600; color: var(--ok); margin-left: var(--s1); }
   .opt .d { grid-column: 2; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
-  .other { margin-top: var(--s2); display: grid; grid-template-columns: auto 1fr; gap: var(--s2); align-items: center; }
-  .other input { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
-                 border-radius: var(--r); padding: 8px 10px; }
-  .other input:focus { outline: none; border-color: var(--accent); }
+  .other { margin-top: var(--s2); display: grid; grid-template-columns: auto 1fr; gap: var(--s2); align-items: start; }
+  .other .key { margin-top: 9px; }
+  .other textarea { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+                    border-radius: var(--r); padding: 8px 10px; resize: none; overflow: hidden; display: block; }
+  .other textarea:focus { outline: none; border-color: var(--accent); }
   footer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); }
   footer .in { max-width: 760px; margin: 0 auto; padding: var(--s2) 16px; display: flex; gap: var(--s2);
                align-items: center; justify-content: flex-end; }
@@ -71,7 +72,7 @@
   .review .row { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); padding: var(--s2) 0;
                  border-bottom: 1px solid var(--line); }
   .review .q { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
-  .review .a { font-weight: 600; overflow-wrap: anywhere; }
+  .review .a { font-weight: 600; overflow-wrap: anywhere; white-space: pre-line; }
   .review .a.none { color: var(--warn); }
   .review .row button { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; }
   .paste { margin-top: var(--s3); }
@@ -100,6 +101,9 @@ const ASK = JSON.parse(document.getElementById("ask-data").textContent);
 const QS = ASK.questions;
 const answers = QS.map(() => ({ picks: [], other: "" }));
 let at = 0, state = "open";  // open | sending | sent | failed
+// When the review page appeared: a second click or Enter landing right after Next must not also send.
+let reviewSince = 0;
+const SEND_ARM_MS = 700;
 const views = QS.map(() => 0);  // which picture each question shows: one view at a time, side by side
 
 const $ = id => document.getElementById(id);
@@ -123,7 +127,7 @@ function answerText(i) {
 function pick(i) {
   const a = answers[at], q = QS[at];
   if (q.multi) a.picks = a.picks.includes(i) ? a.picks.filter(p => p !== i) : [...a.picks, i].sort();
-  else { a.picks = [i]; a.other = ""; $("other").value = ""; }
+  else a.picks = a.picks.includes(i) ? [] : [i];
   // Only the highlight changes: a full redraw would reload the pictures.
   document.querySelectorAll(".opt").forEach((b, n) => b.classList.toggle("on", a.picks.includes(n)));
   renderDots();
@@ -160,12 +164,11 @@ function renderQuestion() {
     key(L(i)),
     el("span", {}, el("span", { class: "t" }, o.label), o.recommended ? el("span", { class: "rec" }, "Recommended") : null),
     el("span", { class: "d" }, o.detail)));
-  const other = el("input", { id: "other", placeholder: "Other", value: a.other, maxlength: "2000" });
-  other.addEventListener("input", e => {
-    a.other = e.target.value;
-    if (a.other && !q.multi) { a.picks = []; document.querySelectorAll(".opt").forEach(b => b.classList.remove("on")); }
-    renderDots();
-  });
+  // Sent alongside any pick ("yes, and ..."). Shift+Enter adds a line.
+  const other = el("textarea", { id: "other", placeholder: "Other", rows: "1", maxlength: "2000" });
+  other.value = a.other;
+  const grow = () => { other.style.height = "auto"; other.style.height = other.scrollHeight + 2 + "px"; };
+  other.addEventListener("input", e => { a.other = e.target.value; grow(); renderDots(); });
   const switcher = labels.length > 1 ? el("div", { class: "views" }, ...labels.map((label, n) =>
     el("button", { class: n === v ? "on" : "", onclick: () => setView(n) }, label, key(String(n + 1))))) : null;
   $("main").replaceChildren(...[
@@ -175,6 +178,7 @@ function renderQuestion() {
     switcher,
     el("div", { class: "opts" + (pics ? " pics" : "") + (wide ? " wide" : "") }, ...opts),
     el("label", { class: "other" }, key(L(q.options.length)), other)].filter(Boolean));
+  grow();
   $("next").replaceChildren("Next ", key("⏎"));
   $("next").disabled = false;
   setStatus("", "");
@@ -196,7 +200,7 @@ function renderReview() {
   }
   $("main").replaceChildren(...kids);
   const any = QS.some((_, i) => answered(i)), all = QS.every((_, i) => answered(i));
-  $("next").replaceChildren(...(state === "sent" ? ["Sent"] : state === "sending" ? ["Sending…"] : ["Send ", key("⏎")]));
+  $("next").replaceChildren(...(state === "sent" ? ["Sent"] : state === "sending" ? ["Sending…"] : ["Submit ", key("⏎")]));
   $("next").disabled = state === "sent" || state === "sending" || !any;
   if (state === "sent") setStatus("The agent has your answers.", "sent");
   else if (state === "failed") setStatus("Couldn't reach the agent.", "fail");
@@ -205,7 +209,10 @@ function renderReview() {
 
 function setStatus(text, cls) { $("status").textContent = text; $("status").className = "status" + (cls ? " " + cls : ""); }
 
+let shown = -1;
 function render() {
+  if (at === QS.length && shown !== QS.length) reviewSince = performance.now();
+  shown = at;
   $("from").textContent = ASK.from;
   renderDots();
   if (at === QS.length) renderReview(); else renderQuestion();
@@ -225,12 +232,14 @@ async function send() {
 $("back").onclick = () => { if (at > 0 && state !== "sent") { at--; render(); } };
 $("next").onclick = () => {
   if (at < QS.length) { at++; render(); return; }
+  if (performance.now() - reviewSince < SEND_ARM_MS) return;
   if (state !== "sent" && state !== "sending") send();
 };
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.target.tagName === "INPUT") {
-    if (e.key === "Enter") { e.preventDefault(); $("next").click(); }
+  if (e.key === "Enter" && e.repeat && !e.shiftKey) { e.preventDefault(); return; }  // a held Enter must not run on into Submit
+  if (e.target.id === "other") {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("next").click(); }
     if (e.key === "Escape") e.target.blur();
     return;
   }

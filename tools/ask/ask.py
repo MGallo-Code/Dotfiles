@@ -363,7 +363,7 @@ def format_answers(ask_id: str, ask_dir: Path) -> str:
         for p in a["picks"]:
             lines.append(f"   {chr(65 + p)}. {q['options'][p]['label']}")
         if a["other"]:
-            lines.append(f"   Other: {a['other']}")
+            lines.append("   Other: " + a["other"].replace(chr(10), chr(10) + " " * 10))
         if not a["picks"] and not a["other"]:
             lines.append("   (skipped)")
     lines.append(f"Saved: {ask_dir / 'answers.json'}")

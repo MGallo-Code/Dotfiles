@@ -395,6 +395,58 @@ function Set-PrivateSync {
     Write-Warn "private sync: opted in, but only macOS is wired (ADR-0009)"
 }
 
+# INV-27: a `python3` on PATH may be the Microsoft Store alias stub, which prints "Python was
+# not found" and exits 9009 (the 2026-10-15 Windows 11 upgrade put it ahead of the real one).
+# Callers take the first Python that actually runs; `python3` stays first for parity with
+# the Mac mini, where only `python3` exists. The bash side is claude-config/global-hooks/pick-python.sh.
+function Test-PythonRuns {
+    param([string]$Path)
+    try { & $Path -c "" *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
+}
+
+function Get-RunnablePython {
+    foreach ($name in @("python3", "python")) {
+        foreach ($cmd in @(Get-Command $name -CommandType Application -All -ErrorAction SilentlyContinue)) {
+            if (Test-PythonRuns $cmd.Source) { return $cmd }
+        }
+    }
+    return $null
+}
+
+function Ensure-Python3Shim { # PYTHON3_SHIM
+    # Windows only. python.org installs no python3.exe, so `python3` falls through to the Store
+    # alias. A byte copy of python.exe beside it is a working python3 (it loads the same DLL).
+    # Created when missing, refreshed when python.exe changed (a patch upgrade), warned otherwise.
+    $real = @(Get-Command python -CommandType Application -All -ErrorAction SilentlyContinue) |
+        Where-Object { $_.Source -notmatch '\\WindowsApps\\' -and (Test-PythonRuns $_.Source) } |
+        Select-Object -First 1
+    if (-not $real) {
+        Write-Warn "python3: no installed python.exe on PATH outside WindowsApps - install Python 3.12 from python.org"
+        return
+    }
+    $dir = Split-Path $real.Source -Parent
+    $shim = Join-Path $dir "python3.exe"
+    $stale = (Test-Path $shim) -and ((Get-FileHash $shim).Hash -ne (Get-FileHash $real.Source).Hash)
+    if (-not (Test-Path $shim) -or $stale) {
+        try {
+            Copy-Item -LiteralPath $real.Source -Destination $shim -Force -ErrorAction Stop
+            Write-Ok "python3: $(if ($stale) { 'refreshed' } else { 'created' }) $shim"
+        }
+        catch {
+            Write-Warn "python3: could not write $shim ($($_.Exception.Message)) - close running python3 processes and re-run sync"
+            return
+        }
+    }
+    $resolved = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $resolved -or $resolved.Source -ne $shim) {
+        $where = if ($resolved) { $resolved.Source } else { "nothing" }
+        Write-Warn "python3 resolves to $where, not $shim - move $dir ahead of WindowsApps on PATH, or turn off the python3 App execution alias"
+    }
+    elseif (-not (Test-PythonRuns $shim)) {
+        Write-Warn "python3: $shim exists but does not run"
+    }
+}
+
 function Set-AgentIntegrations { # AGENT_NOTIFY_CROSS_AGENT_CONFIG
     $python = $null
     $pythonPrefix = @()

@@ -7,7 +7,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if command -v uv >/dev/null 2>&1; then
   exec uv run --no-project "$SCRIPT_DIR/agent-notify.py" hook --agent claude
-elif command -v python3 >/dev/null 2>&1; then
-  exec python3 "$SCRIPT_DIR/agent-notify.py" hook --agent claude
+elif . "$SCRIPT_DIR/pick-python.sh" && pick_python; then
+  exec "$PY" "$SCRIPT_DIR/agent-notify.py" hook --agent claude
 fi
 exit 0

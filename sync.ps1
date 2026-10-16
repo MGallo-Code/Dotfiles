@@ -15,8 +15,7 @@ function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     $codexDir = Join-Path $HOME ".codex"
     $codexConfig = Join-Path $codexDir "config.toml"
     New-Item -ItemType Directory -Path $codexDir -Force | Out-Null
-    $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
-    if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+    $pythonCmd = Get-RunnablePython
     if (-not $pythonCmd) { throw "Agent defaults require Python; refusing partial configuration" }
     & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-codex-defaults.py") --home $HOME | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Codex settings are unsupported or inaccessible; defaults were not changed" }
@@ -507,6 +506,7 @@ if ($AgentSkillsDir) {
 
 # Routine sync repairs the generated instruction bundles and every agent's completion
 # hook registration before the live machine gate evaluates them.
+Ensure-Python3Shim
 Regen-CombinedAgentRules
 Enable-CodexQuestionCard
 Register-AskGuard
@@ -675,12 +675,10 @@ if (Test-McpWiringReady) {
     # ~/.gemini/settings.json; the wiring re-locks it (icacls), this flags any literal for ROTATION.
     # Advisory (configs not in git). (parity-checked: scripts/ci/check-parity.py)
     $hubWire = Join-Path $DotfilesDir "scripts\ci\check-hub-wiring.py"
-    foreach ($pc in @("python3", "python")) {
-        if (Get-Command $pc -ErrorAction SilentlyContinue) {
-            & $pc $hubWire --host
-            if ($LASTEXITCODE -ne 0) { Write-Warn "hub bearer host-scan flagged an exposure (above) - rotate the token" }
-            break
-        }
+    $hubPy = Get-RunnablePython
+    if ($hubPy) {
+        & $hubPy.Source $hubWire --host
+        if ($LASTEXITCODE -ne 0) { Write-Warn "hub bearer host-scan flagged an exposure (above) - rotate the token" }
     }
 
     function Test-CalendarHealth {

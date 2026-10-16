@@ -29,7 +29,7 @@ run_fixtures() {
         yes_no() { if eval "$1"; then echo yes; else echo no; fi; }
         # A path as Windows tools (git, Codex, venvs) write it: C:/... where Git Bash says /tmp/...
         gitpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else echo "$1"; fi; }
-        key() { python3 "$ROOT/scripts/lib/ws_paths.py" key "$1"; }
+        key() { . "$ROOT/claude-config/global-hooks/pick-python.sh" && pick_python && "$PY" "$ROOT/scripts/lib/ws_paths.py" key "$1"; }
         D="$HOME/Documents"; W="$HOME/Workspace"; M="$HOME/.claude/projects"
 
         mkrepo() {   # name remote: a bare origin, and a clone at ~/Documents/<name> whose origin is <remote>

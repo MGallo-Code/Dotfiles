@@ -9,7 +9,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REVERT=0; [ "${1:-}" = "--revert-test" ] && REVERT=1
-PY="$(command -v python3)"
+# shellcheck source=../../claude-config/global-hooks/pick-python.sh
+. "$ROOT/claude-config/global-hooks/pick-python.sh"
+pick_python || { echo "check-ui-nudge: no python3 or python runs" >&2; exit 2; }
 
 run_fixtures() {
     local T rc=0

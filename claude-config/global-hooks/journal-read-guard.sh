@@ -22,9 +22,10 @@
 set -uo pipefail
 
 input="$(cat)"
-command -v python3 >/dev/null 2>&1 || exit 0
+# shellcheck source=pick-python.sh
+. "$(dirname "${BASH_SOURCE[0]}")/pick-python.sh" && pick_python || exit 0
 
-HOOK_INPUT="$input" python3 - <<'PY'
+HOOK_INPUT="$input" "$PY" - <<'PY'
 import json
 import os
 import re

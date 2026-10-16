@@ -4,6 +4,11 @@ Claude Code hook scripts, symlinked to `~/.claude/hooks/` by the dotfiles instal
 (`manifest.sh` SYMLINKS array plus `setup.sh`). The payload lives here in EA (synced);
 the per-machine registration lives in `~/.claude/settings.json` (not synced).
 
+Shell hooks and agent guards that need Python source `pick-python.sh` and run `"$PY"`. It
+picks `python3`, or `python` when `python3` is a Windows Store alias that does not run
+(INV-27). Never call a bare `python3` from a hook, and never swap it for `python`: the Mac
+mini has only `python3`.
+
 ## agent-notify.py - explicit cross-agent completion email
 
 The assistant convention lives in `global-rules/notify-when-done.md`. The implementation

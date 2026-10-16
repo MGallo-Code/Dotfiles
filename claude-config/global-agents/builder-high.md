@@ -9,7 +9,7 @@ hooks:
     - matcher: "Edit|Write|NotebookEdit|Bash|PowerShell"
       hooks:
         - type: command
-          command: 'P=python3; "$P" -c "" 2>/dev/null || P=python; "$P" "$HOME/.claude/hooks/context-card.py" builder-guard; rc=$?; [ "$rc" -eq 0 ] || exit 2'
+          command: '. "$HOME/.claude/hooks/pick-python.sh" && pick_python && "$PY" "$HOME/.claude/hooks/context-card.py" builder-guard; rc=$?; [ "$rc" -eq 0 ] || exit 2'
 ---
 
 You are the Builder for one slice of an orchestration (skill `build-orchestration`, dotfiles ADR-0010). The Orchestrator spawned you as its subagent and is your only correspondent; your final reply is your report to it. The protocol of record is Michael's handoff, `~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md` (resolve `~` to your home directory): its Builder sections 1 and 6 hold.

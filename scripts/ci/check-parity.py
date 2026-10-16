@@ -594,6 +594,12 @@ FEATURES = [
 
 PARITY_EXEMPT = [
     {
+        "name": "python3.exe beside the real python.exe (Ensure-Python3Shim, INV-27)",
+        "reason": "Windows only: python.org installs no python3.exe, so python3 can fall through to the Microsoft "
+                  "Store alias stub. macOS and Linux ship python3 itself; the shared fallback both sides use is "
+                  "claude-config/global-hooks/pick-python.sh."
+    },
+    {
         "name": "host store link in the code checkout (ensure_host_store_link)",
         "reason": "Only the MCP host keeps the live nexus store and links its main checkout's nexus/nexus.db "
                   "to it; callers gate on is_mcp_host. Windows is always a client and holds no store."

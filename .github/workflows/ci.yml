@@ -121,6 +121,10 @@ jobs:
         run: bash scripts/ci/check-ui-nudge.sh
       - name: check-ui-nudge revert-test
         run: bash scripts/ci/check-ui-nudge.sh --revert-test
+      - name: check-pick-python (INV-27)
+        run: bash scripts/ci/check-pick-python.sh
+      - name: check-pick-python revert-test
+        run: bash scripts/ci/check-pick-python.sh --revert-test
       - name: check-ask (INV-26, ADR-0011)
         run: python scripts/ci/check-ask.py
       - name: check-ask revert-test
@@ -192,6 +196,9 @@ jobs:
       - name: check-ui-nudge Windows PowerShell
         shell: powershell
         run: ./scripts/ci/check-ui-nudge.ps1
+      - name: check-pick-python (INV-27) on Windows Git Bash
+        shell: bash
+        run: bash scripts/ci/check-pick-python.sh && bash scripts/ci/check-pick-python.sh --revert-test
       # INV-26: the questions page's server, detached spawn and hook on Windows, then the
       # PowerShell registration half.
       - uses: actions/setup-python@v5

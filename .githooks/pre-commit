@@ -80,6 +80,10 @@ bash "$ROOT/scripts/ci/check-code-root.sh" >/dev/null || {
 bash "$ROOT/scripts/ci/check-ui-nudge.sh" >/dev/null || {
   echo "pre-commit: check-ui-nudge failed - run: bash scripts/ci/check-ui-nudge.sh" >&2; exit 1; }
 
+# INV-27: python3 callers survive a python3 that does not run (the Windows Store alias stub).
+bash "$ROOT/scripts/ci/check-pick-python.sh" >/dev/null || {
+  echo "pre-commit: check-pick-python failed - run: bash scripts/ci/check-pick-python.sh" >&2; exit 1; }
+
 # INV-26: questions for Michael go through the questions page or a clean card (ADR-0011).
 "$PY" "$ROOT/scripts/ci/check-ask.py" >/dev/null || {
   echo "pre-commit: check-ask failed - run: python3 scripts/ci/check-ask.py" >&2; exit 1; }

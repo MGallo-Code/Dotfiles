@@ -111,8 +111,7 @@ function Set-AgentDefaults { # AGENT_DEFAULTS_CONFIG
     $codexDir = Join-Path $HOME ".codex"
     $codexConfig = Join-Path $codexDir "config.toml"
     New-Item -ItemType Directory -Path $codexDir -Force | Out-Null
-    $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
-    if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+    $pythonCmd = Get-RunnablePython
     if (-not $pythonCmd) { throw "Agent defaults require Python; refusing partial configuration" }
     & $pythonCmd.Source (Join-Path $DotfilesDir "scripts/configure-codex-defaults.py") --home $HOME | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Codex settings are unsupported or inaccessible; defaults were not changed" }
@@ -637,6 +636,7 @@ if ($Mode -eq "full") {
         Write-Ok "Gemini: trusted managed repo + workspace folders"
     }
     Trust-GeminiManagedRepos
+    Ensure-Python3Shim
     Set-AgentDefaults
     Ensure-GeminiCrossCheckSetup
 

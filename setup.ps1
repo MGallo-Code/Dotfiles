@@ -837,8 +837,7 @@ if ($Mode -eq "full") {
     if (Test-Path $exerciseDir) {
         New-Item -ItemType Directory -Path $practiceWorkspace -Force | Out-Null
 
-        $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
-        if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+        $pythonCmd = Get-RunnablePython
 
         if ($pythonCmd) {
             if (-not (Test-Path "$venvDir\Scripts\Activate.ps1")) {

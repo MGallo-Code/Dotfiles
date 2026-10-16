@@ -401,7 +401,8 @@ function Set-PrivateSync {
 # the Mac mini, where only `python3` exists. The bash side is claude-config/global-hooks/pick-python.sh.
 function Test-PythonRuns {
     param([string]$Path)
-    try { & $Path -c "" *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
+    # "pass", not "": Windows PowerShell 5.1 drops an empty argument, leaving a bare -c (exit 2).
+    try { & $Path -c "pass" *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
 }
 
 function Get-RunnablePython {

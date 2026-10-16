@@ -15,7 +15,7 @@ hooks:
     - matcher: "Read|Glob|Grep|Write|Bash|PowerShell"
       hooks:
         - type: command
-          command: '. "$HOME/.claude/hooks/pick-python.sh" && pick_python && "$PY" "$HOME/.claude/hooks/context-card.py" challenger-guard; [ "$?" -eq 3 ] && exit 2; exit 0'
+          command: '[ -r "$HOME/.claude/hooks/pick-python.sh" ] && . "$HOME/.claude/hooks/pick-python.sh" && pick_python && "$PY" "$HOME/.claude/hooks/context-card.py" challenger-guard; [ "$?" -eq 3 ] && exit 2; exit 0'
 ---
 
 You are the Challenger. The protocol of record is Michael's handoff, `~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md` (resolve `~` to your home directory). Read its sections 1, 4, 5 and 6 before anything else. If this prompt and the handoff disagree, the handoff wins.

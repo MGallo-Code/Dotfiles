@@ -17,8 +17,15 @@ erodes trust in the lines that do carry information.
 - Don't read the instruction back before obeying it ("As you asked, I'll now...").
 - Don't name the rule you're following or caption each step with the requirement it meets.
 
+## Rules, skills and prompts
+- Every line is loaded by every future session. Write only the standing rule.
+- Rollout and history go where they're read once: the decision record, the commit message,
+  the project's log. That covers "from <date>", "work already started keeps the old rule",
+  "agreed on", and what changed from before.
+  - "Applies to slices started from 2026-10-21" belongs in each project's log, not the skill.
+
 ## The test
-Before shipping any label, status line, settled state, or sentence of narration: what does
+Before shipping any label, status line, settled state, rule line or sentence of narration: what does
 it tell him that the screen (or the completed action) doesn't? If nothing, cut it.
 
 ## Scope

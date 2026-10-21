@@ -70,9 +70,9 @@ This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the
    - `scoped_misses` (item 7).
 
    Compare each milestone with M1 (2 to 4 rounds per slice). Remove a ceremony only when the metrics hold without it, one at a time.
-7. **Scope the static checks per revision; run the full chain on the final candidate** (dotfiles ADR-0012; slices whose first assignment is written from 2026-10-21. A slice already started keeps its acceptance rules through all its revisions.)
+7. **Scope the static checks per revision; run the full chain on the final candidate** (dotfiles ADR-0012).
    - Terms: a *gate* is a static check script; its *plants* are the planted faults of its revert test; the *full chain* is every gate, plant, replay and journey the assignment lists.
-   - Only gates and their plants are scoped. Replays, browser journeys, socket watches and Challenger pass 1 run on every candidate as before: they depend on the whole runnable tree and the environment, not a file list.
+   - Only gates and their plants are scoped. Replays, browser journeys, socket watches and Challenger pass 1 run on every candidate: they depend on the whole runnable tree and the environment, not a file list.
    - The project keeps a gate-to-files map: each gate's script, the modules it imports and the files and data it reads. A gate with no row runs every time.
    - Per revision, the Orchestrator lists in the assignment the gates (and their plants) whose rows the diff since the last accepted candidate touches, plus every plant of a gate whose script changed. Any added, removed or renamed file, any edit to the map, or any dependency or interpreter change means the full chain.
    - When the Builder proposes a candidate as final, it runs the full chain first; a red result means it is not final. The Challenger reviewing that candidate re-runs the full chain itself. Earlier candidates' Challengers re-run the listed gates and prove every other file unchanged by hash against the last accepted manifest; they may run any other check they suspect. The milestone freeze still re-runs the whole acceptance table (handoff section 3).

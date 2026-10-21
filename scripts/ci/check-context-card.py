@@ -463,9 +463,10 @@ def fixtures(s: Suite) -> None:
         ("Bash", {"command": cdw + "until [ -f evidence/DONE ]; do sleep 15; done", "timeout": 600000}, 3),
         ("Bash", {"command": cdw + "sleep 300 && ls"}, 3),
         ("Bash", {"command": cdw + "sleep 5m"}, 3),
+        ("Bash", {"command": cdw + "sleep 200"}, 3),
         ("PowerShell", {"command": f"Set-Location '{bwt}'; foreach ($i in 1..10) {{ Start-Sleep -Seconds 30 }}"}, 3),
-        ("Bash", {"command": cdw + "for i in $(seq 1 7); do sleep 30; [ -f evidence/DONE ] && break; done"}, 0),
-        ("Bash", {"command": cdw + "until [ -f evidence/DONE ]; do sleep 15; done", "timeout": 230000}, 0),
+        ("Bash", {"command": cdw + "for i in $(seq 1 5); do sleep 30; [ -f evidence/DONE ] && break; done"}, 0),
+        ("Bash", {"command": cdw + "until [ -f evidence/DONE ]; do sleep 15; done", "timeout": 170000}, 0),
         ("Bash", {"command": cdw + "until curl -sf localhost:3000; do sleep 1; done"}, 0),
         ("Bash", {"command": cdw + "npm run dev & sleep 3; curl -s localhost:3000"}, 0),
     ):
@@ -476,10 +477,24 @@ def fixtures(s: Suite) -> None:
     r = sub("Edit", {"file_path": str(bwt / "app.py")}, "builder-guard", host="local_nobody")
     s.check("a Builder subagent outside a session that leads an orchestration does nothing", r.returncode == 3, f"rc={r.returncode}")
     agents = SCRIPT.parents[1] / "global-agents"
+    def handback(message, aid="a-h1"):
+        return s.run(["builder-handback"], canon, {"tool_name": "SubagentHandback", "tool_input": {"message": message},
+                                                   "agent_type": "builder", "agent_id": aid}, host="local_o9")
+    for label, run, want in (
+        ("a report with its STATUS line", lambda: handback("Report...\nSTATUS: CANDIDATE_READY\nmanifest sha256 ...", "a-h0"), 0),
+        ("a bold STATUS line", lambda: handback("**STATUS:** NEEDS_ORCHESTRATOR", "a-h0"), 0),
+        ("a first report without one is sent back", lambda: handback("The gates are still running; I will check back."), 3),
+        ("the second goes through", lambda: handback("Lessons written."), 0),
+        ("another Builder's first report is still sent back", lambda: handback("Ready.", "a-h2"), 3),
+        ("garbage input", lambda: s.run(["builder-handback"], canon, "garbage", host="local_o9"), 0),
+    ):
+        r = run()
+        s.check(f"builder handback gate: {label} -> {want}", r.returncode == want, f"rc={r.returncode} {r.stderr[:160]}")
     bodies = {n: (agents / f"{n}.md").read_text(encoding="utf-8").split("\n---\n", 1) for n in ("builder", "builder-high")}
-    s.check("both Builder agents: one body, a fail-closed builder-guard hook, no Agent or messaging tools",
+    s.check("both Builder agents: one body, a fail-closed builder-guard hook, a fail-open handback gate, no Agent or messaging tools",
             bodies["builder"][1] == bodies["builder-high"][1] and all(
                 'builder-guard; rc=$?; [ "$rc" -eq 0 ] || exit 2' in head and "\ntools: " in head
+                and 'matcher: "SubagentHandback"' in head and 'builder-handback; [ "$?" -eq 3 ] && exit 2; exit 0' in head
                 and not any(t in head.split("\ntools: ", 1)[1].split("\n", 1)[0] for t in ("Agent", "SendMessage"))
                 for head, _ in bodies.values()), "")
 
@@ -810,6 +825,7 @@ def main() -> int:
                    ('        if _under(target, str(real_root / ".claude")) or', '        if False and _under(target, str(real_root / ".claude")) or'),
                    ('        if helper and helper.group(1) != "status":', "        if False:"),  # Builder runs Orchestrator helpers
                    ("        wait = builder_wait_violation(command, tool_input.get(\"timeout\"))\n", "        wait = None\n"),  # Builder polls on a timer
+                   ('        if data.get("tool_name") != "SubagentHandback" or BUILDER_STATUS.search(', '        if True or BUILDER_STATUS.search('),  # report without STATUS
                    ("    if open_builders(sid):\n        # This compaction", "    if False:\n        # This compaction"),  # narrowing kept
                    ("            remove(open_builders_path(orch_sid))", "            pass")]  # end keeps open Builders
         labels = ["clear guard always allows", "role guard always allows", "challenger guard always allows", "builder guard always allows",
@@ -820,7 +836,7 @@ def main() -> int:
                   "queue reviewed does not sweep first",
                   "role guard judges Builders by the Orchestrator's rules", "clear ignores open Builders", "Builders never recorded",
                   "a paused orchestration's Builder works", "a Builder shell may start anywhere", "a Builder may edit .claude/",
-                  "a Builder may run Orchestrator helpers", "a Builder may wait past the cache window", "compaction narrows while a Builder is open", "end keeps open Builder records"]
+                  "a Builder may run Orchestrator helpers", "a Builder may wait past the cache window", "a Builder may report without its STATUS line", "compaction narrows while a Builder is open", "end keeps open Builder records"]
         for (marker, replacement), label in zip(plants, labels):
             if marker not in text:
                 print(f"revert-test: plant anchor not found: {marker.strip()[:60]}", file=sys.stderr)

@@ -18,10 +18,12 @@ Hook subcommands (registered by dotfiles `configure-agent-integrations.py`):
                   Blocks with exit 3 (the registered wrapper maps 3 to 2), so an interpreter's own
                   exit 2 (script missing or unreadable) can never block a session.
   builder-guard   PreToolUse rules for the `builder` / `builder-high` subagents (ADR-0010), run by role-guard for
-                  them and by their own agent files: edits only in the Builder worktree of the orchestration
+                  them and by their own agent files: waits under 180 s per shell call, edits only in the Builder worktree of the orchestration
                   this session leads (never its .claude/ or .git/), every shell command starting with
                   `cd <worktree> &&`, the Builder git rules, no context-card helpers but status; refused when
                   there is no live orchestration or it is paused. Fails closed.
+  builder-handback  Agent-scoped PreToolUse on the Builder's SubagentHandback (its report): a report without its
+                  STATUS line is sent back once; the second goes through. Fails open.
   subagent-start  SubagentStart (matcher builder|builder-high): record an open Builder subagent, so the
                   clear guard refuses /wrap until the Orchestrator retires it (`builders retire <id>`).
   challenger-guard  Agent-scoped PreToolUse for the `challenger` subagent (its frontmatter):
@@ -1512,7 +1514,8 @@ def builder_git_violation(command: str) -> str | None:
 # A subagent's prompt cache lapses after 5 minutes, so every wake-up after a longer wait re-bills its
 # whole context at the cache-write price. Builders waited on their own long runs in 19 x 30 s loops,
 # about 40% of a week's usage (2026-10-21). Shorter checks keep the cache warm at the same wall time.
-BUILDER_WAIT_CEILING = 240  # seconds per shell call, under the 5-minute subagent cache window
+BUILDER_WAIT_CEILING = 180  # seconds per shell call: the cache clock starts at the request before the call, so
+# the model's own reply time and the call's overhead also count; 180 s leaves 2 minutes of the 5 as margin
 SLEEP_CALL = re.compile(r"\b(?:sleep\s+(\d+(?:\.\d+)?)([smhd]?)\b"
                         r"|Start-Sleep\s+(?:-(?:Seconds|s)\s+)?(\d+(?:\.\d+)?)\b"
                         r"|Start-Sleep\s+-(?:Milliseconds|m)\s+(\d+)\b)", re.IGNORECASE)
@@ -1618,6 +1621,31 @@ OPEN_BUILDER_TTL = 7 * 86400  # an open-Builder record this old is forgotten (re
 CD_PREFIX = re.compile(r"""^\s*(?:cd|Set-Location|pushd)\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)""")
 
 
+BUILDER_STATUS = re.compile(r"STATUS:\s*\**\s*(CANDIDATE_READY|PLAN_READY|NEEDS_ORCHESTRATOR)\b")
+
+
+def hook_builder_handback(data: dict) -> int:
+    """A Builder's report (its SubagentHandback) without the STATUS line is sent back once, so a
+    refusal read as "stop", or any early exit, cannot hand the Orchestrator a half-finished slice.
+    The second try goes through (the acceptance report after lessons.md has no STATUS line).
+    Its own hook, never the fail-closed builder-guard: a Builder must always be able to report."""
+    try:
+        tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+        if data.get("tool_name") != "SubagentHandback" or BUILDER_STATUS.search(str(tool_input.get("message") or "")):
+            return 0
+        marker = STATE / "handback-nudged" / f"{session_id()}-{data.get('agent_id') or 'unknown'}"
+        if marker.exists():
+            return 0
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(str(time.time()), encoding="utf-8")
+    except BaseException as exc:
+        log("builder-guard", f"handback gate error: {type(exc).__name__}: {exc}")
+        return 0
+    return role_block("Your report has no STATUS line. If the slice is not finished (a run still going, evidence "
+                      "missing), keep working in this turn. If it is, end the report with STATUS: CANDIDATE_READY | "
+                      "PLAN_READY | NEEDS_ORCHESTRATOR. (A second report without one goes through.)")
+
+
 def hook_builder_guard(data: dict) -> int:
     """Agent-scoped (builder.md / builder-high.md frontmatter), so it runs only for a Builder
     subagent. Its session is the Orchestrator's: the role record names the Builder worktree."""
@@ -1658,8 +1686,9 @@ def hook_builder_guard(data: dict) -> int:
         wait = builder_wait_violation(command, tool_input.get("timeout"))
         if wait:
             return role_block(f"A Builder waits at most {BUILDER_WAIT_CEILING} s per shell call ({wait}): a longer "
-                              "wait lets its prompt cache lapse and re-bills its whole context. Check a long run "
-                              "again in a new call. To wait for the Orchestrator, end your turn instead.")
+                              "wait lets its prompt cache lapse and re-bills its whole context. This is not a stop: "
+                              "keep working in this turn and check the run again in a new call. To wait for the "
+                              "Orchestrator, end your turn with your STATUS line.")
         helper = re.search(r"context-card\.py[\"']?\s+([a-z-]+)", command)
         if helper and helper.group(1) != "status":
             return role_block("A Builder never runs context-card.py helpers but `status`: they would act on the "
@@ -2009,7 +2038,7 @@ def activate_builder(sid: str, root: Path | None) -> str | None:
 
 
 HOOKS = {"session-start": hook_session_start, "pre-compact": hook_pre_compact,
-         "request-capture": hook_request_capture, "builder-guard": hook_builder_guard,
+         "request-capture": hook_request_capture, "builder-guard": hook_builder_guard, "builder-handback": hook_builder_handback,
          "subagent-start": hook_subagent_start,
          "clear-guard": hook_clear_guard, "role-guard": hook_role_guard,
          "challenger-guard": hook_challenger_guard}

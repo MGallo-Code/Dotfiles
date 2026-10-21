@@ -13,3 +13,14 @@ The standing default for non-trivial code or doc changes. No special prompt requ
   works), `-cross-check` (rare high-stakes diffs), `-audit` (check the invariants registry).
 - "Prove it, don't promise it": a gate counts only when GREEN in CI, not when you feel sure.
   See `git.md`.
+
+## Smallest complete change
+
+- Before writing new code, stop at the first option that fully works: does it need to exist at all
+  (skip features and options nobody asked for, and name them in one line) -> something already in this
+  codebase -> the standard library or platform -> an installed dependency -> the minimum new code.
+- Small solution, complete change: before editing, list every place it must reach (callers, tests,
+  fixtures, config, the INVARIANTS rows) and finish all of them.
+- A deliberate shortcut with a known limit gets a comment: `shortcut: <the limit>, <when to upgrade>`.
+- Never cut to shrink a diff: validation at trust boundaries, data-loss handling, security,
+  accessibility, or defensive code that guards a known failure (prove it unneeded before deleting).

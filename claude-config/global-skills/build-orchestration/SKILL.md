@@ -6,9 +6,9 @@ description: Run Michael's Orchestrator/Builder/Challenger build system on a pro
 # Orchestrate
 
 The protocol of record is Michael's handoff, pinned verbatim: `~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`. Its sha256 is in the Wiki lab note "Orchestrated Build-Critique System". Read it all before starting; its bootstrap checklist (section 9) is the setup.
-This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the lab note's decisions log, EA ADR-0004) and later dotfiles ADRs (0010, 0012). Where the two differ, the handoff wins, except for the overrides listed at the end.
+This skill adds the changes recorded in the lab note's decisions log, EA ADR-0004 and dotfiles ADRs 0010 and 0012. Where the two differ, the handoff wins, except for the overrides listed at the end.
 
-## What changed from the handoff
+## Departures from the handoff
 
 1. **The Challenger is a fresh subagent per candidate revision,** not a long-lived peer session.
    - The Orchestrator spawns the `challenger` agent (`~/.dotfiles/claude-config/global-agents/challenger.md`: Opus 5.5 `high`, Playwright inline and isolated, no CLAUDE.md).
@@ -26,7 +26,7 @@ This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the
    - If a Builder is lost anyway (an unknown agent id, a fresh session), spawn a new one with the assignment plus a pointer to the worktree's state and `lessons.md`.
    - At acceptance it appends 5 to 15 lines to `analysis_outputs/builder-notes/lessons.md`, and the next slice's Builder reads that file first.
    - Rotate early after two failed corrections on the same issue.
-   - A peer chat Builder still works (item 3): a new session opened in the Builder worktree sets itself up. Use it for a slice Michael wants to watch or steer directly.
+   - A peer chat Builder also works (item 3): a new session opened in the Builder worktree sets itself up. Use it for a slice Michael wants to watch or steer directly.
    - Hook-enforced (the subagent's own `builder-guard`, or the peer chat's role guard):
      - Edit and Write only inside that worktree.
      - In Bash: git push, merge, rebase, switch, pull, cherry-pick, a branch-changing checkout, `reset --hard`, `branch -D/-f` and `update-ref` are blocked, as are `gh pr merge` and `gh pr create`.
@@ -43,7 +43,7 @@ This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the
      - the 350K window.
 
      Sessions that were already open, already bound to a card, or headless are never touched.
-     A new slice means a new Builder session, which starts with a fresh card. Lessons carry across slices through `lessons.md`, as before.
+     A new slice means a new Builder session, which starts with a fresh card. Lessons carry across slices through `lessons.md`.
      The Builder confirms its setup with `python3 ~/.claude/hooks/context-card.py status`; if it shows `role: none`, it stops and tells the Orchestrator.
    - **The Challenger:** nothing to set up. It is a fresh subagent per revision.
    - `/orchestrate off` pauses: the Orchestrator chat acts as a normal agent (guard lifted), running Builders are held idle (edits and shell blocked), and none activate; `/orchestrate on` resumes. `/orchestrate end` finishes: it returns the Orchestrator and every activated Builder to normal and restores the folders' previous compaction limit. Builders can run none of these. `/orchestrate status` reports.
@@ -88,4 +88,4 @@ This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the
 
 ## Overrides of the handoff (Michael)
 
-- 2026-09-27: git commits are local checkpoints and should be frequent. Pushes, PRs, merges and deploys still need his explicit go, relayed by the Orchestrator.
+- Git commits are local checkpoints and should be frequent. Pushes, PRs, merges and deploys still need his explicit go, relayed by the Orchestrator.

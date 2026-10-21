@@ -1,5 +1,5 @@
 {
-  "_note": "Phase-2 additions to the handoff's ledger schema (section 2). Add per slice under review_cycles[] or milestones[].accepted_slices[].",
+  "_note": "Additions to the handoff's ledger schema (section 2). Add per slice under review_cycles[] or milestones[].accepted_slices[].",
   "orchestrator": {"session_ref": "<CLAUDE_CODE_HOST_SESSION_ID>", "arm": "A|B"},
   "metrics": {
     "review_rounds": 0,

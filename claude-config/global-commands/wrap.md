@@ -5,7 +5,7 @@ argument-hint: [keep]
 
 Resume cards keep long work accurate across compactions and clears; only the session that binds a card is affected. The helper does the mechanical parts: `python3 ~/.claude/hooks/context-card.py <command>` (on Windows, `python` instead of `python3`).
 
-Arguments: `$ARGUMENTS`: empty (save, then clear) or `keep` (save only). For anything else (such as the old `off` or `project on`), point to `/autowrap` and stop. Automatic refresh is `/autowrap`.
+Arguments: `$ARGUMENTS`: empty (save, then clear) or `keep` (save only). For anything else (such as `off` or `project on`), point to `/autowrap` and stop. Automatic refresh is `/autowrap`.
 
 Checkpoint:
 

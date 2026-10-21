@@ -6,6 +6,8 @@ Spawn the `challenger` agent (Agent tool, subagent_type `challenger`). Never for
 Candidate <SLICE> r<N> (<plan|implementation>). Your inbox: <abs>/<project>-challenger/analysis_outputs/reviewer-evidence/inbox/<ID>/ (ASSIGNMENT.md, LAUNCH.md, candidate-manifest.json sha256 <hash>, execution-copy/). Work only from there.
 Pass 1 only for now: the builder materials are withheld until you report PASS1_COMPLETE.
 Findings that count: correctness, the brief, and handoff section 5 preferences (copied into ASSIGNMENT.md).
+<Only for a slice under skill item 7: "Gates to re-run yourself: <list from ASSIGNMENT.md>; prove every other file unchanged by hash against the last accepted manifest (sha256 <hash>). Run any other check you suspect." For a candidate proposed as final: "Re-run the full chain." At the milestone freeze: "Run the whole acceptance table.">
+
 <If a high-stakes plan review: "Derive first: write your own answers to the plan's numbered questions before reading plan.md, then compare.">
 ---
 

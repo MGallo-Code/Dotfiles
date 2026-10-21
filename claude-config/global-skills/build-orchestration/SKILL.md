@@ -6,7 +6,7 @@ description: Run Michael's Orchestrator/Builder/Challenger build system on a pro
 # Orchestrate
 
 The protocol of record is Michael's handoff, pinned verbatim: `~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`. Its sha256 is in the Wiki lab note "Orchestrated Build-Critique System". Read it all before starting; its bootstrap checklist (section 9) is the setup.
-This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the lab note's decisions log, EA ADR-0004). Where the two differ, the handoff wins, except for the overrides listed at the end.
+This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the lab note's decisions log, EA ADR-0004) and later dotfiles ADRs (0010, 0012). Where the two differ, the handoff wins, except for the overrides listed at the end.
 
 ## What changed from the handoff
 
@@ -66,9 +66,18 @@ This skill adds only the phase-2 changes agreed on 2026-09-27 to 2026-09-30 (the
    - review rounds, and P1/P2/P3 findings from pass 1 vs pass 2;
    - findings rejected as invalid;
    - usage per role, custody incidents and taste rejections;
-   - the Orchestrator arm.
+   - the Orchestrator arm;
+   - `scoped_misses` (item 7).
 
    Compare each milestone with M1 (2 to 4 rounds per slice). Remove a ceremony only when the metrics hold without it, one at a time.
+7. **Scope the static checks per revision; run the full chain on the final candidate** (dotfiles ADR-0012; slices whose first assignment is written from 2026-10-21. A slice already started keeps its acceptance rules through all its revisions.)
+   - Terms: a *gate* is a static check script; its *plants* are the planted faults of its revert test; the *full chain* is every gate, plant, replay and journey the assignment lists.
+   - Only gates and their plants are scoped. Replays, browser journeys, socket watches and Challenger pass 1 run on every candidate as before: they depend on the whole runnable tree and the environment, not a file list.
+   - The project keeps a gate-to-files map: each gate's script, the modules it imports and the files and data it reads. A gate with no row runs every time.
+   - Per revision, the Orchestrator lists in the assignment the gates (and their plants) whose rows the diff since the last accepted candidate touches, plus every plant of a gate whose script changed. Any added, removed or renamed file, any edit to the map, or any dependency or interpreter change means the full chain.
+   - When the Builder proposes a candidate as final, it runs the full chain first; a red result means it is not final. The Challenger reviewing that candidate re-runs the full chain itself. Earlier candidates' Challengers re-run the listed gates and prove every other file unchanged by hash against the last accepted manifest; they may run any other check they suspect. The milestone freeze still re-runs the whole acceptance table (handoff section 3).
+   - A failure the full chain finds that the scoped gates missed is a `scoped_miss`: fix the map row before acceptance. That project then runs the full chain on every candidate until a slice under this item passes its final full chain with zero misses.
+   - Shortcut: the map is a declared list, checked only by the final full chain; a project that keeps hitting misses should generate rows from traced file reads.
 
 ## Starting an orchestration
 

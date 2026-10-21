@@ -9,7 +9,9 @@
     "usage_by_role": {"orchestrator": "", "builder": "", "challenger": ""},
     "custody_incidents": 0,
     "taste_rejections": 0,
-    "orchestrator_arm": "A|B"
+    "orchestrator_arm": "A|B",
+    "scoped_misses": 0,
+    "check_minutes_by_role": {"builder": 0, "challenger": 0}
   },
   "builder": {"session_per_slice": true, "lessons_path": "analysis_outputs/builder-notes/lessons.md"}
 }

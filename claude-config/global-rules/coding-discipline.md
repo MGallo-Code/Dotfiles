@@ -13,6 +13,10 @@ The standing default for non-trivial code or doc changes. No special prompt requ
   works), `-cross-check` (rare high-stakes diffs), `-audit` (check the invariants registry).
 - "Prove it, don't promise it": a gate counts only when GREEN in CI, not when you feel sure.
   See `git.md`.
+- Re-check in proportion: while iterating, run the checks the change can affect; run the full
+  suite once before calling it done (or let CI). A deterministic check on unchanged inputs
+  proves nothing new. If the suite is slow, say how long it takes and what dominates. In an
+  orchestrated build, the assignment's check list wins over this line.
 
 ## Smallest complete change
 

@@ -18,7 +18,7 @@ Hook subcommands (registered by dotfiles `configure-agent-integrations.py`):
                   Blocks with exit 3 (the registered wrapper maps 3 to 2), so an interpreter's own
                   exit 2 (script missing or unreadable) can never block a session.
   builder-guard   PreToolUse rules for the `builder` / `builder-high` subagents (ADR-0010), run by role-guard for
-                  them and by their own agent files: waits under 180 s per shell call, edits only in the Builder worktree of the orchestration
+                  them and by their own agent files: waits under 240 s per shell call, edits only in the Builder worktree of the orchestration
                   this session leads (never its .claude/ or .git/), every shell command starting with
                   `cd <worktree> &&`, the Builder git rules, no context-card helpers but status; refused when
                   there is no live orchestration or it is paused. Fails closed.
@@ -1514,8 +1514,8 @@ def builder_git_violation(command: str) -> str | None:
 # A subagent's prompt cache lapses after 5 minutes, so every wake-up after a longer wait re-bills its
 # whole context at the cache-write price. Builders waited on their own long runs in 19 x 30 s loops,
 # about 40% of a week's usage (2026-10-21). Shorter checks keep the cache warm at the same wall time.
-BUILDER_WAIT_CEILING = 180  # seconds per shell call: the cache clock starts at the request before the call, so
-# the model's own reply time and the call's overhead also count; 180 s leaves 2 minutes of the 5 as margin
+BUILDER_WAIT_CEILING = 240  # seconds per shell call: the cache clock starts at the request before the call, so
+# the model's reply time counts too; 99.9% of Builder replies took under 60 s (12,693 measured, 2026-10-21)
 SLEEP_CALL = re.compile(r"\b(?:sleep\s+(\d+(?:\.\d+)?)([smhd]?)\b"
                         r"|Start-Sleep\s+(?:-(?:Seconds|s)\s+)?(\d+(?:\.\d+)?)\b"
                         r"|Start-Sleep\s+-(?:Milliseconds|m)\s+(\d+)\b)", re.IGNORECASE)

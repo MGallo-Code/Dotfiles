@@ -1509,6 +1509,41 @@ def builder_git_violation(command: str) -> str | None:
     return None
 
 
+# A subagent's prompt cache lapses after 5 minutes, so every wake-up after a longer wait re-bills its
+# whole context at the cache-write price. Builders waited on their own long runs in 19 x 30 s loops,
+# about 40% of a week's usage (2026-10-21). Shorter checks keep the cache warm at the same wall time.
+BUILDER_WAIT_CEILING = 240  # seconds per shell call, under the 5-minute subagent cache window
+SLEEP_CALL = re.compile(r"\b(?:sleep\s+(\d+(?:\.\d+)?)([smhd]?)\b"
+                        r"|Start-Sleep\s+(?:-(?:Seconds|s)\s+)?(\d+(?:\.\d+)?)\b"
+                        r"|Start-Sleep\s+-(?:Milliseconds|m)\s+(\d+)\b)", re.IGNORECASE)
+SHELL_LOOP = re.compile(r"\b(?:for|while|until|foreach)\b")
+LOOP_COUNT = re.compile(r"\bseq\s+(?:(\d+)\s+)?(\d+)\b|\{(\d+)\.\.(\d+)\}|\b(\d+)\.\.(\d+)\b")
+
+
+def builder_wait_violation(command: str, timeout_ms) -> str | None:
+    """A shell call that sleeps past the ceiling: a long sleep, a counted loop whose sleeps add up past
+    it, or an open-ended sleep loop allowed to run longer than it (the call's own timeout bounds it)."""
+    sleeps = []
+    for m in SLEEP_CALL.finditer(command):
+        if m.group(1):
+            sleeps.append(float(m.group(1)) * {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}[m.group(2).lower()])
+        elif m.group(3):
+            sleeps.append(float(m.group(3)))
+        else:
+            sleeps.append(int(m.group(4)) / 1000)
+    if not sleeps:
+        return None
+    if not SHELL_LOOP.search(command):
+        return f"a {sum(sleeps):.0f} s sleep" if sum(sleeps) >= BUILDER_WAIT_CEILING else None
+    count = LOOP_COUNT.search(command)
+    if count:
+        lo, hi = next((int(a or 1), int(b)) for a, b in zip(count.groups()[::2], count.groups()[1::2]) if b)
+        total = sum(sleeps) * max(hi - lo + 1, 1)
+        return f"a {total:.0f} s sleep loop" if total >= BUILDER_WAIT_CEILING else None
+    limit = timeout_ms / 1000 if isinstance(timeout_ms, (int, float)) and timeout_ms > 0 else 120  # Bash default
+    return f"an open-ended sleep loop with a {limit:.0f} s timeout" if limit > BUILDER_WAIT_CEILING else None
+
+
 def hook_role_guard(data: dict) -> int:
     agent = data.get("agent_type")
     # A subagent's tool calls carry its parent's session (ADR-0010, finding 6), so the parent's role
@@ -1620,6 +1655,11 @@ def hook_builder_guard(data: dict) -> int:
         bad = builder_git_violation(command)
         if bad:
             return role_block(f"A Builder never runs {bad}; the Orchestrator integrates.")
+        wait = builder_wait_violation(command, tool_input.get("timeout"))
+        if wait:
+            return role_block(f"A Builder waits at most {BUILDER_WAIT_CEILING} s per shell call ({wait}): a longer "
+                              "wait lets its prompt cache lapse and re-bills its whole context. Check a long run "
+                              "again in a new call. To wait for the Orchestrator, end your turn instead.")
         helper = re.search(r"context-card\.py[\"']?\s+([a-z-]+)", command)
         if helper and helper.group(1) != "status":
             return role_block("A Builder never runs context-card.py helpers but `status`: they would act on the "

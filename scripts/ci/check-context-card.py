@@ -459,6 +459,15 @@ def fixtures(s: Suite) -> None:
         ("Bash", {"command": cdw + "python3 ~/.claude/hooks/context-card.py queue add x"}, 3),
         ("Bash", {"command": cdw + "python3 ~/.claude/hooks/context-card.py status"}, 0),
         ("PowerShell", {"command": f"Set-Location '{bwt}'; Get-ChildItem"}, 0),
+        ("Bash", {"command": cdw + "for i in $(seq 1 19); do sleep 30; [ -f analysis_outputs/builder-notes/inbox/S1/DONE ] && break; done", "timeout": 600000}, 3),
+        ("Bash", {"command": cdw + "until [ -f evidence/DONE ]; do sleep 15; done", "timeout": 600000}, 3),
+        ("Bash", {"command": cdw + "sleep 300 && ls"}, 3),
+        ("Bash", {"command": cdw + "sleep 5m"}, 3),
+        ("PowerShell", {"command": f"Set-Location '{bwt}'; foreach ($i in 1..10) {{ Start-Sleep -Seconds 30 }}"}, 3),
+        ("Bash", {"command": cdw + "for i in $(seq 1 7); do sleep 30; [ -f evidence/DONE ] && break; done"}, 0),
+        ("Bash", {"command": cdw + "until [ -f evidence/DONE ]; do sleep 15; done", "timeout": 230000}, 0),
+        ("Bash", {"command": cdw + "until curl -sf localhost:3000; do sleep 1; done"}, 0),
+        ("Bash", {"command": cdw + "npm run dev & sleep 3; curl -s localhost:3000"}, 0),
     ):
         for name in ("role-guard", "builder-guard"):
             r = sub(tool, tool_input, name)
@@ -800,6 +809,7 @@ def main() -> int:
                    ("        if not where or not _under(", "        if False and not _under("),  # shell may start anywhere
                    ('        if _under(target, str(real_root / ".claude")) or', '        if False and _under(target, str(real_root / ".claude")) or'),
                    ('        if helper and helper.group(1) != "status":', "        if False:"),  # Builder runs Orchestrator helpers
+                   ("        wait = builder_wait_violation(command, tool_input.get(\"timeout\"))\n", "        wait = None\n"),  # Builder polls on a timer
                    ("    if open_builders(sid):\n        # This compaction", "    if False:\n        # This compaction"),  # narrowing kept
                    ("            remove(open_builders_path(orch_sid))", "            pass")]  # end keeps open Builders
         labels = ["clear guard always allows", "role guard always allows", "challenger guard always allows", "builder guard always allows",
@@ -810,7 +820,7 @@ def main() -> int:
                   "queue reviewed does not sweep first",
                   "role guard judges Builders by the Orchestrator's rules", "clear ignores open Builders", "Builders never recorded",
                   "a paused orchestration's Builder works", "a Builder shell may start anywhere", "a Builder may edit .claude/",
-                  "a Builder may run Orchestrator helpers", "compaction narrows while a Builder is open", "end keeps open Builder records"]
+                  "a Builder may run Orchestrator helpers", "a Builder may wait past the cache window", "compaction narrows while a Builder is open", "end keeps open Builder records"]
         for (marker, replacement), label in zip(plants, labels):
             if marker not in text:
                 print(f"revert-test: plant anchor not found: {marker.strip()[:60]}", file=sys.stderr)

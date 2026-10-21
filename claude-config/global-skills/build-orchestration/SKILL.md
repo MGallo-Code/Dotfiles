@@ -6,7 +6,7 @@ description: Run Michael's Orchestrator/Builder/Challenger build system on a pro
 # Orchestrate
 
 The protocol of record is Michael's handoff, pinned verbatim: `~/Workspace/Wiki/raw/orchestrated-build-critique-handoff-2026-09-27.md`. Its sha256 is in the Wiki lab note "Orchestrated Build-Critique System". Read it all before starting; its bootstrap checklist (section 9) is the setup.
-This skill adds the changes recorded in the lab note's decisions log, EA ADR-0004 and dotfiles ADRs 0010 and 0012. Where the two differ, the handoff wins, except for the overrides listed at the end.
+This skill adds the changes recorded in the lab note's decisions log, EA ADR-0004 and dotfiles ADRs 0010 and 0012. Where this skill or the overrides listed at the end differ from the handoff, they win; the handoff covers everything else.
 
 ## Departures from the handoff
 

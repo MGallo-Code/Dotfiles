@@ -6,6 +6,7 @@
 - Peer-chat Builder (a slice Michael watches): setup is automatic when this is a new session opened in the Builder worktree while the orchestration is on. Confirm with `python3 ~/.claude/hooks/context-card.py status` (role builder, a card). If it shows `role: none`, stop and tell the Orchestrator. Keep your card with `/wrap keep` after each step. Then read lessons.md.
 - Model: Opus 5.5 `medium`; `high` for plan slices and slices touching invariants, gates or custody.
 - Reports go to the Orchestrator only, in the handoff's section 6 format. Freeze after CANDIDATE_READY or PLAN_READY.
+- Waits: under 4 minutes per shell call (guard-enforced; a longer one re-bills your whole context). To wait for the Orchestrator, end your turn.
 - Commits: local checkpoints on your own branch. Never push, merge, rebase, switch branches, `reset --hard` or force. Hook-enforced: those git commands in Bash, and Edit/Write outside the worktree. Anything else is judged by the Orchestrator's hash checks.
 - At acceptance: append 5 to 15 lines to lessons.md (what cost effort to learn, what to do differently), then stop.
 - Rotate early: after two failed corrections on the same issue, write the lessons and ask the Orchestrator for a fresh Builder.

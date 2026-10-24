@@ -2,6 +2,9 @@
 
 function sync { & "$HOME\.dotfiles\sync.ps1" }
 
+# Pick which Code-tab chat list the Claude desktop app shows for every account
+function claude-sidebar { python "$HOME\.dotfiles\tools\claude-sidebar\claude_sidebar.py" @args }
+
 function proj {
     param(
         [Parameter(Position=0)]

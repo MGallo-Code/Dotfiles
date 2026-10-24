@@ -12,6 +12,9 @@ fi
 # Sync all dotfiles-managed repos
 sync() { bash ~/.dotfiles/sync.sh; }
 
+# Pick which Code-tab chat list the Claude desktop app shows for every account
+claude-sidebar() { python3 ~/.dotfiles/tools/claude-sidebar/claude_sidebar.py "$@"; }
+
 # Navigate to project directory, optionally create new
 proj() {
     local PROJECT_DIR=~/Documents/Projects

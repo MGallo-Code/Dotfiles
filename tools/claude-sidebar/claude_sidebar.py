@@ -25,6 +25,17 @@ from pathlib import Path
 
 BAK = ".bak"
 
+HELP = """\
+claude-sidebar: show the same Code-tab chats in the Claude app, whichever account is signed in.
+
+  claude-sidebar            list your chat lists, numbered, and what each account shows
+  claude-sidebar use N      every account shows list N
+  claude-sidebar split      undo: each account shows its own list again
+  claude-sidebar help       this text
+
+Quit Claude fully (tray or menu bar icon > Quit) before `use` or `split`, then reopen it.
+A chat runs on whichever account is signed in when you send a message."""
+
 
 def app_data() -> Path:
     if os.environ.get("CLAUDE_APP_DATA"):
@@ -187,13 +198,15 @@ def split(root: Path) -> None:
 
 
 def main(argv: list[str]) -> None:
+    cmd = argv[0] if argv else "list"
+    if cmd in ("help", "-h", "--help"):
+        return print(HELP)
+    if cmd not in ("list", "ls", "use", "split") or (cmd == "use" and len(argv) != 2):
+        sys.exit(HELP)
     data = app_data()
     root = data / "claude-code-sessions"
-    cmd = argv[0] if argv else "list"
     if cmd in ("list", "ls"):
         return show(data, root)
-    if cmd not in ("use", "split") or (cmd == "use" and len(argv) != 2):
-        sys.exit(__doc__.split("\n\n")[1])
     if app_running():
         sys.exit("Quit the Claude desktop app first (tray or menu bar icon > Quit), then run this again.")
     use(root, argv[1]) if cmd == "use" else split(root)

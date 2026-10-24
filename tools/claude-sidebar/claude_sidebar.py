@@ -11,7 +11,9 @@ to another account shows that account's (often empty) folder. The chats themselv
 for a link (a junction on Windows, a symlink on macOS) to the chosen list; the folder it replaces
 is kept as <org>.bak and comes back on `split`. Folders with chats of their own are never touched.
 
-Quit the app before `use` or `split`. CLAUDE_APP_DATA overrides the app data folder.
+Quit the app before `use` or `split`. CLAUDE_APP_DATA overrides the app data folder. Account
+names (`name`) live in ~/.config/claude-sidebar/names.json on each machine (CLAUDE_SIDEBAR_NAMES
+overrides), never in this repo, which is public.
 Python 3.9 standard library only.
 """
 from __future__ import annotations
@@ -29,8 +31,10 @@ HELP = """\
 claude-sidebar: show the same Code-tab chats in the Claude app, whichever account is signed in.
 
   claude-sidebar            list your chat lists, numbered, and what each account shows
-  claude-sidebar use N      every account shows list N
+  claude-sidebar use N      every account shows list N (a number, or a name like personal)
   claude-sidebar split      undo: each account shows its own list again
+  claude-sidebar name W X   call account W "X"; W is a list number, the 8 characters
+                            after "account" in the listing, or me (signed in)
   claude-sidebar help       this text
 
 Quit Claude fully (tray or menu bar icon > Quit) before `use` or `split`, then reopen it.
@@ -128,9 +132,59 @@ def lists(root: Path) -> list[Path]:
     return [f for f in folders(root) if not is_link(f) and chats(f)]
 
 
+def names_file() -> Path:
+    # Kept on each machine, never in the repo: the account IDs stay off GitHub.
+    return Path(os.environ.get("CLAUDE_SIDEBAR_NAMES") or Path.home() / ".config/claude-sidebar/names.json")
+
+
+def names() -> dict[str, str]:
+    """Account ID -> name."""
+    try:
+        return json.loads(names_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def short(p: Path, root: Path) -> str:
     acct, org = p.relative_to(root).parts
-    return f"account {acct[:8]} / org {org[:8]}"
+    return f"{names().get(acct) or 'account ' + acct[:8]} / org {org[:8]}"
+
+
+def name(data: Path, root: Path, who: str, label: str) -> None:
+    if label.isdigit() or not label.replace("-", "").isalnum():
+        sys.exit("A name is one word that isn't a number, for example personal or business.")
+    accounts = sorted({f.parent.name for f in folders(root)})
+    choices = lists(root)
+    if who == "me":
+        acct = signed_in(data)
+    elif who.isdigit() and 1 <= int(who) <= len(choices):
+        acct = choices[int(who) - 1].parent.name
+    else:
+        acct = next((a for a in accounts if a.startswith(who)), "") if len(who) >= 4 else ""
+    if not acct:
+        sys.exit("Say which account: a list number, the 8 characters after 'account', or me (signed in).")
+    table = {a: n for a, n in names().items() if n != label.lower()}
+    table[acct] = label.lower()
+    names_file().parent.mkdir(parents=True, exist_ok=True)
+    names_file().write_text(json.dumps(table, indent=2) + "\n", encoding="utf-8")
+    print(f"  account {acct[:8]} is now {label.lower()}")
+
+
+def pick(root: Path, arg: str) -> Path:
+    choices = lists(root)
+    if arg.isdigit():
+        if not 1 <= int(arg) <= len(choices):
+            sys.exit(f"Pick a list number from 1 to {len(choices)} (run claude-sidebar to see them).")
+        return choices[int(arg) - 1]
+    acct = next((a for a, n in names().items() if n == arg.lower()), None)
+    if not acct:
+        sys.exit(f"No account is named {arg}. Name one with: claude-sidebar name <list number or me> {arg}")
+    mine = [c for c in choices if c.parent.name == acct]
+    if not mine:
+        sys.exit(f"{arg} has no chats of its own yet, so there's no list to show.")
+    if len(mine) > 1:
+        sys.exit(f"{arg} has more than one list; pick it by number (run claude-sidebar to see them).")
+    return mine[0]
 
 
 def show(data: Path, root: Path) -> None:
@@ -155,11 +209,8 @@ def show(data: Path, root: Path) -> None:
             print(f"  {short(f, root)}{who}: empty")
 
 
-def use(root: Path, n: str) -> None:
-    choices = lists(root)
-    if not n.isdigit() or not 1 <= int(n) <= len(choices):
-        sys.exit(f"Pick a list number from 1 to {len(choices)} (run claude-sidebar to see them).")
-    chosen = choices[int(n) - 1]
+def use(root: Path, chosen: Path) -> None:
+    n = lists(root).index(chosen) + 1
     # Every account gets a folder for every org seen, so an org the app opens later is covered too.
     accounts = {f.parent for f in folders(root)}
     orgs = {f.name for f in folders(root)}
@@ -201,15 +252,19 @@ def main(argv: list[str]) -> None:
     cmd = argv[0] if argv else "list"
     if cmd in ("help", "-h", "--help"):
         return print(HELP)
-    if cmd not in ("list", "ls", "use", "split") or (cmd == "use" and len(argv) != 2):
+    if cmd not in ("list", "ls", "use", "split", "name") or (cmd == "use" and len(argv) != 2) \
+            or (cmd == "name" and len(argv) != 3):
         sys.exit(HELP)
     data = app_data()
     root = data / "claude-code-sessions"
     if cmd in ("list", "ls"):
         return show(data, root)
+    if cmd == "name":
+        return name(data, root, argv[1], argv[2])
+    chosen = pick(root, argv[1]) if cmd == "use" else None
     if app_running():
         sys.exit("Quit the Claude desktop app first (tray or menu bar icon > Quit), then run this again.")
-    use(root, argv[1]) if cmd == "use" else split(root)
+    use(root, chosen) if chosen else split(root)
     print("\nStart Claude again to see it.")
 
 

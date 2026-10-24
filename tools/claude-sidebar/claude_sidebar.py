@@ -64,8 +64,18 @@ def make_link(link: Path, target: Path) -> None:
         os.symlink(target, link, target_is_directory=True)
 
 
+def remove_link(link: Path) -> None:
+    """Removes the link only, never what it points at."""
+    os.rmdir(link) if sys.platform == "win32" else os.unlink(link)
+
+
 def chats(folder: Path) -> list[Path]:
     return sorted(folder.glob("local_*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
+
+
+def count(folder: Path) -> str:
+    n = len(chats(folder))
+    return f"{n} chat" if n == 1 else f"{n} chats"
 
 
 def latest_title(folder: Path) -> str:
@@ -119,7 +129,7 @@ def show(data: Path, root: Path) -> None:
         print("No chat lists yet.")
     for i, f in enumerate(choices, 1):
         title = latest_title(f)
-        print(f"  {i}. {short(f, root)}  {len(chats(f))} chats" + (f"  (latest: {title})" if title else ""))
+        print(f"  {i}. {short(f, root)}  {count(f)}" + (f"  (latest: {title})" if title else ""))
     print()
     for f in folders(root):
         acct = f.parent.name
@@ -150,10 +160,10 @@ def use(root: Path, n: str) -> None:
             if is_link(f):
                 if link_target(f).resolve() == chosen.resolve():
                     continue
-                os.rmdir(f)  # removes the link only
+                remove_link(f)
             elif f.is_dir():
                 if chats(f):
-                    print(f"  kept {short(f, root)}: it has {len(chats(f))} chats of its own")
+                    print(f"  kept {short(f, root)}: it has {count(f)} of its own")
                     continue
                 bak = f.with_name(org + BAK)
                 if bak.exists():
@@ -167,7 +177,7 @@ def split(root: Path) -> None:
     for f in folders(root):
         if not is_link(f):
             continue
-        os.rmdir(f)
+        remove_link(f)
         bak = f.with_name(f.name + BAK)
         if bak.is_dir():
             bak.rename(f)

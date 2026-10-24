@@ -764,45 +764,43 @@ if ($Mode -eq "full") {
 if ($Mode -ne "minimal") {
     Write-Step "Shell commands"
 
-    # Ensure profile directory exists
-    $profileDir = Split-Path $PROFILE -Parent
-    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-
     # Build source lines
     $coreLine = ". `"$DotfilesDir\shell\windows\core.ps1`""
     $eaLine = ". `"$DotfilesDir\shell\windows\ea.ps1`""
 
-    # Check if profile already sources our files
-    $profileContent = ""
-    if (Test-Path $PROFILE) {
-        $profileContent = Get-Content $PROFILE -Raw
-    }
+    # Both shells get the commands, whichever one runs setup: Windows PowerShell 5 reads
+    # Documents\WindowsPowerShell, PowerShell 7 (pwsh, the terminal default) Documents\PowerShell.
+    $docs = [Environment]::GetFolderPath('MyDocuments')
+    foreach ($shellProfile in @(
+            (Join-Path $docs "WindowsPowerShell\Microsoft.PowerShell_profile.ps1"),
+            (Join-Path $docs "PowerShell\Microsoft.PowerShell_profile.ps1"))) {
+        $shellName = Split-Path (Split-Path $shellProfile -Parent) -Leaf
+        New-Item -ItemType Directory -Path (Split-Path $shellProfile -Parent) -Force | Out-Null
 
-    $needsUpdate = $false
+        # Check if profile already sources our files
+        $profileContent = ""
+        if (Test-Path $shellProfile) {
+            $profileContent = Get-Content $shellProfile -Raw
+        }
 
-    if ($profileContent -notmatch "dotfiles.*core\.ps1") {
-        Add-Content -Path $PROFILE -Value "`n# Dotfiles custom commands"
-        Add-Content -Path $PROFILE -Value $coreLine
-        $needsUpdate = $true
-        Write-Ok "Added core commands to PowerShell profile"
-    }
-    else {
-        Write-Ok "Core commands already in profile"
-    }
+        $needsUpdate = $false
 
-    if ($Mode -eq "full") {
-        if ($profileContent -notmatch "dotfiles.*ea\.ps1") {
-            Add-Content -Path $PROFILE -Value $eaLine
+        if ($profileContent -notmatch "dotfiles.*core\.ps1") {
+            Add-Content -Path $shellProfile -Value "`n# Dotfiles custom commands"
+            Add-Content -Path $shellProfile -Value $coreLine
             $needsUpdate = $true
-            Write-Ok "Added EA commands to PowerShell profile"
+            Write-Ok "Added core commands to $shellName profile"
         }
-        else {
-            Write-Ok "EA commands already in profile"
-        }
-    }
 
-    if (-not $needsUpdate) {
-        Write-Ok "PowerShell profile already configured"
+        if ($Mode -eq "full" -and $profileContent -notmatch "dotfiles.*ea\.ps1") {
+            Add-Content -Path $shellProfile -Value $eaLine
+            $needsUpdate = $true
+            Write-Ok "Added EA commands to $shellName profile"
+        }
+
+        if (-not $needsUpdate) {
+            Write-Ok "$shellName profile already configured"
+        }
     }
 }
 

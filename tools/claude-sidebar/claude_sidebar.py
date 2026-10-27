@@ -1,43 +1,40 @@
 #!/usr/bin/env python3
-"""Choose which Code-tab chat list the Claude desktop app shows, whichever account is signed in.
+"""Keep the Claude desktop app's Code-tab chat list the same on every account.
 
-    claude-sidebar              list the chat lists (one per account and org) and what each shows
-    claude-sidebar use N        every account shows list N (a number from the listing)
-    claude-sidebar split        undo: every account shows its own list again
+The app files each sidebar entry as <app data>/claude-code-sessions/<account>/<org>/local_<id>.json,
+so signing in to another account shows that account's own list. The chats themselves live in
+~/.claude/projects and are shared already. `sync` copies the newest version of every entry
+(by its lastActivityAt) into every account's folders, and carries deletions (deleted_<id> markers)
+the same way.
 
-The app files its sidebar under <app data>/claude-code-sessions/<account>/<org>/, so signing in
-to another account shows that account's (often empty) folder. The chats themselves live in
-~/.claude/projects and are shared already. `use` swaps every folder that has no chats of its own
-for a link (a junction on Windows, a symlink on macOS) to the chosen list; the folder it replaces
-is kept as <org>.bak and comes back on `split`. Folders with chats of their own are never touched.
+Real copies, never links: the app reads through a junction or symlink but refuses to save
+through one, so an earlier link-based version lost updates. `sync` turns any such link back
+into a folder. While the app is open it leaves the signed-in account's folders alone (the app
+holds those in memory and would write over them); that account catches up on the next sync
+made while another account is signed in, which is why sync runs right before a switch.
 
-Quit the app before `use` or `split`. CLAUDE_APP_DATA overrides the app data folder. Account
-names (`name`) live in ~/.config/claude-sidebar/names.json on each machine (CLAUDE_SIDEBAR_NAMES
-overrides), never in this repo, which is public.
-Python 3.9 standard library only.
+CLAUDE_APP_DATA overrides the app data folder. Account names live in
+~/.config/claude-sidebar/names.json on each machine (CLAUDE_SIDEBAR_NAMES overrides), never in
+this repo, which is public. Python 3.9 standard library only.
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
 from pathlib import Path
 
-BAK = ".bak"
-
 HELP = """\
-claude-sidebar: show the same Code-tab chats in the Claude app, whichever account is signed in.
+claude-sidebar: keep the Claude app's Code-tab chat list the same on every account.
 
-  claude-sidebar            list your chat lists, numbered, and what each account shows
-  claude-sidebar use N      every account shows list N (a number, or a name like personal)
-  claude-sidebar split      undo: each account shows its own list again
-  claude-sidebar name W X   call account W "X"; W is a list number, the 8 characters
-                            after "account" in the listing, or me (signed in)
-  claude-sidebar help       this text
+  claude-sidebar          show each account's chats
+  claude-sidebar sync     copy the newest version of every chat to every account
+  claude-sidebar name X   call the signed-in account X (for example personal)
 
-Quit Claude fully (tray or menu bar icon > Quit) before `use` or `split`, then reopen it.
+Run sync right before you switch accounts in the app.
 A chat runs on whichever account is signed in when you send a message."""
 
 
@@ -66,45 +63,14 @@ def is_link(p: Path) -> bool:
                                             if sys.platform == "win32" else 0)
 
 
-def link_target(p: Path) -> Path:
-    t = os.readlink(p)
-    return Path(t[4:] if t.startswith("\\\\?\\") else t)
-
-
-def make_link(link: Path, target: Path) -> None:
-    if sys.platform == "win32":
-        import _winapi
-        _winapi.CreateJunction(str(target), str(link))  # junctions need no admin rights
-    else:
-        os.symlink(target, link, target_is_directory=True)
-
-
 def remove_link(link: Path) -> None:
     """Removes the link only, never what it points at."""
     os.rmdir(link) if sys.platform == "win32" else os.unlink(link)
 
 
-def chats(folder: Path) -> list[Path]:
-    return sorted(folder.glob("local_*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
-
-
-def count(folder: Path) -> str:
-    n = len(chats(folder))
-    return f"{n} chat" if n == 1 else f"{n} chats"
-
-
-def latest_title(folder: Path) -> str:
-    for f in chats(folder):
-        try:
-            return json.loads(f.read_text(encoding="utf-8")).get("title") or ""
-        except (OSError, ValueError):
-            continue
-    return ""
-
-
 def app_running() -> bool:
     if os.environ.get("CLAUDE_APP_DATA"):
-        return False  # a test folder, not the live app
+        return os.environ.get("CLAUDE_APP_RUNNING") == "1"  # a test folder, not the live app
     if sys.platform == "win32":
         cmd = ["powershell", "-NoProfile", "-Command",
                "@(Get-Process claude -EA 0 | ? Path -like '*\\WindowsApps\\Claude_*').Count + "
@@ -121,17 +87,6 @@ def signed_in(data: Path) -> str:
         return ""
 
 
-def folders(root: Path) -> list[Path]:
-    """Every <account>/<org> folder, links included, backups excluded."""
-    return sorted(o for a in root.iterdir() if a.is_dir() and not is_link(a)
-                  for o in a.iterdir() if (o.is_dir() or is_link(o)) and not o.name.endswith(BAK))
-
-
-def lists(root: Path) -> list[Path]:
-    """Folders that hold chats of their own: the lists there are to choose from."""
-    return [f for f in folders(root) if not is_link(f) and chats(f)]
-
-
 def names_file() -> Path:
     # Kept on each machine, never in the repo: the account IDs stay off GitHub.
     return Path(os.environ.get("CLAUDE_SIDEBAR_NAMES") or Path.home() / ".config/claude-sidebar/names.json")
@@ -145,127 +100,135 @@ def names() -> dict[str, str]:
         return {}
 
 
-def short(p: Path, root: Path) -> str:
-    acct, org = p.relative_to(root).parts
-    return f"{names().get(acct) or 'account ' + acct[:8]} / org {org[:8]}"
+def label(acct: str) -> str:
+    n = names().get(acct)
+    return n.capitalize() if n else f"Account {acct[:8]}"
 
 
-def name(data: Path, root: Path, who: str, label: str) -> None:
-    if label.isdigit() or not label.replace("-", "").isalnum():
-        sys.exit("A name is one word that isn't a number, for example personal or business.")
-    accounts = sorted({f.parent.name for f in folders(root)})
-    choices = lists(root)
-    if who == "me":
-        acct = signed_in(data)
-    elif who.isdigit() and 1 <= int(who) <= len(choices):
-        acct = choices[int(who) - 1].parent.name
-    else:
-        acct = next((a for a in accounts if a.startswith(who)), "") if len(who) >= 4 else ""
-    if not acct:
-        sys.exit("Say which account: a list number, the 8 characters after 'account', or me (signed in).")
-    table = {a: n for a, n in names().items() if n != label.lower()}
-    table[acct] = label.lower()
-    names_file().parent.mkdir(parents=True, exist_ok=True)
-    names_file().write_text(json.dumps(table, indent=2) + "\n", encoding="utf-8")
-    print(f"  account {acct[:8]} is now {label.lower()}")
+def unlink_folders(root: Path) -> None:
+    """Turns links left by the old link-based version back into real folders."""
+    for acct in root.iterdir():
+        for f in list(acct.iterdir()) if acct.is_dir() else []:
+            if not is_link(f):
+                continue
+            remove_link(f)
+            bak = f.with_name(f.name + ".bak")
+            bak.rename(f) if bak.is_dir() else f.mkdir()
 
 
-def pick(root: Path, arg: str) -> Path:
-    choices = lists(root)
-    if arg.isdigit():
-        if not 1 <= int(arg) <= len(choices):
-            sys.exit(f"Pick a list number from 1 to {len(choices)} (run claude-sidebar to see them).")
-        return choices[int(arg) - 1]
-    acct = next((a for a, n in names().items() if n == arg.lower()), None)
-    if not acct:
-        sys.exit(f"No account is named {arg}. Name one with: claude-sidebar name <list number or me> {arg}")
-    mine = [c for c in choices if c.parent.name == acct]
-    if not mine:
-        sys.exit(f"{arg} has no chats of its own yet, so there's no list to show.")
-    if len(mine) > 1:
-        sys.exit(f"{arg} has more than one list; pick it by number (run claude-sidebar to see them).")
-    return mine[0]
+def folders(root: Path) -> list[Path]:
+    """Every <account>/<org> folder."""
+    return sorted(o for a in root.iterdir() if a.is_dir() and not is_link(a)
+                  for o in a.iterdir() if o.is_dir() and not is_link(o) and not o.name.endswith(".bak"))
+
+
+def version(f: Path) -> tuple[int, float]:
+    """Newer chat state sorts higher; a file the app is mid-way through writing sorts lowest."""
+    try:
+        return int(json.loads(f.read_text(encoding="utf-8")).get("lastActivityAt") or 0), f.stat().st_mtime
+    except (OSError, ValueError):
+        return -1, 0.0
+
+
+def newest(root: Path) -> tuple[dict[str, tuple[tuple[int, float], Path]], dict[str, Path]]:
+    """Newest copy of every chat entry, and every deletion marker, across all folders."""
+    best: dict[str, tuple[tuple[int, float], Path]] = {}
+    deleted: dict[str, Path] = {}
+    for folder in folders(root):
+        for f in folder.glob("local_*.json"):
+            v = version(f)
+            if v[0] >= 0 and (f.name not in best or v > best[f.name][0]):
+                best[f.name] = (v, f)
+        for m in folder.glob("deleted_*"):
+            deleted.setdefault(m.name[len("deleted_"):], m)
+    for chat_id in deleted:
+        best.pop(f"local_{chat_id}.json", None)
+    return best, deleted
+
+
+def behind(folder: Path, best: dict) -> list[str]:
+    """Entries this folder is missing or holds an older copy of."""
+    return [n for n, (v, _) in best.items() if not (folder / n).exists() or version(folder / n) < v]
 
 
 def show(data: Path, root: Path) -> None:
     me = signed_in(data)
-    choices = lists(root)
-    if not choices:
-        print("No chat lists yet.")
-    for i, f in enumerate(choices, 1):
-        title = latest_title(f)
-        print(f"  {i}. {short(f, root)}  {count(f)}" + (f"  (latest: {title})" if title else ""))
-    print()
+    best, _ = newest(root)
+    by_acct: dict[str, list[Path]] = {}
     for f in folders(root):
-        acct = f.parent.name
-        who = " (signed in)" if acct == me else ""
-        if is_link(f):
-            t = link_target(f)
-            n = next((i for i, c in enumerate(choices, 1) if c.resolve() == t.resolve()), "?")
-            print(f"  {short(f, root)}{who}: shows list {n}")
-        elif chats(f):
-            print(f"  {short(f, root)}{who}: its own list")
+        by_acct.setdefault(f.parent.name, []).append(f)
+    stale = False
+    for acct, fs in sorted(by_acct.items(), key=lambda kv: kv[0] != me):
+        mine = {n: max(version(f / n) for f in fs if (f / n).exists())
+                for n in best if any((f / n).exists() for f in fs)}
+        have = set(mine)
+        older = {n for n, v in mine.items() if v < best[n][0]}
+        stale = stale or bool(older) or have != set(best) or any(behind(f, best) for f in fs)
+        line = f"  {label(acct) + (' (signed in)' if acct == me else ''):<24} {len(have)} of {len(best)} chats"
+        print(line + (f", {len(older)} out of date" if older else ""))
+    if any(is_link(f) for a in root.iterdir() if a.is_dir() for f in a.iterdir()):
+        print("\n  Old links from an earlier version are in place. Quit Claude once and run claude-sidebar sync.")
+    else:
+        print("\n  Run claude-sidebar sync before you switch accounts." if stale else "\n  All accounts match.")
+
+
+def sync(data: Path, root: Path) -> None:
+    running = app_running()
+    if running and any(is_link(f) for a in root.iterdir() if a.is_dir() for f in a.iterdir()):
+        sys.exit("Quit the Claude desktop app once (tray or menu bar icon > Quit) so sync can replace the "
+                 "old links, then run it again.")
+    unlink_folders(root)
+    me = signed_in(data) if running else ""
+    best, deleted = newest(root)
+    copied: dict[str, set[str]] = {}
+    for folder in folders(root):
+        acct = folder.parent.name
+        if acct == me:
+            continue  # the open app holds this account's chats in memory
+        for chat_id, marker in deleted.items():
+            if not (folder / marker.name).exists():
+                shutil.copy2(marker, folder / marker.name)
+            (folder / f"local_{chat_id}.json").unlink(missing_ok=True)
+        for name in behind(folder, best):
+            tmp = folder / (name + ".sync-tmp")
+            shutil.copy2(best[name][1], tmp)
+            os.replace(tmp, folder / name)
+            copied.setdefault(acct, set()).add(name)
+    for acct in sorted({f.parent.name for f in folders(root)}):
+        n = len(copied.get(acct, ()))
+        if acct == me:
+            print(f"  {label(acct)}: signed in, so left as is")
         else:
-            print(f"  {short(f, root)}{who}: empty")
+            print(f"  {label(acct)}: {'up to date' if not n else f'{n} chat' + ('s' if n != 1 else '') + ' updated'}")
 
 
-def use(root: Path, chosen: Path) -> None:
-    n = lists(root).index(chosen) + 1
-    # Every account gets a folder for every org seen, so an org the app opens later is covered too.
-    accounts = {f.parent for f in folders(root)}
-    orgs = {f.name for f in folders(root)}
-    for acct in sorted(accounts):
-        for org in sorted(orgs):
-            f = acct / org
-            if f == chosen:
-                continue
-            if is_link(f):
-                if link_target(f).resolve() == chosen.resolve():
-                    continue
-                remove_link(f)
-            elif f.is_dir():
-                if chats(f):
-                    print(f"  kept {short(f, root)}: it has {count(f)} of its own")
-                    continue
-                bak = f.with_name(org + BAK)
-                if bak.exists():
-                    sys.exit(f"{bak} already exists; move it aside and run again.")
-                f.rename(bak)
-            make_link(f, chosen)
-            print(f"  {short(f, root)} now shows list {n}")
-
-
-def split(root: Path) -> None:
-    for f in folders(root):
-        if not is_link(f):
-            continue
-        remove_link(f)
-        bak = f.with_name(f.name + BAK)
-        if bak.is_dir():
-            bak.rename(f)
-        else:
-            f.mkdir()
-        print(f"  {short(f, root)} shows its own list again")
+def name(data: Path, label_: str) -> None:
+    if label_.isdigit() or not label_.replace("-", "").isalnum():
+        sys.exit("A name is one word that isn't a number, for example personal or business.")
+    acct = signed_in(data)
+    if not acct:
+        sys.exit("Can't tell which account is signed in. Open the Claude app and sign in first.")
+    table = {a: n for a, n in names().items() if n != label_.lower()}
+    table[acct] = label_.lower()
+    names_file().parent.mkdir(parents=True, exist_ok=True)
+    names_file().write_text(json.dumps(table, indent=2) + "\n", encoding="utf-8")
+    print(f"  The signed-in account is now {label_.lower()}.")
 
 
 def main(argv: list[str]) -> None:
-    cmd = argv[0] if argv else "list"
+    cmd = argv[0] if argv else "status"
     if cmd in ("help", "-h", "--help"):
         return print(HELP)
-    if cmd not in ("list", "ls", "use", "split", "name") or (cmd == "use" and len(argv) != 2) \
-            or (cmd == "name" and len(argv) != 3):
+    if (cmd, len(argv)) not in (("status", 0), ("status", 1), ("sync", 1), ("name", 2)):
         sys.exit(HELP)
     data = app_data()
     root = data / "claude-code-sessions"
-    if cmd in ("list", "ls"):
-        return show(data, root)
-    if cmd == "name":
-        return name(data, root, argv[1], argv[2])
-    chosen = pick(root, argv[1]) if cmd == "use" else None
-    if app_running():
-        sys.exit("Quit the Claude desktop app first (tray or menu bar icon > Quit), then run this again.")
-    use(root, chosen) if chosen else split(root)
-    print("\nStart Claude again to see it.")
+    if cmd == "status":
+        show(data, root)
+    elif cmd == "sync":
+        sync(data, root)
+    else:
+        name(data, argv[1])
 
 
 if __name__ == "__main__":

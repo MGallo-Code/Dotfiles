@@ -6,7 +6,7 @@
 # any LLM. I would be okay with asking an LLM to add something write-only, but never read."
 # The Read/Glob/Grep deny rules in settings.json enforce that for the file tools. They do
 # nothing about Bash, because a Bash rule matches COMMAND TEXT and not a resolved path, so
-# `cat /Volumes/Media/Journal/2015/.../entry.md` was still open inside his own sessions.
+# `cat /Volumes/Media/GalloGrid/Journal/2015/.../entry.md` was still open inside his own sessions.
 # That gap was written down as known and open for four days; this is it closed.
 #
 # IT DERIVES ITS PATHS FROM HIS OWN DENY RULES rather than hardcoding them. One place to

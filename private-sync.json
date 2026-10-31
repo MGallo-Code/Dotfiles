@@ -3,7 +3,7 @@
   "folder_id": "ea-private",
   "folder_label": "EA private",
   "folder_path": "~/Workspace/EA",
-  "include": ["profile/health", "profile/legal", "business/keepthecall"],
+  "include": ["profile/health", "profile/legal", "profile/accommodations", "business/keepthecall"],
   "versioning_days": 30,
   "port": 22000,
   "peers": [

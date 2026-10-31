@@ -64,6 +64,22 @@ function Set-OpenSshDefaultShell {
             Write-Warn "Could not set SSH default shell (needs admin). Run as Administrator or set manually."
         }
     }
+
+    Test-SystemPathExpands
+}
+
+# The system Path must be REG_EXPAND_SZ when it holds %VAR% entries. Explorer expands them anyway,
+# but sshd does not, so scp/sftp over SSH fail with "Connection closed" (sftp-server.exe not found).
+# Warn only: the fix rewrites a system setting, so it stays a deliberate admin step.
+function Test-SystemPathExpands {
+    $envKey = Get-Item "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+    $raw = $envKey.GetValue("Path", $null, "DoNotExpandEnvironmentNames")
+    if ($envKey.GetValueKind("Path") -eq "ExpandString" -or $raw -notmatch "%") {
+        Write-Ok "System Path expands %VARS% (scp over SSH can find OpenSSH)"
+        return
+    }
+    Write-Warn "System Path is REG_SZ with %VAR% entries: scp/sftp over SSH will fail. Fix in an admin PowerShell:"
+    Write-Host '  $p=''HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment''; $v=(Get-Item $p).GetValue(''Path'',$null,''DoNotExpandEnvironmentNames''); Set-ItemProperty $p -Name Path -Value $v -Type ExpandString; Restart-Service sshd'
 }
 
 function Install-CaskaydiaCoveNerdFont {

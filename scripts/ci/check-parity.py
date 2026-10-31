@@ -630,6 +630,11 @@ PARITY_EXEMPT = [
                   "The host-role guard itself IS mirrored (ROLE_HOST_GUARD feature row)."
     },
     {
+        "name": "system Path REG_EXPAND_SZ check (Test-SystemPathExpands)",
+        "reason": "Windows only: a REG_SZ system Path leaves %SYSTEMROOT%\\System32\\OpenSSH unexpanded "
+                  "for sshd, breaking scp/sftp. macOS/Linux PATH has no registry value type."
+    },
+    {
         "name": "git autosync trigger backend",
         "reason": "The auto-git entrypoints and bootstrap command are paired, but the trigger backend is "
                   "genuinely OS-specific: launchd on macOS, systemd/cron on Linux/WSL, and Task Scheduler "
